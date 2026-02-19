@@ -30,65 +30,72 @@ export component DocsLayout({
 		<div class="docs-wrapper">
 			<Sidebar />
 			<main class="docs-main">
-				<article class="docs-content">
-					<children />
-				</article>
-				if (editPath) {
-					<div class="edit-link">
-						<a
-							href={`https://github.com/Ripple-TS/ripple/edit/main/website/${editPath}`}
-							target="_blank"
-							rel="noopener noreferrer"
-						>
-							<svg
-								xmlns="http://www.w3.org/2000/svg"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								class="edit-icon"
-							>
-								<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-								<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-							</svg>
-							{'Edit this page on GitHub'}
-						</a>
+				<div class="docs-container">
+					<div class="docs-content-wrapper">
+						<article class="docs-content">
+							<children />
+						</article>
+						if (editPath) {
+							<div class="edit-link">
+								<a
+									href={`https://github.com/Ripple-TS/ripple/edit/main/website/${editPath}`}
+									target="_blank"
+									rel="noopener noreferrer"
+								>
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										class="edit-icon"
+									>
+										<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+										<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+									</svg>
+									{'Edit this page on GitHub'}
+								</a>
+							</div>
+						}
+						if (prevLink || nextLink) {
+							<nav class="prev-next">
+								if (prevLink) {
+									<a href={prevLink.href} class="pager prev">
+										<span class="desc">{'Previous page'}</span>
+										<span class="title">{prevLink.text}</span>
+									</a>
+								} else {
+									<span />
+								}
+								if (nextLink) {
+									<a href={nextLink.href} class="pager next">
+										<span class="desc">{'Next page'}</span>
+										<span class="title">{nextLink.text}</span>
+									</a>
+								}
+							</nav>
+						}
+						<Footer />
 					</div>
-				}
-				if (prevLink || nextLink) {
-					<nav class="prev-next">
-						if (prevLink) {
-							<a href={prevLink.href} class="pager prev">
-								<span class="desc">{'Previous page'}</span>
-								<span class="title">{prevLink.text}</span>
-							</a>
-						} else {
-							<span />
+					<aside class="aside">
+						if (toc.length > 0) {
+							<div class="aside-curtain" />
+							<div class="aside-container">
+								<div class="aside-content">
+									<div class="aside-title">{'On this page'}</div>
+									<nav class="aside-nav">
+										for (const item of toc) {
+											<TocLink href={item.href} text={item.text} />
+										}
+									</nav>
+								</div>
+							</div>
 						}
-						if (nextLink) {
-							<a href={nextLink.href} class="pager next">
-								<span class="desc">{'Next page'}</span>
-								<span class="title">{nextLink.text}</span>
-							</a>
-						}
-					</nav>
-				}
-				<Footer />
+					</aside>
+				</div>
 			</main>
-			<aside class="aside">
-				if (toc.length > 0) {
-					<div class="aside-content">
-						<div class="aside-title">{'On this page'}</div>
-						<nav class="aside-nav">
-							for (const item of toc) {
-								<TocLink href={item.href} text={item.text} />
-							}
-						</nav>
-					</div>
-				}
-			</aside>
 		</div>
 	</div>
 
@@ -141,15 +148,29 @@ export component DocsLayout({
 
 		.docs-main {
 			flex: 1;
-			margin-left: 272px;
-			margin-right: 272px;
 			min-width: 0;
-			padding: 48px 32px 0;
+			padding-left: 272px;
+			width: 100%;
+		}
+
+		.docs-container {
+			display: flex;
+			justify-content: center;
+			max-width: 1104px;
+			margin: 0 auto;
+			width: 100%;
+		}
+
+		.docs-content-wrapper {
+			flex: 1;
+			min-width: 0;
+			max-width: 688px;
+			margin: 0 auto;
+			padding: 48px 32px 128px;
 		}
 
 		.docs-content {
-			max-width: 688px;
-			margin: 0 auto;
+			width: 100%;
 		}
 
 		.edit-link {
@@ -220,13 +241,37 @@ export component DocsLayout({
 		}
 
 		.aside {
+			display: none;
+			position: relative;
+			order: 2;
+			flex-grow: 1;
+			padding-left: 32px;
+			width: 100%;
+			max-width: 256px;
+		}
+
+		.aside-curtain {
 			position: fixed;
-			top: 64px;
-			right: 0;
-			width: 272px;
-			height: calc(100vh - 64px);
-			padding: 32px 32px 32px 0;
+			bottom: 0;
+			z-index: 10;
+			width: 224px;
+			height: 32px;
+			background: linear-gradient(transparent, #1b1b1f);
+		}
+
+		.aside-container {
+			position: fixed;
+			top: 0;
+			padding-top: calc(64px + 48px);
+			width: 224px;
+			height: 100vh;
+			overflow-x: hidden;
 			overflow-y: auto;
+			scrollbar-width: none;
+		}
+
+		.aside-container::-webkit-scrollbar {
+			display: none;
 		}
 
 		.aside-content {
@@ -237,23 +282,35 @@ export component DocsLayout({
 		.aside-title {
 			font-size: 13px;
 			font-weight: 600;
-			color: rgba(255, 255, 255, 0.87);
+			color: rgba(255, 255, 245, 0.86);
 			margin-bottom: 8px;
 		}
 
-		@media (max-width: 1280px) {
+		@media (min-width: 1280px) {
 			.aside {
-				display: none;
+				display: block;
 			}
+		}
 
+		@media (max-width: 1280px) {
+			.docs-content-wrapper {
+				max-width: 784px;
+			}
+		}
+
+		@media (min-width: 1440px) {
 			.docs-main {
-				margin-right: 0;
+				padding-left: calc((100vw - 1440px) / 2 + 272px);
+				padding-right: calc((100vw - 1440px) / 2);
 			}
 		}
 
 		@media (max-width: 960px) {
 			.docs-main {
-				margin-left: 0;
+				padding-left: 0;
+			}
+
+			.docs-content-wrapper {
 				padding: 24px;
 			}
 		}
@@ -374,8 +431,8 @@ component Header() {
 		.search-wrapper {
 			flex-grow: 1;
 			display: flex;
-			justify-content: center;
-			padding-right: 32px;
+			align-items: center;
+			padding-left: 32px;
 		}
 
 		.search-button {
@@ -564,11 +621,17 @@ component Sidebar() {
 			top: 64px;
 			left: 0;
 			width: 272px;
-			height: calc(100vh - 64px);
-			padding: 32px 24px 96px 28px;
+			bottom: 0;
+			padding: 32px 32px 96px;
 			overflow-x: hidden;
 			overflow-y: auto;
 			background: #161618;
+			overscroll-behavior: contain;
+			scrollbar-width: none;
+		}
+
+		.sidebar::-webkit-scrollbar {
+			display: none;
 		}
 
 		.sidebar-content {
@@ -586,6 +649,13 @@ component Sidebar() {
 
 		.group + .group {
 			border-top: 1px solid rgba(84, 84, 84, 0.48);
+		}
+
+		@media (min-width: 1440px) {
+			.sidebar {
+				padding-left: max(32px, calc((100vw - 1376px) / 2));
+				width: calc((100vw - 1376px) / 2 + 272px - 32px);
+			}
 		}
 
 		@media (max-width: 960px) {
