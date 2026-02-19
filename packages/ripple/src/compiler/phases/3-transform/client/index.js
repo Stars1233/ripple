@@ -3286,6 +3286,62 @@ function transform_children(children, context) {
 					flush_node: /** @type {TransformClientState['flush_node']} */ (flush_node),
 					namespace: state.namespace,
 				});
+
+				// After processing an element's children via child()/sibling() navigation,
+				// hydrate_node is left deep inside the element. If there's a next sibling,
+				// we need to restore hydrate_node so sibling() navigation works correctly.
+				//
+				// We only need pop() when we actually DESCEND into the element, which happens when:
+				// - There are Element children (including DOM elements like <button>)
+				// - There are non-literal Text children (we navigate to set text content)
+				// - There are control flow / Html / component children
+				//
+				// The Element visitor already adds pop() for non-literal text, control flow,
+				// Html, and component (non-DOM element) children. We need to ALSO add pop()
+				// when there are DOM element children, which the Element visitor doesn't cover.
+				const next_node = normalized[node_idx + 1];
+				if (next_node && is_element_dom_element(node) && node.children.length > 0) {
+					// Check if any child is a DOM element - this causes navigation but
+					// the Element visitor doesn't add pop() for it
+					const has_dom_element_children = node.children.some(
+						(child) =>
+							child.type === 'Element' &&
+							child.id.type === 'Identifier' &&
+							is_element_dom_element(child),
+					);
+
+					// Check if the Element visitor already added pop()
+					const element_visitor_adds_pop = node.children.some(
+						(child) =>
+							child.type === 'IfStatement' ||
+							child.type === 'TryStatement' ||
+							child.type === 'ForOfStatement' ||
+							child.type === 'SwitchStatement' ||
+							child.type === 'TsxCompat' ||
+							child.type === 'Html' ||
+							(child.type === 'Element' &&
+								(child.id.type !== 'Identifier' || !is_element_dom_element(child))) ||
+							(child.type === 'Text' && child.expression.type !== 'Literal'),
+					);
+
+					// Add pop() if we have DOM element children AND the Element visitor didn't already add pop()
+					if (has_dom_element_children && !element_visitor_adds_pop) {
+						const needs_sibling_call =
+							next_node.type === 'Element' ||
+							next_node.type === 'Text' ||
+							next_node.type === 'Html' ||
+							next_node.type === 'IfStatement' ||
+							next_node.type === 'TryStatement' ||
+							next_node.type === 'ForOfStatement' ||
+							next_node.type === 'SwitchStatement' ||
+							next_node.type === 'TsxCompat';
+
+						if (needs_sibling_call) {
+							const id = flush_node();
+							state.init?.push(b.stmt(b.call('_$_.pop', id)));
+						}
+					}
+				}
 			} else if (node.type === 'TsxCompat') {
 				skipped = 0;
 
