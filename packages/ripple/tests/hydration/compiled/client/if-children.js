@@ -18,6 +18,8 @@ var root_13 = _$_.template(`<section class="outer"><article class="middle"><div 
 var root_16 = _$_.template(`<pre class="code">const x = 1;</pre>`, 0);
 var root_17 = _$_.template(`<div class="preview">Preview content</div>`, 0);
 var root_15 = _$_.template(`<div class="tabs"><div class="tab-list"><button class="tab">Code</button><button class="tab">Preview</button></div><div class="panel"><!></div></div>`, 0);
+var root_18 = _$_.template(`<div class="container"><ul class="list"><li class="item"> </li><li class="item">Another item</li></ul><h2 class="heading">Static Heading</h2><p class="para">Static paragraph</p></div><button class="inc">Increment</button>`, 1);
+var root_19 = _$_.template(`<div class="wrapper"><ul class="features"><li><strong>Feature One</strong>: Description of feature one with <code>code</code> reference</li><li><strong>Feature Two</strong>: Another feature description</li><li><strong>Feature Three</strong>: Third feature</li></ul><h2 class="section-heading">Section Heading</h2><p class="section-content">Static paragraph with <a href="/link">a link</a> and more text.</p></div>`, 0);
 
 import { track } from 'ripple';
 
@@ -353,6 +355,51 @@ export function DomElementChildrenThenSibling(__anchor, _, __block) {
 	);
 
 	_$_.append(__anchor, div_13);
+	_$_.pop_component();
+}
+
+export function DomChildrenThenStaticSiblings(__anchor, _, __block) {
+	_$_.push_component();
+
+	let count = track(0, void 0, void 0, __block);
+	var fragment_6 = root_18();
+	var div_17 = _$_.first_child_frag(fragment_6);
+
+	{
+		var ul_1 = _$_.child(div_17);
+
+		{
+			var li_1 = _$_.child(ul_1);
+
+			{
+				var text_2 = _$_.child(li_1, true);
+
+				_$_.pop(li_1);
+			}
+		}
+	}
+
+	_$_.pop(div_17);
+
+	var button_5 = _$_.sibling(div_17);
+
+	button_5.__click = () => _$_.update(count);
+	_$_.next();
+
+	_$_.render(() => {
+		_$_.set_text(text_2, 'Item count: ' + _$_.with_scope(__block, () => String(_$_.get(count))));
+	});
+
+	_$_.append(__anchor, fragment_6, true);
+	_$_.pop_component();
+}
+
+export function StaticListThenStaticSiblings(__anchor, _, __block) {
+	_$_.push_component();
+
+	var div_18 = root_19();
+
+	_$_.append(__anchor, div_18);
 	_$_.pop_component();
 }
 

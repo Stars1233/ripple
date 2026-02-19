@@ -3000,6 +3000,72 @@ function collect_returns_from_children(children) {
 }
 
 /**
+ * Check if an Element has any dynamic content that would trigger flush_node().
+ * An Element has dynamic content if it has:
+ * - Dynamic attributes (tracked expressions in attribute values)
+ * - Control flow children (IfStatement, ForOfStatement, etc.)
+ * - Dynamic text children (non-Literal Text nodes)
+ * - Non-DOM element children (components)
+ * - Html children
+ * - Dynamic descendants (recursive)
+ * @param {AST.Element} element
+ * @returns {boolean}
+ */
+function element_has_dynamic_content(element) {
+	// Check for dynamic attributes
+	for (const attr of element.attributes) {
+		if (attr.type === 'Attribute') {
+			// Dynamic value expression (not null, not Literal)
+			if (attr.value !== null && attr.value.type !== 'Literal') {
+				return true;
+			}
+			// Tracked attribute name
+			if (attr.name.tracked) {
+				return true;
+			}
+		} else if (attr.type === 'SpreadAttribute' || attr.type === 'RefAttribute') {
+			return true;
+		}
+	}
+
+	// Check children for dynamic content
+	for (const child of element.children) {
+		if (
+			child.type === 'IfStatement' ||
+			child.type === 'TryStatement' ||
+			child.type === 'ForOfStatement' ||
+			child.type === 'SwitchStatement' ||
+			child.type === 'TsxCompat' ||
+			child.type === 'Html'
+		) {
+			return true;
+		}
+		if (child.type === 'Text' && child.expression.type !== 'Literal') {
+			return true;
+		}
+		// Non-DOM element (component)
+		if (
+			child.type === 'Element' &&
+			(child.id.type !== 'Identifier' || !is_element_dom_element(child))
+		) {
+			return true;
+		}
+		// Recursively check DOM element children
+		if (
+			child.type === 'Element' &&
+			child.id.type === 'Identifier' &&
+			is_element_dom_element(child)
+		) {
+			if (element_has_dynamic_content(child)) {
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+/**
  *
  * @param {AST.Node[]} children
  * @param {VisitorClientContext} context
@@ -3326,15 +3392,30 @@ function transform_children(children, context) {
 
 					// Add pop() if we have DOM element children AND the Element visitor didn't already add pop()
 					if (has_dom_element_children && !element_visitor_adds_pop) {
-						const needs_sibling_call =
-							next_node.type === 'Element' ||
-							next_node.type === 'Text' ||
+						// Only add pop() if next_node will actually generate a sibling() call.
+						// Static Text nodes (Literals) and static Elements don't call flush_node().
+						let needs_sibling_call = false;
+						if (next_node.type === 'Element') {
+							// Static DOM elements with no dynamic content don't generate sibling()
+							if (is_element_dom_element(next_node)) {
+								needs_sibling_call = element_has_dynamic_content(next_node);
+							} else {
+								// Components always generate sibling()
+								needs_sibling_call = true;
+							}
+						} else if (next_node.type === 'Text') {
+							// Only dynamic text generates sibling()
+							needs_sibling_call = next_node.expression.type !== 'Literal';
+						} else if (
 							next_node.type === 'Html' ||
 							next_node.type === 'IfStatement' ||
 							next_node.type === 'TryStatement' ||
 							next_node.type === 'ForOfStatement' ||
 							next_node.type === 'SwitchStatement' ||
-							next_node.type === 'TsxCompat';
+							next_node.type === 'TsxCompat'
+						) {
+							needs_sibling_call = true;
+						}
 
 						if (needs_sibling_call) {
 							const id = flush_node();

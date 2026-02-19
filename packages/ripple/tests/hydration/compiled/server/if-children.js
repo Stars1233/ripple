@@ -508,3 +508,178 @@ export function DomElementChildrenThenSibling(__output) {
 	__output.push('</div>');
 	_$_.pop_component();
 }
+
+export function DomChildrenThenStaticSiblings(__output) {
+	_$_.push_component();
+
+	let count = track(0);
+
+	__output.push('<div');
+	__output.push(' class="container"');
+	__output.push('>');
+
+	{
+		__output.push('<ul');
+		__output.push(' class="list"');
+		__output.push('>');
+
+		{
+			__output.push('<li');
+			__output.push(' class="item"');
+			__output.push('>');
+
+			{
+				__output.push(_$_.escape('Item count: ' + String(_$_.get(count))));
+			}
+
+			__output.push('</li>');
+			__output.push('<li');
+			__output.push(' class="item"');
+			__output.push('>');
+
+			{
+				__output.push('Another item');
+			}
+
+			__output.push('</li>');
+		}
+
+		__output.push('</ul>');
+		__output.push('<h2');
+		__output.push(' class="heading"');
+		__output.push('>');
+
+		{
+			__output.push('Static Heading');
+		}
+
+		__output.push('</h2>');
+		__output.push('<p');
+		__output.push(' class="para"');
+		__output.push('>');
+
+		{
+			__output.push('Static paragraph');
+		}
+
+		__output.push('</p>');
+	}
+
+	__output.push('</div>');
+	__output.push('<button');
+	__output.push(' class="inc"');
+	__output.push('>');
+
+	{
+		__output.push('Increment');
+	}
+
+	__output.push('</button>');
+	_$_.pop_component();
+}
+
+export function StaticListThenStaticSiblings(__output) {
+	_$_.push_component();
+	__output.push('<div');
+	__output.push(' class="wrapper"');
+	__output.push('>');
+
+	{
+		__output.push('<ul');
+		__output.push(' class="features"');
+		__output.push('>');
+
+		{
+			__output.push('<li');
+			__output.push('>');
+
+			{
+				__output.push('<strong');
+				__output.push('>');
+
+				{
+					__output.push('Feature One');
+				}
+
+				__output.push('</strong>');
+				__output.push(': Description of feature one with ');
+				__output.push('<code');
+				__output.push('>');
+
+				{
+					__output.push('code');
+				}
+
+				__output.push('</code>');
+				__output.push(' reference');
+			}
+
+			__output.push('</li>');
+			__output.push('<li');
+			__output.push('>');
+
+			{
+				__output.push('<strong');
+				__output.push('>');
+
+				{
+					__output.push('Feature Two');
+				}
+
+				__output.push('</strong>');
+				__output.push(': Another feature description');
+			}
+
+			__output.push('</li>');
+			__output.push('<li');
+			__output.push('>');
+
+			{
+				__output.push('<strong');
+				__output.push('>');
+
+				{
+					__output.push('Feature Three');
+				}
+
+				__output.push('</strong>');
+				__output.push(': Third feature');
+			}
+
+			__output.push('</li>');
+		}
+
+		__output.push('</ul>');
+		__output.push('<h2');
+		__output.push(' class="section-heading"');
+		__output.push('>');
+
+		{
+			__output.push('Section Heading');
+		}
+
+		__output.push('</h2>');
+		__output.push('<p');
+		__output.push(' class="section-content"');
+		__output.push('>');
+
+		{
+			__output.push('Static paragraph with ');
+			__output.push('<a');
+			__output.push(' href="/link"');
+			__output.push('>');
+
+			{
+				__output.push('a link');
+			}
+
+			__output.push('</a>');
+			__output.push(' and more text.');
+		}
+
+		__output.push('</p>');
+	}
+
+	__output.push('</div>');
+	_$_.pop_component();
+}

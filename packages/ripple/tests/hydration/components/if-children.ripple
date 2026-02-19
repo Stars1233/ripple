@@ -143,3 +143,54 @@ export component DomElementChildrenThenSibling() {
 		</div>
 	</div>
 }
+
+// Test case for element with DOM children followed by static siblings that don't
+// generate sibling() calls. This was causing incorrect pop() generation before next().
+// Pattern: <ul> with dynamic <li> children -> static <h2> -> static <p> -> next()
+export component DomChildrenThenStaticSiblings() {
+	let count = track(0);
+
+	<div class="container">
+		<ul class="list">
+			<li class="item">
+				{'Item count: '}
+				{@count}
+			</li>
+			<li class="item">{'Another item'}</li>
+		</ul>
+		<h2 class="heading">{'Static Heading'}</h2>
+		<p class="para">{'Static paragraph'}</p>
+	</div>
+
+	<button class="inc" onClick={() => @count++}>{'Increment'}</button>
+}
+
+// Test case for completely static element children followed by static siblings.
+// Pattern from introduction page: <ul> with static <li> (strong, code, text)
+// followed by static <h2> and <p>. No pop() should be generated for these.
+export component StaticListThenStaticSiblings() {
+	<div class="wrapper">
+		<ul class="features">
+			<li>
+				<strong>{'Feature One'}</strong>
+				{': Description of feature one with '}
+				<code>{'code'}</code>
+				{' reference'}
+			</li>
+			<li>
+				<strong>{'Feature Two'}</strong>
+				{': Another feature description'}
+			</li>
+			<li>
+				<strong>{'Feature Three'}</strong>
+				{': Third feature'}
+			</li>
+		</ul>
+		<h2 class="section-heading">{'Section Heading'}</h2>
+		<p class="section-content">
+			{'Static paragraph with '}
+			<a href="/link">{'a link'}</a>
+			{' and more text.'}
+		</p>
+	</div>
+}

@@ -215,4 +215,58 @@ describe('hydration > if blocks with children', () => {
 		// Should show code again
 		expect(container.querySelector('.code')?.textContent).toBe('const x = 1;');
 	});
+
+	// Test for element with DOM children followed by static siblings that don't
+	// generate sibling() calls. This was causing incorrect pop() generation before next().
+	it('hydrates element with DOM children followed by static siblings', async () => {
+		await hydrateComponent(
+			ServerComponents.DomChildrenThenStaticSiblings,
+			ClientComponents.DomChildrenThenStaticSiblings,
+		);
+
+		// Verify structure hydrated correctly
+		expect(container.querySelector('.container')).not.toBeNull();
+		expect(container.querySelector('.list')).not.toBeNull();
+		expect(container.querySelectorAll('.item').length).toBe(2);
+		expect(container.querySelector('.heading')?.textContent).toBe('Static Heading');
+		expect(container.querySelector('.para')?.textContent).toBe('Static paragraph');
+	});
+
+	it('updates reactive content in element with DOM children followed by static siblings', async () => {
+		await hydrateComponent(
+			ServerComponents.DomChildrenThenStaticSiblings,
+			ClientComponents.DomChildrenThenStaticSiblings,
+		);
+
+		// Initially count is 0
+		const items = container.querySelectorAll('.item');
+		expect(items[0]?.textContent).toBe('Item count: 0');
+
+		// Increment count
+		container.querySelector('.inc')?.click();
+		flushSync();
+
+		// Count should update, static siblings should remain unchanged
+		expect(items[0]?.textContent).toBe('Item count: 1');
+		expect(container.querySelector('.heading')?.textContent).toBe('Static Heading');
+		expect(container.querySelector('.para')?.textContent).toBe('Static paragraph');
+	});
+
+	// Test for completely static content - introduction page pattern
+	// No pop() should be generated for static elements
+	it('hydrates static list followed by static siblings (intro page pattern)', async () => {
+		await hydrateComponent(
+			ServerComponents.StaticListThenStaticSiblings,
+			ClientComponents.StaticListThenStaticSiblings,
+		);
+
+		// Verify static structure hydrated correctly
+		expect(container.querySelector('.wrapper')).not.toBeNull();
+		expect(container.querySelector('.features')).not.toBeNull();
+		expect(container.querySelectorAll('li').length).toBe(3);
+		expect(container.querySelector('li strong')?.textContent).toBe('Feature One');
+		expect(container.querySelector('li code')?.textContent).toBe('code');
+		expect(container.querySelector('.section-heading')?.textContent).toBe('Section Heading');
+		expect(container.querySelector('.section-content a')?.textContent).toBe('a link');
+	});
 });
