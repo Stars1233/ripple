@@ -1,5 +1,8 @@
 # @ripple-ts/adapter-node
 
+[![npm version](https://img.shields.io/npm/v/%40ripple-ts%2Fadapter-node?logo=npm)](https://www.npmjs.com/package/@ripple-ts/adapter-node)
+[![npm downloads](https://img.shields.io/npm/dm/%40ripple-ts%2Fadapter-node?logo=npm&label=downloads)](https://www.npmjs.com/package/@ripple-ts/adapter-node)
+
 Node.js adapter for Ripple metaframework apps.
 
 It bridges Node's `IncomingMessage`/`ServerResponse` API to Web

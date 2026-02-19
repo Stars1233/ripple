@@ -1,5 +1,8 @@
 # @ripple-ts/adapter-bun
 
+[![npm version](https://img.shields.io/npm/v/%40ripple-ts%2Fadapter-bun?logo=npm)](https://www.npmjs.com/package/@ripple-ts/adapter-bun)
+[![npm downloads](https://img.shields.io/npm/dm/%40ripple-ts%2Fadapter-bun?logo=npm&label=downloads)](https://www.npmjs.com/package/@ripple-ts/adapter-bun)
+
 Bun adapter for Ripple metaframework apps.
 
 It exposes the same `serve(fetch_handler, options?)` contract as
