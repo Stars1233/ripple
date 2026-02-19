@@ -8,7 +8,7 @@ Ripple is an elegant, compiler-driven language and UI framework built on a super
 
 It features its own JSX-like templating language, allowing a declarative blend of structure and control flow. This makes applications easier for both humans and AI to reason about, while delivering a developer experience that ultimately results in a better user experience.
 
-Ripple was created by Dominic Gannaway (@trueadm), who has previously worked on React, Svelte, Lexical, and Inferno.
+Ripple was created by Dominic Gannaway ([@trueadm](https://github.com/trueadm)), who has previously worked on React, Svelte, Lexical, and Inferno.
 
 <Code>
 
