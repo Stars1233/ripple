@@ -3,10 +3,11 @@
   "displayName": "Ripple TS for VS Code",
   "publisher": "ripple-ts",
   "description": "Ripple JavaScript/TypeScript language support",
-  "version": "0.0.83",
+  "version": "0.0.84",
   "private": true,
   "author": "Dominic Gannaway",
   "license": "MIT",
+  "packageManager": "pnpm@10.18.2",
   "engines": {
     "vscode": "^1.97.0"
   },
