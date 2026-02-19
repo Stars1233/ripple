@@ -119,9 +119,14 @@ export component DocsLayout({
 				Roboto,
 				sans-serif;
 			background: #1b1b1f;
-			color: rgba(255, 255, 255, 0.87);
+			color: rgba(255, 255, 245, 0.86);
 			line-height: 1.7;
 			min-height: 100vh;
+			font-size: 16px;
+			font-optical-sizing: auto;
+			text-rendering: optimizeLegibility;
+			-webkit-font-smoothing: antialiased;
+			-moz-osx-font-smoothing: grayscale;
 		}
 
 		:global(code) {
@@ -173,9 +178,80 @@ export component DocsLayout({
 			width: 100%;
 		}
 
+		.docs-content :global(p) {
+			margin: 16px 0;
+			line-height: 28px;
+		}
+
+		.docs-content :global(.custom-block p) {
+			margin: 8px 0;
+			line-height: 24px;
+		}
+
+		.docs-content :global(.custom-block p:first-child) {
+			margin: 0;
+		}
+
+		.docs-content :global(.custom-block) {
+			margin: 16px 0;
+			padding: 16px 16px 8px;
+			border-radius: 8px;
+			border: 1px solid transparent;
+			line-height: 24px;
+			font-size: 14px;
+			color: rgba(235, 235, 245, 0.6);
+		}
+
+		.docs-content :global(.custom-block-title) {
+			font-weight: 600;
+		}
+
+		.docs-content :global(.custom-block.info) {
+			background-color: rgba(142, 150, 170, 0.14);
+			color: rgba(255, 255, 245, 0.86);
+		}
+
+		.docs-content :global(.custom-block.info a),
+		.docs-content :global(.custom-block.info code) {
+			color: #3e95ff;
+		}
+
+		.docs-content :global(.custom-block.info a:hover),
+		.docs-content :global(.custom-block.info a:hover > code) {
+			color: #5aa5ff;
+		}
+
+		.docs-content :global(ul) {
+			padding-left: 1.25rem;
+			margin: 16px 0;
+		}
+
+		.docs-content :global(li) {
+			line-height: 28px;
+		}
+
+		.docs-content :global(li + li) {
+			margin-top: 8px;
+		}
+
+		.docs-content :global(code) {
+			font-size: 0.9em;
+			color: #3e95ff;
+			background-color: rgba(101, 117, 133, 0.16);
+			border-radius: 4px;
+			padding: 3px 6px;
+			transition:
+				color 0.25s,
+				background-color 0.5s;
+		}
+
+		.docs-content :global(strong) {
+			font-weight: 600;
+		}
+
 		.edit-link {
 			padding: 32px 0;
-			border-top: 1px solid rgba(84, 84, 84, 0.48);
+			border-top: 1px solid #2e2e32;
 			margin-top: 32px;
 		}
 
@@ -203,13 +279,13 @@ export component DocsLayout({
 			grid-template-columns: 1fr 1fr;
 			gap: 16px;
 			padding: 32px 0;
-			border-top: 1px solid rgba(84, 84, 84, 0.48);
+			border-top: 1px solid #2e2e32;
 		}
 
 		.pager {
 			display: block;
 			padding: 11px 16px 13px;
-			border: 1px solid rgba(84, 84, 84, 0.48);
+			border: 1px solid #2e2e32;
 			border-radius: 8px;
 			transition: border-color 0.25s;
 		}
@@ -268,6 +344,8 @@ export component DocsLayout({
 			overflow-x: hidden;
 			overflow-y: auto;
 			scrollbar-width: none;
+			border-left: 1px solid #2e2e32;
+			padding-left: 16px;
 		}
 
 		.aside-container::-webkit-scrollbar {
@@ -275,8 +353,7 @@ export component DocsLayout({
 		}
 
 		.aside-content {
-			padding-left: 16px;
-			border-left: 1px solid rgba(84, 84, 84, 0.48);
+			padding-left: 0;
 		}
 
 		.aside-title {
@@ -319,11 +396,13 @@ export component DocsLayout({
 
 component Header() {
 	<header class="header">
-		<div class="header-content">
+		<div class="header-logo-section">
 			<a href="/" class="logo-link">
 				<img src="/images/ripple-logo-horizontal.png" alt="Ripple" class="logo" />
 			</a>
-			<div class="header-content-body">
+		</div>
+		<div class="header-body-section">
+			<div class="header-body-content">
 				<div class="search-wrapper">
 					<button type="button" class="search-button">
 						<svg
@@ -397,35 +476,45 @@ component Header() {
 			left: 0;
 			right: 0;
 			height: 64px;
-			background: #1b1b1f;
-			border-bottom: 1px solid rgba(84, 84, 84, 0.48);
 			z-index: 100;
+			display: flex;
 		}
 
-		.header-content {
+		.header-logo-section {
+			width: 272px;
+			flex-shrink: 0;
 			display: flex;
 			align-items: center;
+			padding: 0 32px;
+			background: #161618;
+			border-bottom: 1px solid #2e2e32;
+		}
+
+		.header-body-section {
+			flex: 1;
+			display: flex;
+			align-items: center;
+			background: #1b1b1f;
+			border-bottom: 1px solid #161618;
+		}
+
+		.header-body-content {
+			display: flex;
+			align-items: center;
+			justify-content: flex-end;
+			width: 100%;
 			height: 100%;
-			padding: 0 32px 0 24px;
+			padding: 0 32px 0 0;
 		}
 
 		.logo-link {
 			display: flex;
 			align-items: center;
-			flex-shrink: 0;
-			margin-right: 32px;
 		}
 
 		.logo {
 			height: 32px;
 			width: auto;
-		}
-
-		.header-content-body {
-			display: flex;
-			align-items: center;
-			flex-grow: 1;
-			justify-content: flex-end;
 		}
 
 		.search-wrapper {
@@ -439,26 +528,25 @@ component Header() {
 			display: flex;
 			align-items: center;
 			gap: 8px;
-			padding: 0 12px;
-			height: 40px;
-			background: rgba(255, 255, 255, 0.05);
-			border: 1px solid rgba(84, 84, 84, 0.48);
+			padding: 2px 12px;
+			height: 36px;
+			background: #161618;
+			border: none;
 			border-radius: 8px;
 			cursor: pointer;
-			color: rgba(255, 255, 255, 0.5);
-			font-size: 14px;
-			min-width: 176px;
-			max-width: 256px;
+			color: #98989f;
+			font-size: 13px;
+			user-select: none;
 			transition: border-color 0.25s;
 		}
 
 		.search-button:hover {
-			border-color: #3e95ff;
+			color: #c4c7dc;
 		}
 
 		.search-icon {
-			width: 16px;
-			height: 16px;
+			width: 15px;
+			height: 15px;
 			flex-shrink: 0;
 		}
 
@@ -468,10 +556,8 @@ component Header() {
 		}
 
 		.search-shortcut {
-			font-size: 12px;
-			background: rgba(255, 255, 255, 0.1);
-			padding: 2px 6px;
-			border-radius: 4px;
+			font-size: 14px;
+			color: #98989f;
 			flex-shrink: 0;
 		}
 
@@ -513,7 +599,7 @@ component Header() {
 			width: 36px;
 			height: 36px;
 			border-radius: 50%;
-			border: 1px solid rgba(84, 84, 84, 0.48);
+			border: 1px solid #2e2e32;
 			background: transparent;
 			cursor: pointer;
 			color: rgba(255, 255, 245, 0.86);
@@ -570,6 +656,29 @@ component Header() {
 			.search-text,
 			.search-shortcut {
 				display: none;
+			}
+		}
+
+		@media (min-width: 1440px) {
+			.header-logo-section {
+				padding-left: max(32px, calc((100vw - 1376px) / 2));
+				width: calc((100vw - 1376px) / 2 + 272px - 32px);
+			}
+
+			.header-body-content {
+				padding-right: calc((100vw - 1440px) / 2 + 32px);
+			}
+		}
+
+		@media (max-width: 960px) {
+			.header {
+				display: flex;
+			}
+
+			.header-logo-section {
+				width: auto;
+				padding: 0 24px;
+				background: #1b1b1f;
 			}
 		}
 	</style>
@@ -648,7 +757,7 @@ component Sidebar() {
 		}
 
 		.group + .group {
-			border-top: 1px solid rgba(84, 84, 84, 0.48);
+			border-top: 1px solid #2e2e32;
 		}
 
 		@media (min-width: 1440px) {
@@ -720,7 +829,7 @@ component SidebarGroup({
 		.text {
 			font-size: 14px;
 			font-weight: 700;
-			line-height: 28px;
+			line-height: 24px;
 			color: rgba(255, 255, 245, 0.86);
 		}
 
@@ -798,15 +907,17 @@ component SidebarItem({
 		}
 
 		.link {
-			display: block;
-			width: 100%;
-			padding: 4px 0;
+			display: flex;
+			align-items: center;
+			flex-grow: 1;
 		}
 
 		.text {
+			flex-grow: 1;
+			padding: 4px 0;
 			font-size: 14px;
 			font-weight: 500;
-			line-height: 28px;
+			line-height: 24px;
 			color: rgba(235, 235, 245, 0.6);
 			transition: color 0.25s;
 		}
@@ -837,7 +948,7 @@ component Footer() {
 
 	<style>
 		.docs-footer {
-			border-top: 1px solid rgba(84, 84, 84, 0.48);
+			border-top: 1px solid #2e2e32;
 			padding: 32px 0;
 			margin-top: 32px;
 		}

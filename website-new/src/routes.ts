@@ -6,10 +6,6 @@ export const routes = [
 		path: '/docs/introduction',
 		entry: '/src/pages/docs/introduction.ripple',
 	}),
-	new RenderRoute({
-		path: '/docs/*slug',
-		entry: '/src/pages/docs/[slug].ripple',
-	}),
 	// BROKEN: This route must be the last one, as it catches all other routes.
 	// But it should be propably ** (as catch all - not / [index] catch all).
 	new RenderRoute({ path: '/**', entry: '/src/pages/404.ripple' }),
