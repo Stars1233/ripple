@@ -13,7 +13,7 @@ export component IntroductionPage() {
 		nextLink={{ href: '/docs/quick-start', text: 'Quick Start' }}
 		{toc}
 	>
-		<h1 class="doc-h1">
+		<h1 id="introduction" tabindex="-1">
 			{'Introduction'}
 			<a class="header-anchor" href="#introduction" aria-label="Permalink to Introduction" />
 		</h1>
@@ -49,7 +49,7 @@ export component IntroductionPage() {
 			</p>
 		</div>
 
-		<h2 class="doc-h2" id="features">
+		<h2 id="features" tabindex="-1">
 			{'Features'}
 			<a class="header-anchor" href="#features" aria-label="Permalink to Features" />
 		</h2>
@@ -104,7 +104,7 @@ export component IntroductionPage() {
 			</li>
 		</ul>
 
-		<h2 class="doc-h2" id="server-side-rendering">
+		<h2 id="server-side-rendering" tabindex="-1">
 			{'Server-Side Rendering'}
 			<a
 				class="header-anchor"
@@ -123,57 +123,6 @@ export component IntroductionPage() {
 			{' for SSR hydration.'}
 		</p>
 	</DocsLayout>
-
-	<style>
-		.doc-h1 {
-			font-size: 32px;
-			font-weight: 600;
-			line-height: 40px;
-			color: rgba(255, 255, 245, 0.86);
-			letter-spacing: -0.02em;
-			position: relative;
-		}
-
-		.doc-h2 {
-			margin: 48px 0 16px;
-			border-top: 1px solid #2e2e32;
-			padding-top: 24px;
-			font-size: 24px;
-			font-weight: 600;
-			line-height: 32px;
-			color: rgba(255, 255, 245, 0.86);
-			letter-spacing: -0.02em;
-			position: relative;
-		}
-
-		.header-anchor {
-			position: absolute;
-			top: 0;
-			left: 0;
-			margin-left: -0.87em;
-			font-weight: 500;
-			user-select: none;
-			color: #3e95ff;
-			opacity: 0;
-			transition:
-				color 0.25s,
-				opacity 0.25s;
-			text-decoration: none;
-		}
-
-		.header-anchor::before {
-			content: '#';
-		}
-
-		.doc-h1:hover .header-anchor,
-		.doc-h2:hover .header-anchor {
-			opacity: 1;
-		}
-
-		.doc-h2 .header-anchor {
-			top: 24px;
-		}
-	</style>
 }
 
 component CodeBlock() {
@@ -182,25 +131,36 @@ component CodeBlock() {
 	<div class="plugin-tabs">
 		<div class="plugin-tabs--tab-list" role="tablist">
 			<button
+				id="tab-Code-v-0"
 				class="plugin-tabs--tab"
 				role="tab"
 				aria-selected={@activeTab === 'code' ? 'true' : 'false'}
+				aria-controls="panel-Code-v-0"
 				tabindex={@activeTab === 'code' ? '0' : '-1'}
 				onClick={() => (@activeTab = 'code')}
 			>
 				{'Code'}
 			</button>
 			<button
+				id="tab-Playground-v-0"
 				class="plugin-tabs--tab"
 				role="tab"
 				aria-selected={@activeTab === 'playground' ? 'true' : 'false'}
+				aria-controls="panel-Playground-v-0"
 				tabindex={@activeTab === 'playground' ? '0' : '-1'}
 				onClick={() => (@activeTab = 'playground')}
 			>
 				{'Playground'}
 			</button>
 		</div>
-		<div class="plugin-tabs--content" role="tabpanel" tabindex="0">
+		<div
+			id="panel-Code-v-0"
+			class="plugin-tabs--content"
+			role="tabpanel"
+			tabindex="0"
+			aria-labelledby="tab-Code-v-0"
+			data-is-print="false"
+		>
 			<div class="language-ripple">
 				<button class="copy" title="Copy Code" />
 				<span class="lang">{'ripple'}</span>
