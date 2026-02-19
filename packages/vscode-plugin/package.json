@@ -7,7 +7,6 @@
   "private": true,
   "author": "Dominic Gannaway",
   "license": "MIT",
-  "packageManager": "pnpm@10.18.2",
   "engines": {
     "vscode": "^1.97.0"
   },
