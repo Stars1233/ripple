@@ -15,7 +15,7 @@ export component IntroductionPage() {
 	>
 		<h1 class="doc-h1">
 			{'Introduction'}
-			<a class="header-anchor" href="#introduction" aria-label="Permalink to Introduction">{'#'}</a>
+			<a class="header-anchor" href="#introduction" aria-label="Permalink to Introduction" />
 		</h1>
 
 		<p>
@@ -30,7 +30,7 @@ export component IntroductionPage() {
 
 		<CodeBlock />
 
-		<div class="tip custom-block">
+		<div class="info custom-block">
 			<p class="custom-block-title">{'Prerequisites'}</p>
 			<p>
 				{'The rest of the documentation assumes basic familiarity with HTML, CSS, and JavaScript. If you are totally new to frontend development, it might not be the best idea to jump right into a framework as your first step - grasp the basics and then come back! You can check your knowledge level with these overviews for '}
@@ -51,7 +51,7 @@ export component IntroductionPage() {
 
 		<h2 class="doc-h2" id="features">
 			{'Features'}
-			<a class="header-anchor" href="#features" aria-label="Permalink to Features">{'#'}</a>
+			<a class="header-anchor" href="#features" aria-label="Permalink to Features" />
 		</h2>
 
 		<ul>
@@ -110,9 +110,7 @@ export component IntroductionPage() {
 				class="header-anchor"
 				href="#server-side-rendering"
 				aria-label="Permalink to Server-Side Rendering"
-			>
-				{'#'}
-			</a>
+			/>
 		</h2>
 
 		<p>
@@ -128,11 +126,12 @@ export component IntroductionPage() {
 
 	<style>
 		.doc-h1 {
-			font-size: 28px;
+			font-size: 32px;
 			font-weight: 600;
 			line-height: 40px;
 			color: rgba(255, 255, 245, 0.86);
 			letter-spacing: -0.02em;
+			position: relative;
 		}
 
 		.doc-h2 {
@@ -144,21 +143,35 @@ export component IntroductionPage() {
 			line-height: 32px;
 			color: rgba(255, 255, 245, 0.86);
 			letter-spacing: -0.02em;
+			position: relative;
 		}
 
 		.header-anchor {
-			float: left;
+			position: absolute;
+			top: 0;
+			left: 0;
 			margin-left: -0.87em;
-			padding-right: 0.23em;
 			font-weight: 500;
+			user-select: none;
 			color: #3e95ff;
 			opacity: 0;
-			transition: opacity 0.25s;
+			transition:
+				color 0.25s,
+				opacity 0.25s;
+			text-decoration: none;
+		}
+
+		.header-anchor::before {
+			content: '#';
 		}
 
 		.doc-h1:hover .header-anchor,
 		.doc-h2:hover .header-anchor {
 			opacity: 1;
+		}
+
+		.doc-h2 .header-anchor {
+			top: 24px;
 		}
 
 		p {
@@ -172,7 +185,6 @@ export component IntroductionPage() {
 		}
 
 		li {
-			margin: 4px 0;
 			line-height: 28px;
 		}
 
@@ -196,20 +208,19 @@ export component IntroductionPage() {
 			margin: 16px 0;
 			padding: 16px 16px 8px;
 			border-radius: 8px;
+			border: 1px solid transparent;
+			line-height: 24px;
+			font-size: 14px;
+			color: rgba(235, 235, 245, 0.6);
 		}
 
 		.custom-block-title {
 			font-weight: 600;
-			margin-bottom: 8px;
 		}
 
-		.tip {
-			background-color: rgba(62, 149, 255, 0.14);
-			border: 1px solid transparent;
-		}
-
-		.tip .custom-block-title {
-			color: #3e95ff;
+		.info {
+			background-color: rgba(101, 117, 133, 0.16);
+			color: rgba(255, 255, 245, 0.86);
 		}
 	</style>
 }
@@ -238,34 +249,34 @@ component CodeBlock() {
 				<span class="lang">{'ripple'}</span>
 				<pre class="shiki">
 					<code>
-						{`import { track } from 'ripple'
-
-export component App() {
-  <div class="container">
-    <h1>{"Welcome to Ripple!"}</h1>
-
-    <div>
-      let count = track(0);
-
-      <button onClick={() => @count--}>{"-"}</button>
-      <span class="count">{@count}</span>
-      <button onClick={() => @count++}>{"+"}</button>
-    </div>
-  </div>
-
-  <style>
-    .container {
-      text-align: center;
-      font-family: "Arial", sans-serif;
-    }
-
-    button {
-      height: 2rem;
-      width: 2rem;
-      margin: 1rem;
-    }
-  </style>
-}`}
+						{html `<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { track } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'ripple'</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> component</span><span style="color:#B392F0"> App</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#E1E4E8">  &lt;</span><span style="color:#85E89D">div</span><span style="color:#B392F0"> class</span><span style="color:#F97583">=</span><span style="color:#9ECBFF">"container"</span><span style="color:#E1E4E8">&gt;</span></span>
+<span class="line"><span style="color:#E1E4E8">    &lt;</span><span style="color:#85E89D">h1</span><span style="color:#E1E4E8">&gt;{</span><span style="color:#9ECBFF">"Welcome to Ripple!"</span><span style="color:#E1E4E8">}&lt;/</span><span style="color:#85E89D">h1</span><span style="color:#E1E4E8">&gt;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    &lt;</span><span style="color:#85E89D">div</span><span style="color:#E1E4E8">&gt;</span></span>
+<span class="line"><span style="color:#F97583">      let</span><span style="color:#E1E4E8"> count </span><span style="color:#F97583">=</span><span style="color:#B392F0"> track</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">      &lt;</span><span style="color:#85E89D">button</span><span style="color:#B392F0"> onClick</span><span style="color:#F97583">=</span><span style="color:#E1E4E8">{() </span><span style="color:#F97583">=&gt;</span><span style="color:#E1E4E8"> @count</span><span style="color:#F97583">--</span><span style="color:#E1E4E8">}&gt;{</span><span style="color:#9ECBFF">"-"</span><span style="color:#E1E4E8">}&lt;/</span><span style="color:#85E89D">button</span><span style="color:#E1E4E8">&gt;</span></span>
+<span class="line"><span style="color:#E1E4E8">      &lt;</span><span style="color:#85E89D">span</span><span style="color:#B392F0"> class</span><span style="color:#F97583">=</span><span style="color:#9ECBFF">"count"</span><span style="color:#E1E4E8">&gt;{@count}&lt;/</span><span style="color:#85E89D">span</span><span style="color:#E1E4E8">&gt;</span></span>
+<span class="line"><span style="color:#E1E4E8">      &lt;</span><span style="color:#85E89D">button</span><span style="color:#B392F0"> onClick</span><span style="color:#F97583">=</span><span style="color:#E1E4E8">{() </span><span style="color:#F97583">=&gt;</span><span style="color:#E1E4E8"> @count</span><span style="color:#F97583">++</span><span style="color:#E1E4E8">}&gt;{</span><span style="color:#9ECBFF">"+"</span><span style="color:#E1E4E8">}&lt;/</span><span style="color:#85E89D">button</span><span style="color:#E1E4E8">&gt;</span></span>
+<span class="line"><span style="color:#E1E4E8">    &lt;/</span><span style="color:#85E89D">div</span><span style="color:#E1E4E8">&gt;</span></span>
+<span class="line"><span style="color:#E1E4E8">  &lt;/</span><span style="color:#85E89D">div</span><span style="color:#E1E4E8">&gt;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">  &lt;</span><span style="color:#85E89D">style</span><span style="color:#E1E4E8">&gt;</span></span>
+<span class="line"><span style="color:#B392F0">    .container</span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#79B8FF">      text-align</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">center</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#79B8FF">      font-family</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"Arial"</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">sans-serif</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">    button</span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#79B8FF">      height</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">2</span><span style="color:#F97583">rem</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#79B8FF">      width</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">2</span><span style="color:#F97583">rem</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#79B8FF">      margin</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">1</span><span style="color:#F97583">rem</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#E1E4E8">  &lt;/</span><span style="color:#85E89D">style</span><span style="color:#E1E4E8">&gt;</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>`}
 					</code>
 				</pre>
 			</div>
@@ -276,7 +287,6 @@ export component App() {
 		.vp-code-group {
 			margin: 16px 0;
 			border-radius: 8px;
-			box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
 		}
 
 		.tabs {
@@ -358,18 +368,22 @@ export component App() {
 
 		pre {
 			margin: 0;
-			padding: 20px 24px;
+			padding: 20px 0;
 			overflow-x: auto;
+			background: transparent;
 		}
 
 		code {
 			font-family: 'Fira Code', monospace;
-			font-size: 14px;
-			line-height: 24px;
+			font-size: 13px;
+			line-height: 1.7;
 			color: rgba(235, 235, 245, 0.6);
 			background: transparent;
-			padding: 0;
+			padding: 0 24px;
 			white-space: pre;
+			display: block;
+			width: fit-content;
+			min-width: 100%;
 		}
 	</style>
 }

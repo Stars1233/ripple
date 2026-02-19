@@ -12,13 +12,14 @@
   "license": "MIT",
   "packageManager": "pnpm@10.18.2",
   "dependencies": {
+    "@ripple-ts/adapter-node": "workspace:*",
     "livecodes": "catalog:default",
     "marked": "catalog:default",
-    "@ripple-ts/adapter-node": "workspace:*"
+    "shiki": "^3.22.0"
   },
   "devDependencies": {
-    "@ripple-ts/vite-plugin": "workspace:*",
     "@ripple-ts/typescript-plugin": "workspace:*",
+    "@ripple-ts/vite-plugin": "workspace:*",
     "ripple": "workspace:*",
     "typescript": "catalog:default",
     "vite": "catalog:default"
