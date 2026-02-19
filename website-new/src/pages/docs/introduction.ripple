@@ -136,7 +136,7 @@ export component IntroductionPage() {
 
 		.doc-h2 {
 			margin: 48px 0 16px;
-			border-top: 1px solid rgba(84, 84, 84, 0.48);
+			border-top: 1px solid #2e2e32;
 			padding-top: 24px;
 			font-size: 24px;
 			font-weight: 600;
@@ -179,26 +179,32 @@ export component IntroductionPage() {
 component CodeBlock() {
 	let activeTab = @('code');
 
-	<div class="vp-code-group">
-		<div class="tabs">
+	<div class="plugin-tabs">
+		<div class="plugin-tabs--tab-list" role="tablist">
 			<button
-				class={`tab ${@activeTab === 'code' ? 'active' : ''}`}
+				class="plugin-tabs--tab"
+				role="tab"
+				aria-selected={@activeTab === 'code' ? 'true' : 'false'}
+				tabindex={@activeTab === 'code' ? '0' : '-1'}
 				onClick={() => (@activeTab = 'code')}
 			>
 				{'Code'}
 			</button>
 			<button
-				class={`tab ${@activeTab === 'playground' ? 'active' : ''}`}
+				class="plugin-tabs--tab"
+				role="tab"
+				aria-selected={@activeTab === 'playground' ? 'true' : 'false'}
+				tabindex={@activeTab === 'playground' ? '0' : '-1'}
 				onClick={() => (@activeTab = 'playground')}
 			>
 				{'Playground'}
 			</button>
 		</div>
-		<div class="blocks">
+		<div class="plugin-tabs--content" role="tabpanel" tabindex="0">
 			<div class="language-ripple">
 				<button class="copy" title="Copy Code" />
 				<span class="lang">{'ripple'}</span>
-				<pre class="shiki">
+				<pre class="shiki" tabindex="0" dir="ltr">
 					<code>
 						{html `<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { track } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'ripple'</span></span>
 <span class="line"></span>
@@ -235,28 +241,37 @@ component CodeBlock() {
 	</div>
 
 	<style>
-		.vp-code-group {
+		.plugin-tabs {
 			margin: 16px 0;
+			background-color: #202127;
 			border-radius: 8px;
 		}
 
-		.tabs {
+		.plugin-tabs--tab-list {
 			position: relative;
 			display: flex;
-			background: #161618;
-			border-radius: 8px 8px 0 0;
-			box-shadow: inset 0 -1px #000000;
+			padding: 0 12px;
 			overflow-x: auto;
 			overflow-y: hidden;
 		}
 
-		.tab {
+		.plugin-tabs--tab-list::after {
+			content: '';
+			position: absolute;
+			right: 0;
+			bottom: 0;
+			left: 0;
+			height: 2px;
+			background-color: #2e2e32;
+		}
+
+		.plugin-tabs--tab {
 			position: relative;
 			display: inline-block;
-			border-bottom: 1px solid transparent;
 			padding: 0 12px;
 			line-height: 48px;
 			border: none;
+			border-bottom: 2px solid transparent;
 			background: none;
 			color: #98989f;
 			font-size: 14px;
@@ -266,34 +281,43 @@ component CodeBlock() {
 			transition: color 0.25s;
 		}
 
-		.tab:hover {
+		.plugin-tabs--tab:hover {
 			color: rgba(255, 255, 245, 0.86);
 		}
 
-		.tab.active {
+		.plugin-tabs--tab[aria-selected='true'] {
 			color: rgba(255, 255, 245, 0.86);
 		}
 
-		.tab.active::after {
+		.plugin-tabs--tab[aria-selected='true']::after {
 			content: '';
 			position: absolute;
 			right: 8px;
-			bottom: -1px;
+			bottom: -2px;
 			left: 8px;
 			z-index: 1;
 			height: 2px;
 			border-radius: 2px;
-			background: #3e95ff;
+			background-color: #3e95ff;
 		}
 
-		.blocks {
-			background: #161618;
-			border-radius: 0 0 8px 8px;
+		.plugin-tabs--content {
+			padding: 16px;
 		}
 
-		.language-ripple {
+		.plugin-tabs--content > :first-child {
+			margin-top: 0;
+		}
+
+		.plugin-tabs--content > :last-child {
+			margin-bottom: 0;
+		}
+
+		.plugin-tabs--content .language-ripple {
 			position: relative;
 			overflow-x: auto;
+			background-color: #1b1b1f;
+			border-radius: 8px;
 		}
 
 		.copy {
