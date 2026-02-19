@@ -626,6 +626,57 @@ component StyledComponent() {
 }
 ```
 
+#### Style Scoping
+
+Styles defined in a `<style>` block are **automatically scoped** to the component where they are defined. Ripple achieves this by adding a unique hash-based class (e.g., `ripple-abc123`) to all elements in that component and rewriting the CSS selectors to include that hash.
+
+**Important**: Scoped styles of a parent component do NOT apply to child components. Each component's styles are isolated. This means:
+
+```ripple
+component Parent() {
+  <div class="wrapper">
+    <Child />  // .wrapper styles will NOT affect elements inside Child
+  </div>
+
+  <style>
+    .wrapper { padding: 20px; }      // Only applies to THIS component's .wrapper
+    .child-class { color: red; }     // Will NOT work - can't reach into Child
+  </style>
+}
+
+component Child() {
+  <div class="child-class">{"I won't be red"}</div>
+}
+```
+
+#### Global Styles with `:global()`
+
+To escape scoping and apply styles globally (or to reach into child components), use the `:global()` modifier:
+
+```ripple
+component Parent() {
+  <div class="wrapper">
+    <Child />
+  </div>
+
+  <style>
+    .wrapper { padding: 20px; }              // Scoped to this component
+
+    :global(.child-class) { color: red; }   // Applies globally - will reach Child
+
+    .wrapper :global(.nested) {             // Scoped .wrapper, global .nested
+      font-weight: bold;
+    }
+  </style>
+}
+```
+
+The `:global()` modifier can wrap:
+- A single selector: `:global(.class-name)`
+- Multiple selectors: `:global(.foo, .bar)`
+- Part of a selector chain: `.scoped :global(.unscoped) .also-scoped`
+```
+
 #### Dynamic Classes
 
 In Ripple, the `class` attribute can accept more than just a string — it also supports objects and arrays. Truthy values are included as class names, while falsy values are omitted. This behavior is powered by the `clsx` library.
