@@ -212,6 +212,18 @@ export component Counter() {
 }
 ```
 
+**IMPORTANT:** The `@` prefix is ONLY for reading/writing existing tracked values, NOT for creating them. You must use `track()` to create a tracked value first:
+
+```ripple
+// CORRECT:
+let count = track(0);      // Create with track()
+@count++;                  // Read/write with @
+
+// WRONG - this is NOT valid Ripple syntax:
+let count = @0;            // ❌ Cannot use @ to create tracked values
+let expanded = @true;      // ❌ Invalid
+```
+
 Objects can also contain tracked values with `@` to access the reactive object property:
 ```ripple
 let counter = { current: track(0) };

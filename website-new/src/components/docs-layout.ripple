@@ -1,3 +1,5 @@
+import { track } from 'ripple';
+
 export component DocsLayout({
 	children,
 	title = 'Docs',
@@ -1334,7 +1336,7 @@ component SidebarGroup({
 	children: any;
 	hasActive?: boolean;
 }) {
-	let expanded = @true;
+	let expanded = track(true);
 
 	<section
 		class={`VPSidebarItem level-0 collapsible ${hasActive ? 'has-active' : ''} ${
