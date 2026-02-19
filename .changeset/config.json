@@ -29,7 +29,6 @@
     "@ripple-ts/tree-sitter",
     "@ripple-ts/nvim-plugin",
     "@ripple-ts/intellij-plugin",
-    "@ripple-ts/vscode-plugin",
     "@ripple-ts/sublime-text-plugin",
     "@ripple-ts/zed-plugin"
   ]
