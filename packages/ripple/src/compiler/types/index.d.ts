@@ -394,7 +394,9 @@ declare module 'estree' {
 		value: AST.Property['value'] | Component;
 	}
 
-	export type RippleAttribute = Attribute | SpreadAttribute | RefAttribute;
+	export type RippleAttribute = AST.Attribute | AST.SpreadAttribute | AST.RefAttribute;
+
+	export type NodeWithChildren = AST.Element | AST.TsxCompat;
 
 	export namespace CSS {
 		export interface BaseNode {

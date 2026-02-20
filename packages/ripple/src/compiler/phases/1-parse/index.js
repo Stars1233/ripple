@@ -2667,7 +2667,7 @@ function get_comment_handlers(source, comments, index = 0) {
 		},
 
 		/**
-		 * @param {AST.Node} ast
+		 * @param {AST.Node | AST.CSS.StyleSheet} ast
 		 */
 		add_comments: (ast) => {
 			if (comments.length === 0) return;
@@ -2685,7 +2685,7 @@ function get_comment_handlers(source, comments, index = 0) {
 
 			walk(ast, null, {
 				_(node, { next, path }) {
-					const metadata = node?.metadata;
+					const metadata = /** @type {AST.Node} */ (node)?.metadata;
 
 					/**
 					 * Check if a comment is inside an attribute expression
@@ -2758,6 +2758,36 @@ function get_comment_handlers(source, comments, index = 0) {
 						return element;
 					}
 
+					// Skip CSS nodes entirely - they use CSS-local positions (relative to
+					// the <style> tag content) which would incorrectly match against
+					// absolute source positions of JS/HTML comments. Also consume any
+					// CSS comments (which have absolute positions) that fall within the
+					// parent <style> element's content range so they don't leak to
+					// subsequent JS nodes.
+					if (node.type === 'StyleSheet') {
+						const styleElement = /** @type {AST.Element & AST.NodeWithLocation | undefined} */ (
+							path.findLast(
+								(ancestor) =>
+									ancestor &&
+									ancestor.type === 'Element' &&
+									ancestor.id &&
+									/** @type {AST.Identifier} */ (ancestor.id).name === 'style',
+							)
+						);
+						if (styleElement) {
+							const cssStart =
+								/** @type {AST.NodeWithLocation} */ (styleElement.openingElement)?.end ??
+								styleElement.start;
+							const cssEnd =
+								/** @type {AST.NodeWithLocation} */ (styleElement.closingElement)?.start ??
+								styleElement.end;
+							while (comments[0] && comments[0].start >= cssStart && comments[0].end <= cssEnd) {
+								comments.shift();
+							}
+						}
+						return;
+					}
+
 					if (metadata && metadata.commentContainerId !== undefined) {
 						// For empty template elements, keep comments as `innerComments`.
 						// The Prettier plugin uses `innerComments` to preserve them and
@@ -2771,6 +2801,24 @@ function get_comment_handlers(source, comments, index = 0) {
 								comments[0].context.containerId === metadata.commentContainerId &&
 								comments[0].context.beforeMeaningfulChild
 							) {
+								// Check that the comment is actually in this element's own content
+								// area, not positionally inside a child element. This handles the
+								// case where jsx_parseOpeningElementAt() triggers jsx_readToken()
+								// before the child element is pushed to the parser's #path, causing
+								// comments inside the child to get the parent's containerId.
+								const commentStart = comments[0].start;
+								const isInsideChildElement = /** @type {AST.NodeWithChildren} */ (
+									node
+								).children?.some(
+									(child) =>
+										child &&
+										child.start !== undefined &&
+										child.end !== undefined &&
+										commentStart >= child.start &&
+										commentStart < child.end,
+								);
+								if (isInsideChildElement) break;
+
 								const elementComment = /** @type {AST.CommentWithLocation} */ (comments.shift());
 
 								(metadata.elementLeadingComments ||= []).push(elementComment);
