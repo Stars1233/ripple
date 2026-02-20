@@ -1,5 +1,16 @@
 # ripple
 
+## 0.2.212
+
+### Patch Changes
+
+- Fix hydration error when component is last sibling - added `hydrate_advance()`
+  to safely advance hydration position at end of component content without
+  throwing when no next sibling exists
+
+- Updated dependencies []:
+  - ripple@0.2.212
+
 ## 0.2.211
 
 ### Patch Changes
