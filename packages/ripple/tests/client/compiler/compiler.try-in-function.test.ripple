@@ -99,8 +99,8 @@ describe('compiler > Volar transform does not duplicate try blocks from function
 		const result = compile_to_volar_mappings(source, 'test.ripple').code;
 
 		expect(count_occurrences(result, 'try {')).toBe(2);
-		expect(count_occurrences(result, "await fetch('/init')")).toBe(1);
-		expect(count_occurrences(result, "await fetch('/refresh')")).toBe(1);
+		expect(count_occurrences(result, 'await fetch(\'/init\')')).toBe(1);
+		expect(count_occurrences(result, 'await fetch(\'/refresh\')')).toBe(1);
 	});
 
 	it('try in nested functions', () => {
