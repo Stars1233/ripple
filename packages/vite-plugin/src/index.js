@@ -742,7 +742,7 @@ export function ripple(inlineOptions = {}) {
 				const serverEntryCode = generateServerEntry({
 					routes: loadedRippleConfig.router.routes,
 					rippleConfigPath: getRippleConfigPath(root),
-					htmlTemplatePath: '../client/index.html',
+					htmlTemplatePath: './index.html',
 					rpcModulePaths: [...serverBlockModules],
 					clientAssetMap,
 				});
@@ -791,6 +791,18 @@ export function ripple(inlineOptions = {}) {
 							noExternal: [],
 						},
 					});
+
+					// Copy the HTML template into the server output so the server
+					// entry is self-contained and doesn't depend on dist/client/.
+					// This is critical for platforms like Vercel where dist/client/
+					// is served as static files and index.html would be returned as-is
+					// (with unresolved SSR placeholders) instead of going through SSR.
+					const clientHtml = path.join(clientOutDir, 'index.html');
+					const serverHtml = path.join(serverOutDir, 'index.html');
+					if (fs.existsSync(clientHtml)) {
+						fs.copyFileSync(clientHtml, serverHtml);
+						console.log('[@ripple-ts/vite-plugin] Copied HTML template to server output');
+					}
 
 					console.log('[@ripple-ts/vite-plugin] Server build complete.');
 					console.log(`[@ripple-ts/vite-plugin] Output: ${path.join(root, outDir)}`);

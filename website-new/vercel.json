@@ -1,11 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "cleanUrls": true,
-  "buildCommand": "vite build",
+  "buildCommand": "pnpm run build && rm -f dist/client/index.html",
   "outputDirectory": "dist/client",
   "functions": {
     "api/handler.js": {
-      "includeFiles": "dist/**"
+      "includeFiles": "dist/server/**"
     }
   },
   "headers": [
@@ -49,6 +49,14 @@
     }
   ],
   "rewrites": [
+    {
+      "source": "/assets/:path*",
+      "destination": "/assets/:path*"
+    },
+    {
+      "source": "/:path*.:ext(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|webp|avif|json|txt|xml|webmanifest|map)",
+      "destination": "/:path*.:ext"
+    },
     {
       "source": "/(.*)",
       "destination": "/api/handler"
