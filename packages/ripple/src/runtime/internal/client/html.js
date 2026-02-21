@@ -20,7 +20,7 @@ export function html(node, get_html, svg = false, mathml = false) {
 
 	render(() => {
 		var block = /** @type {Block} */ (active_block);
-		var new_html = get_html() + '';
+		var new_html = (get_html() ?? '') + '';
 
 		// If the HTML hasn't changed, skip the update (but still hydrate on first run)
 		if (html === new_html) {

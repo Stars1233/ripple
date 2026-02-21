@@ -1,15 +1,15 @@
 // @ts-nocheck
 import * as _$_ from 'ripple/internal/client';
 
-var root_1 = _$_.template(`<div class="status-success">Success</div>`, 1);
-var root_2 = _$_.template(`<div class="status-error">Error</div>`, 1);
+var root_1 = _$_.template(`<div class="status-success">Success</div>`, 0);
+var root_2 = _$_.template(`<div class="status-error">Error</div>`, 0);
 var root_3 = _$_.template(`<div class="status-unknown">Unknown</div>`, 0);
 var root = _$_.template(`<!>`, 1);
-var root_5 = _$_.template(`<div class="case-a">Case A</div>`, 1);
-var root_6 = _$_.template(`<div class="case-b">Case B</div>`, 1);
+var root_5 = _$_.template(`<div class="case-a">Case A</div>`, 0);
+var root_6 = _$_.template(`<div class="case-b">Case B</div>`, 0);
 var root_7 = _$_.template(`<div class="case-c">Case C</div>`, 0);
 var root_4 = _$_.template(`<button class="toggle">Toggle</button><!>`, 1);
-var root_9 = _$_.template(`<div class="case-1-2">1 or 2</div>`, 1);
+var root_9 = _$_.template(`<div class="case-1-2">1 or 2</div>`, 0);
 var root_10 = _$_.template(`<div class="case-other">Other</div>`, 0);
 var root_8 = _$_.template(`<!>`, 1);
 
@@ -24,21 +24,21 @@ export function SwitchStatic(__anchor, _, __block) {
 
 	{
 		var switch_case_0 = (__anchor) => {
-			var fragment_1 = root_1();
+			var div_1 = root_1();
 
-			_$_.append(__anchor, fragment_1);
+			_$_.append(__anchor, div_1);
 		};
 
 		var switch_case_1 = (__anchor) => {
-			var fragment_2 = root_2();
+			var div_2 = root_2();
 
-			_$_.append(__anchor, fragment_2);
+			_$_.append(__anchor, div_2);
 		};
 
 		var switch_case_default = (__anchor) => {
-			var div_1 = root_3();
+			var div_3 = root_3();
 
-			_$_.append(__anchor, div_1);
+			_$_.append(__anchor, div_3);
 		};
 
 		_$_.switch(node, () => {
@@ -68,8 +68,8 @@ export function SwitchReactive(__anchor, _, __block) {
 	_$_.push_component();
 
 	let status = track('a', void 0, void 0, __block);
-	var fragment_3 = root_4();
-	var button_1 = _$_.first_child_frag(fragment_3);
+	var fragment_1 = root_4();
+	var button_1 = _$_.first_child_frag(fragment_1);
 
 	button_1.__click = () => {
 		if (_$_.get(status) === 'a') _$_.set(status, 'b'); else if (_$_.get(status) === 'b') _$_.set(status, 'c'); else _$_.set(status, 'a');
@@ -79,21 +79,21 @@ export function SwitchReactive(__anchor, _, __block) {
 
 	{
 		var switch_case_0_1 = (__anchor) => {
-			var fragment_4 = root_5();
+			var div_4 = root_5();
 
-			_$_.append(__anchor, fragment_4);
+			_$_.append(__anchor, div_4);
 		};
 
 		var switch_case_1_1 = (__anchor) => {
-			var fragment_5 = root_6();
+			var div_5 = root_6();
 
-			_$_.append(__anchor, fragment_5);
+			_$_.append(__anchor, div_5);
 		};
 
 		var switch_case_default_1 = (__anchor) => {
-			var div_2 = root_7();
+			var div_6 = root_7();
 
-			_$_.append(__anchor, div_2);
+			_$_.append(__anchor, div_6);
 		};
 
 		_$_.switch(node_1, () => {
@@ -115,7 +115,7 @@ export function SwitchReactive(__anchor, _, __block) {
 		});
 	}
 
-	_$_.append(__anchor, fragment_3);
+	_$_.append(__anchor, fragment_1);
 	_$_.pop_component();
 }
 
@@ -123,20 +123,20 @@ export function SwitchFallthrough(__anchor, _, __block) {
 	_$_.push_component();
 
 	const val = 1;
-	var fragment_6 = root_8();
-	var node_2 = _$_.first_child_frag(fragment_6);
+	var fragment_2 = root_8();
+	var node_2 = _$_.first_child_frag(fragment_2);
 
 	{
 		var switch_case_0_2 = (__anchor) => {
-			var fragment_7 = root_9();
+			var div_7 = root_9();
 
-			_$_.append(__anchor, fragment_7);
+			_$_.append(__anchor, div_7);
 		};
 
 		var switch_case_default_2 = (__anchor) => {
-			var div_3 = root_10();
+			var div_8 = root_10();
 
-			_$_.append(__anchor, div_3);
+			_$_.append(__anchor, div_8);
 		};
 
 		_$_.switch(node_2, () => {
@@ -156,7 +156,7 @@ export function SwitchFallthrough(__anchor, _, __block) {
 		});
 	}
 
-	_$_.append(__anchor, fragment_6);
+	_$_.append(__anchor, fragment_2);
 	_$_.pop_component();
 }
 

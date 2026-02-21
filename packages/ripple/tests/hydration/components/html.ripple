@@ -36,3 +36,132 @@ export component HtmlWithReactivity() {
 		<button>{'Increment'}</button>
 	</div>
 }
+
+export component HtmlWrapper({ children }: { children: any }) {
+	<div class="wrapper">
+		<div class="inner">
+			<children />
+		</div>
+	</div>
+}
+
+export component HtmlInChildren() {
+	const content = '<p><strong>Bold</strong> text</p>';
+	<HtmlWrapper>
+		<div class="vp-doc">{html content}</div>
+	</HtmlWrapper>
+}
+
+export component HtmlInChildrenWithSiblings() {
+	const content = '<p>Dynamic content</p>';
+	<HtmlWrapper>
+		<h1>{'Title'}</h1>
+		<div class="content">{html content}</div>
+	</HtmlWrapper>
+}
+
+export component MultipleHtmlInChildren() {
+	const html1 = '<p>First</p>';
+	const html2 = '<p>Second</p>';
+	<HtmlWrapper>
+		<div class="doc">
+			{html html1}
+			{html html2}
+		</div>
+	</HtmlWrapper>
+}
+
+export component HtmlWithComments() {
+	const content = '<p>Before comment</p><!-- TODO: Elaborate --><p>After comment</p>';
+	<div>{html content}</div>
+}
+
+export component HtmlWithEmptyComment() {
+	const content = '<p>Before</p><!----><p>After</p>';
+	<div>{html content}</div>
+}
+
+export component HtmlWithCommentsInChildren() {
+	const content = '<h2 id="intro">Introduction</h2><p>Some text</p><!-- TODO --><p>More text</p>';
+	<HtmlWrapper>
+		<div class="vp-doc">{html content}</div>
+	</HtmlWrapper>
+}
+
+component DocFooter() {
+	<footer class="doc-footer">{'Footer content'}</footer>
+}
+
+export component DocLayout({
+	children,
+	editPath = '',
+	nextLink = null,
+	toc = [],
+}: {
+	children: any;
+	editPath?: string;
+	nextLink?: { href: string; text: string } | null;
+	toc?: { href: string; text: string }[];
+}) {
+	<div class="layout">
+		<div class="content-container">
+			<article>
+				<div>
+					<children />
+				</div>
+			</article>
+			if (editPath) {
+				<div class="edit-link">
+					<a href={`https://github.com/edit/${editPath}`}>{'Edit'}</a>
+				</div>
+			}
+			if (nextLink) {
+				<nav class="prev-next">
+					<a href={nextLink.href}>{nextLink.text}</a>
+				</nav>
+			}
+			<DocFooter />
+		</div>
+		<aside>
+			if (toc.length > 0) {
+				<div class="toc">
+					<ul>
+						for (const item of toc) {
+							<li>
+								<a href={item.href}>{item.text}</a>
+							</li>
+						}
+					</ul>
+				</div>
+			}
+		</aside>
+	</div>
+}
+
+export component HtmlWithServerData() {
+	const content = '<h1 id="intro" class="doc-h1">Introduction</h1><p>Ripple is a framework.</p>';
+	<DocLayout
+		editPath="docs/introduction.md"
+		nextLink={{ href: '/docs/quick-start', text: 'Quick Start' }}
+		toc={[
+			{ href: '#intro', text: 'Introduction' },
+			{ href: '#features', text: 'Features' },
+		]}
+	>
+		<div class="vp-doc">{html content}</div>
+	</DocLayout>
+}
+
+export component HtmlWithClientDefaults() {
+	const content = '<h1 id="intro" class="doc-h1">Introduction</h1><p>Ripple is a framework.</p>';
+	<DocLayout>
+		<div class="vp-doc">{html content}</div>
+	</DocLayout>
+}
+
+export component HtmlWithUndefinedContent() {
+	const content: string | undefined = undefined;
+	<DocLayout>
+		<div class="vp-doc">{html content}</div>
+	</DocLayout>
+}
