@@ -2783,7 +2783,7 @@ function transform_ts_child(node, context) {
 		for (const switch_case of node.cases) {
 			const consequent_scope =
 				context.state.scopes.get(switch_case.consequent) || context.state.scope;
-			const consequent_body = transform_body(switch_case.consequent, {
+			const consequent_body = transform_body(flatten_switch_consequent(switch_case.consequent), {
 				...context,
 				state: { ...context.state, scope: consequent_scope },
 			});
@@ -2791,7 +2791,14 @@ function transform_ts_child(node, context) {
 			cases.push(
 				b.switch_case(
 					switch_case.test ? /** @type {AST.Expression} */ (context.visit(switch_case.test)) : null,
-					consequent_body,
+					switch_case.consequent.length && switch_case.consequent[0].type === 'BlockStatement'
+						? [
+								b.block(
+									consequent_body,
+									/** @type {AST.NodeWithLocation} */ (switch_case.consequent[0]),
+								),
+							]
+						: consequent_body,
 				),
 			);
 		}
