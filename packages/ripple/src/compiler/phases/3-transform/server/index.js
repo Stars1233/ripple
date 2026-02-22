@@ -26,6 +26,7 @@ import {
 	is_binding_function,
 	is_element_dynamic,
 	hash,
+	flatten_switch_consequent,
 } from '../../../utils.js';
 import { escape } from '../../../../utils/escaping.js';
 import { is_event_attribute } from '../../../../utils/events.js';
@@ -1083,10 +1084,13 @@ const visitors = {
 			const case_body = [];
 
 			if (switch_case.consequent.length !== 0) {
+				// Flatten top-level BlockStatements so BreakStatements inside
+				// block-scoped cases (e.g. `case 1: { ... break; }`) are preserved
+				const flattened_consequent = flatten_switch_consequent(switch_case.consequent);
 				const consequent_scope =
 					context.state.scopes.get(switch_case.consequent) || context.state.scope;
 				const consequent = b.block(
-					transform_body(switch_case.consequent, {
+					transform_body(flattened_consequent, {
 						...context,
 						state: { ...context.state, scope: consequent_scope },
 					}),
