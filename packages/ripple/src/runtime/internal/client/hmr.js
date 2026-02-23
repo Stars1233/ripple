@@ -28,11 +28,15 @@ export function hmr(fn) {
 	 */
 	function wrapper(anchor, props, block = active_block) {
 		if (current === undefined) {
+			// @ts-ignore - HMR symbol property
 			current = wrapper[HMR].current;
 		}
+		/** @type {Node} */
+		var target = anchor;
 
 		if (current === undefined) {
 			current = tracked(fn, /** @type {Block} */ (block));
+			// @ts-ignore - HMR symbol property
 			wrapper[HMR].current = current;
 		}
 		var component = {};
@@ -42,7 +46,7 @@ export function hmr(fn) {
 
 		render(
 			() => {
-				var next_component = get(current);
+				var next_component = get(/** @type {Tracked} */ (current));
 
 				if (component === next_component) {
 					return;
@@ -55,7 +59,7 @@ export function hmr(fn) {
 				}
 
 				effect = branch(() => {
-					/** @type {Function} */ (component)(anchor, props, block);
+					/** @type {Function} */ (component)(target, props, active_block);
 				});
 			},
 			null,
@@ -63,7 +67,7 @@ export function hmr(fn) {
 		);
 
 		if (hydrating) {
-			anchor = hydrate_node;
+			target = /** @type {Node} */ (hydrate_node);
 		}
 
 		return wrapper;
@@ -73,21 +77,13 @@ export function hmr(fn) {
 	wrapper[HMR] = {
 		fn,
 		current,
-		/**
-		 * Called by import.meta.hot.accept() with the new module's component.
-		 * Updates the tracked source so existing instances reactively re-render
-		 * with the new component function, and bridges the incoming wrapper's
-		 * source to the original one for future updates.
-		 *
-		 * @param {any} incoming
-		 */
+		/** @param {any} incoming */
 		update: (incoming) => {
 			fn = incoming[HMR].fn;
+			// @ts-ignore - HMR symbol property
 			wrapper[HMR].fn = fn;
 
-			// Prefer this wrapper's existing source. If this wrapper has never
-			// mounted, it may not have one yet, so fall back to any bridged source
-			// on the incoming wrapper.
+			// @ts-ignore - HMR symbol property
 			var source = wrapper[HMR].current;
 			if (source === undefined) {
 				source = incoming[HMR].current;
@@ -95,14 +91,13 @@ export function hmr(fn) {
 
 			if (source !== undefined) {
 				current = source;
+				// @ts-ignore - HMR symbol property
 				wrapper[HMR].current = source;
 				// Update the shared tracked source so mounted instances re-render.
 				set(source, fn);
 			}
 
-			// Bridge the incoming wrapper's source to the original one,
-			// so subsequent updates continue to use this same tracked source
-			// rather than creating an ever-growing chain of wrappers.
+			// @ts-ignore - HMR symbol property
 			incoming[HMR].current = wrapper[HMR].current;
 		},
 	};
