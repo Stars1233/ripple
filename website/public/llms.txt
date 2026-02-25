@@ -228,6 +228,18 @@ let quadruple = track(() => @double * 2);
 console.log(@quadruple);
 ```
 
+Derived tracked values can also be written to for **optimistic state**. When you write to a derived, the written value is exposed immediately. When the next computation settles, it takes precedence and overrides the optimistic value:
+
+```ripple
+let count = track(0);
+let double = track(() => @count * 2);
+
+// Write optimistically — shows 99 immediately
+@double = 99;
+
+// When count next changes, double reverts to @count * 2
+```
+
 If you want to use a tracked value inside a reactive context, such as an effect but you don't want that value to be a tracked dependency, you can use `untrack`:
 
 ```ripple
@@ -540,6 +552,62 @@ component ErrorBoundary() {
   </div>
 }
 ```
+
+#### Async Components and Suspense
+
+Components can use `await` directly in their body. Everything before the first `await` renders immediately; everything after suspends until the promise resolves. No `async` keyword is needed on the component.
+
+```ripple
+component UserProfile({ id }: { id: number }) {
+  // Renders immediately
+  <h1>{"Loading profile..."}</h1>
+
+  // Suspends here until resolved
+  const user = await fetchUser(id);
+
+  // Renders after resolution
+  <h1>{user.name}</h1>
+  <p>{user.email}</p>
+}
+```
+
+To handle the suspended state, wrap the component in a `try/pending` block:
+
+```ripple
+component App() {
+  try {
+    <UserProfile id={1} />
+  } pending {
+    <p>{"Loading..."}</p>
+  } catch (e) {
+    <p>{"Error: "}{e.message}</p>
+  }
+}
+```
+
+The `{pending}` clause is shown while the component is suspended. The `{catch}` clause handles both sync throws and async rejections. `{pending}` and `{catch}` are both optional and can be used independently.
+
+#### Reactive Async with `await track(fn)`
+
+For async operations that should **re-run when reactive dependencies change**, use `await track(fn)`. The function body is reactive — any `@tracked` values read inside it become dependencies. When a dependency changes, the async operation re-runs and the component re-suspends to the nearest `try/pending` boundary.
+
+```ripple
+component CitySearch() {
+  let query = track('');
+
+  // Input renders immediately, never suspended
+  <input type="text" value={@query} onInput={e => @query = e.target.value} />
+
+  // Re-runs and re-suspends whenever @query changes
+  const city = await track(() => fetchCity(@query));
+
+  // Only renders once city has resolved for the current query
+  <p>{"Showing: "}{@query}</p>
+  <CityCard city={city} />
+}
+```
+
+> Note: When `@query` changes, the component re-suspends — the `{pending}` clause of the nearest `try` block will show again until the new fetch resolves. Everything above the `await track` line remains visible throughout.
 
 ### Children Components
 
