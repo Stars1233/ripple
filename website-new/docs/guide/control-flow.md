@@ -255,12 +255,68 @@ export component App() {
 
 ## Async (Suspense boundaries) <Badge type="warning" text="Experimental" />
 
+Components can use `await` directly in their body — no `async` keyword needed.
+Everything before the first `await` renders immediately; everything after
+suspends until the promise resolves.
+
 ```ripple
-export component SuspenseBoundary() {
+component UserProfile({ id }: { id: number }) {
+  // Renders immediately
+  <h1>{'Loading profile...'}</h1>
+
+  // Suspends here until resolved
+  const user = await fetchUser(id);
+
+  // Renders after resolution
+  <h1>{user.name}</h1>
+  <p>{user.email}</p>
+}
+```
+
+Wrap the component in a `try/pending` block to handle the suspended state:
+
+```ripple
+export component App() {
   try {
-    <AsyncComponent />
+    <UserProfile id={1} />
   } pending {
-    <p>{'Loading...'}</p> // fallback
+    <p>{'Loading...'}</p>
+  } catch (e) {
+    <p>{'Error: '}{e.message}</p>
   }
 }
+```
+
+The `{pending}` clause shows while the component is suspended. The `{catch}`
+clause handles both sync throws and async rejections. Both clauses are optional
+and can be used independently.
+
+### Reactive async with `await track(fn)`
+
+For async operations that should re-run when reactive dependencies change, use
+`await track(fn)`. Any `@tracked` values read inside the function become
+dependencies — when they change the operation re-runs and the component
+re-suspends to the nearest `try/pending` boundary.
+
+```ripple
+export component CitySearch() {
+  let query = track('');
+
+  // Renders immediately, never suspended
+  <input type="text" value={@query} onInput={e => @query = e.target.value} />
+
+  // Re-runs and re-suspends whenever @query changes
+  const city = await track(() => fetchCity(@query));
+
+  // Only renders once city has resolved for the current query
+  <p>{'Showing: '}{@query}</p>
+  <CityCard city={city} />
+}
+```
+
+::: info Note
+When `@query` changes, everything above the `await track` line stays visible.
+Only the content below re-suspends and shows `{pending}` until the new fetch
+resolves.
+:::
 ```

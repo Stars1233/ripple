@@ -45,6 +45,20 @@ let quadruple = track(() => @double * 2);
 console.log(@quadruple);
 ```
 
+Derived tracked values can also be written to for **optimistic state**. The
+written value is exposed immediately, and when the next computation settles it
+takes precedence and overrides it:
+
+```ts
+let count = track(0);
+let double = track(() => @count * 2);
+
+// Write optimistically — shows 99 immediately
+@double = 99;
+
+// When @count next changes, double reverts to @count * 2
+```
+
 If you want to use a tracked value inside a reactive context, such as an effect
 but you don't want that value to be a tracked dependency, you can use `untrack`:
 
