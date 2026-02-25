@@ -256,8 +256,8 @@ export component App() {
 ## Async (Suspense boundaries) <Badge type="warning" text="Experimental" />
 
 Components can use `await` directly in their body — no `async` keyword needed.
-Everything before the first `await` renders immediately; everything after
-suspends until the promise resolves.
+Everything before the first `await` renders immediately; everything after suspends
+until the promise resolves.
 
 ```ripple
 component UserProfile({ id }: { id: number }) {
@@ -282,7 +282,10 @@ export component App() {
   } pending {
     <p>{'Loading...'}</p>
   } catch (e) {
-    <p>{'Error: '}{e.message}</p>
+    <p>
+      {'Error: '}
+      {e.message}
+    </p>
   }
 }
 ```
@@ -303,20 +306,24 @@ export component CitySearch() {
   let query = track('');
 
   // Renders immediately, never suspended
-  <input type="text" value={@query} onInput={e => @query = e.target.value} />
+  <input type="text" value={@query} onInput={(e) => (@query = e.target.value)} />
 
   // Re-runs and re-suspends whenever @query changes
   const city = await track(() => fetchCity(@query));
 
   // Only renders once city has resolved for the current query
-  <p>{'Showing: '}{@query}</p>
-  <CityCard city={city} />
+  <p>
+    {'Showing: '}
+    {@query}
+  </p>
+  <CityCard {city} />
 }
 ```
 
-::: info Note
-When `@query` changes, everything above the `await track` line stays visible.
-Only the content below re-suspends and shows `{pending}` until the new fetch
-resolves.
-:::
+::: info Note When `@query` changes, everything above the `await track` line stays
+visible. Only the content below re-suspends and shows `{pending}` until the new
+fetch resolves. :::
+
+```
+
 ```
