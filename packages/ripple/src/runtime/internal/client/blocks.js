@@ -370,6 +370,45 @@ export function remove_block_dom(node, end) {
 }
 
 /**
+ * Moves DOM nodes from a block to a target element (typically a DocumentFragment).
+ * If the block has state (start/end), moves that range.
+ * If not, recursively moves content from child branch blocks.
+ * @param {Block} block - The block to move content from
+ * @param {Element | DocumentFragment} target - Where to move the nodes
+ * @returns {boolean} - True if content was moved
+ */
+export function move_block(block, target) {
+	var f = block.f;
+
+	// Only BRANCH_BLOCKs (excluding TRY_BLOCK) can have DOM state to move
+	if ((f & BRANCH_BLOCK) !== 0 && (f & TRY_BLOCK) === 0) {
+		var s = block.s;
+		if (s !== null && s.start !== null) {
+			var node = s.start;
+			var end = s.end;
+
+			while (node !== null) {
+				var next = node === end ? null : next_sibling(node);
+				target.append(node);
+				node = next;
+			}
+			return true;
+		}
+	}
+
+	// If this block has no DOM, try moving from child branch blocks
+	var moved = false;
+	var child = block.first;
+	while (child !== null) {
+		if (move_block(child, target)) {
+			moved = true;
+		}
+		child = child.next;
+	}
+	return moved;
+}
+
+/**
  * @param {Block} block
  * @param {boolean} [remove_dom]
  */

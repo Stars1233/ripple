@@ -1,6 +1,13 @@
 /** @import { Block } from '#client' */
 
-import { branch, create_try_block, destroy_block, is_destroyed, resume_block } from './blocks.js';
+import {
+	branch,
+	create_try_block,
+	destroy_block,
+	is_destroyed,
+	move_block,
+	resume_block,
+} from './blocks.js';
 import { TRY_BLOCK } from './constants.js';
 import {
 	hydrate_next,
@@ -10,7 +17,7 @@ import {
 	set_hydrating,
 	skip_to_hydration_end,
 } from './hydration.js';
-import { get_next_sibling, next_sibling } from './operations.js';
+import { get_next_sibling } from './operations.js';
 import {
 	active_block,
 	active_component,
@@ -39,25 +46,7 @@ export function try_block(node, fn, catch_fn, pending_fn = null) {
 	var pending_count = 0;
 	/** @type {DocumentFragment | null} */
 	var offscreen_fragment = null;
-
-	/**
-	 * @param {Block} block
-	 * @param {DocumentFragment} fragment
-	 * @returns {void}
-	 */
-	function move_block(block, fragment) {
-		var state = block.s;
-		if (state === null) return;
-		var node = state.start;
-		var end = state.end;
-
-		while (node !== null) {
-			var next = node === end ? null : next_sibling(node);
-
-			fragment.append(node);
-			node = next;
-		}
-	}
+	var has_resolved = false;
 
 	function handle_await() {
 		if (pending_count++ === 0) {
@@ -65,7 +54,10 @@ export function try_block(node, fn, catch_fn, pending_fn = null) {
 				if (b !== null && suspended === null) {
 					suspended = b;
 					offscreen_fragment = document.createDocumentFragment();
-					move_block(b, offscreen_fragment);
+					// Only move content if promise has resolved before (re-suspension)
+					if (has_resolved) {
+						move_block(b, offscreen_fragment);
+					}
 
 					b = branch(() => {
 						/** @type {(anchor: Node) => void} */ (pending_fn)(anchor);
@@ -76,6 +68,7 @@ export function try_block(node, fn, catch_fn, pending_fn = null) {
 
 		return () => {
 			if (--pending_count === 0) {
+				has_resolved = true;
 				if (b !== null) {
 					destroy_block(b);
 				}

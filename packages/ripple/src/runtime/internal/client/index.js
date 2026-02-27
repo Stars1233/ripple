@@ -17,7 +17,16 @@ export {
 	set_selected,
 } from './render.js';
 
-export { render, render_spread, async, ref, branch, destroy_block, root } from './blocks.js';
+export {
+	render,
+	render_spread,
+	async,
+	ref,
+	branch,
+	destroy_block,
+	move_block,
+	root,
+} from './blocks.js';
 
 export { event, render_event, delegate } from './events.js';
 
