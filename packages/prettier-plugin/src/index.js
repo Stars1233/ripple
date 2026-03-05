@@ -1405,7 +1405,14 @@ function printRippleNode(node, path, options, print, args) {
 		case 'CallExpression': {
 			/** @type {Doc[]} */
 			const parts = [];
-			const calleePart = path.call(print, 'callee');
+			let calleePart = path.call(print, 'callee');
+			const calleeNeedsParens =
+				node.callee.metadata?.parenthesized &&
+				(node.callee.type === 'ArrowFunctionExpression' ||
+					node.callee.type === 'FunctionExpression');
+			if (calleeNeedsParens) {
+				calleePart = ['(', calleePart, ')'];
+			}
 			parts.push(calleePart);
 
 			if (node.optional) {
