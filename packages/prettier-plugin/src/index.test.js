@@ -2209,6 +2209,15 @@ component Child({ something }) {
 			const result = await format(expected);
 			expect(result).toBeWithNewline(expected);
 		});
+
+		it('prints function with a rest parameter correctly', async () => {
+			const expected = `function TestRest(...args: string[]) {
+  console.log(args);
+}`;
+
+			const result = await format(expected);
+			expect(result).toBeWithNewline(expected);
+		});
 	});
 
 	describe('edge cases', () => {
@@ -3207,6 +3216,20 @@ const items = [] as unknown[];`;
 		it('should format TypeScript mapped types (TSMappedType)', async () => {
 			const input = `type ReadonlyPartial<T> = { readonly [K in keyof T]?: T[K] }`;
 			const expected = `type ReadonlyPartial<T> = { readonly [K in keyof T]?: T[K] };`;
+			const result = await format(input);
+			expect(result).toBeWithNewline(expected);
+		});
+
+		it('should preserve minus mapped modifiers in TypeScript mapped types', async () => {
+			const input = `type MutableRequired<T> = { -readonly [K in keyof T]-?: T[K] }`;
+			const expected = `type MutableRequired<T> = { -readonly [K in keyof T]-?: T[K] };`;
+			const result = await format(input);
+			expect(result).toBeWithNewline(expected);
+		});
+
+		it('should preserve explicit plus mapped modifiers in TypeScript mapped types', async () => {
+			const input = `type ExplicitReadonlyOptional<T> = { +readonly [K in keyof T]+?: T[K] }`;
+			const expected = `type ExplicitReadonlyOptional<T> = { readonly [K in keyof T]?: T[K] };`;
 			const result = await format(input);
 			expect(result).toBeWithNewline(expected);
 		});
@@ -4684,6 +4707,21 @@ component Polygon() {
 		});
 
 		describe('<tsx:react>', () => {
+			it('should preserve namespace in generic JSX namespaced tags', async () => {
+				const input = `component App() {
+	<tsx:react><xml:space></xml:space></tsx:react>
+}`;
+
+				const expected = `component App() {
+  <tsx:react>
+    <xml:space></xml:space>
+  </tsx:react>
+}`;
+
+				const result = await format(input, { singleQuote: true });
+				expect(result).toBeWithNewline(expected);
+			});
+
 			it('should format JSX inside <tsx:react> tags', async () => {
 				const input = `component App() {
 	<div>
