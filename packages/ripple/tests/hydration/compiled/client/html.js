@@ -614,7 +614,6 @@ export function HtmlWithServerData(__anchor, _, __block) {
 		{
 			editPath: "docs/introduction.md",
 			nextLink: { href: '/docs/quick-start', text: 'Quick Start' },
-
 			toc: [
 				{ href: '#intro', text: 'Introduction' },
 				{ href: '#features', text: 'Features' }
@@ -836,7 +835,6 @@ export function HtmlAfterSwitchInChildren(__anchor, _, __block) {
 					node_36,
 					{
 						level: 1,
-
 						children(__anchor, _, __block) {
 							_$_.push_component();
 
@@ -1002,7 +1000,6 @@ function SideNav(__anchor, __props, __block) {
 					node_41,
 					{
 						title: "Getting Started",
-
 						children(__anchor, _, __block) {
 							_$_.push_component();
 
@@ -1014,7 +1011,6 @@ function SideNav(__anchor, __props, __block) {
 								{
 									href: "/intro",
 									text: "Introduction",
-
 									get active() {
 										return __props.currentPath === '/intro';
 									}
@@ -1029,7 +1025,6 @@ function SideNav(__anchor, __props, __block) {
 								{
 									href: "/start",
 									text: "Quick Start",
-
 									get active() {
 										return __props.currentPath === '/start';
 									}
@@ -1056,7 +1051,6 @@ function SideNav(__anchor, __props, __block) {
 					node_44,
 					{
 						title: "Guide",
-
 						children(__anchor, _, __block) {
 							_$_.push_component();
 
@@ -1068,7 +1062,6 @@ function SideNav(__anchor, __props, __block) {
 								{
 									href: "/guide/app",
 									text: "Application",
-
 									get active() {
 										return __props.currentPath === '/guide/app';
 									}
@@ -1083,7 +1076,6 @@ function SideNav(__anchor, __props, __block) {
 								{
 									href: "/guide/syntax",
 									text: "Syntax",
-
 									get active() {
 										return __props.currentPath === '/guide/syntax';
 									}
@@ -1556,7 +1548,6 @@ export function DocsLayoutWithData(__anchor, _, __block) {
 		{
 			editPath: "docs/styling.md",
 			nextLink: { href: '/next', text: 'Next' },
-
 			children(__anchor, _, __block) {
 				_$_.push_component();
 
@@ -1887,7 +1878,6 @@ export function DocsLayoutExactWithData(__anchor, _, __block) {
 			editPath: "docs/guide/styling.md",
 			prevLink: { href: '/prev', text: 'Previous' },
 			nextLink: { href: '/next', text: 'Next' },
-
 			toc: [
 				{ href: '#intro', text: 'Introduction' },
 				{ href: '#usage', text: 'Usage' }
@@ -1937,7 +1927,6 @@ export function DocsLayoutExactWithoutData(__anchor, _, __block) {
 			prevLink,
 			nextLink,
 			toc,
-
 			children(__anchor, _, __block) {
 				_$_.push_component();
 
@@ -2037,7 +2026,6 @@ export function NestedTemplateInLayout(__anchor, _, __block) {
 		node_89,
 		{
 			data: doc,
-
 			children(__anchor, _, __block) {
 				_$_.push_component();
 

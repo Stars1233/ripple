@@ -86,7 +86,6 @@ export function LayoutWithContent(__output) {
 
 		const args = [
 			__output,
-
 			{
 				children: function children(__output) {
 					_$_.push_component();

@@ -79,7 +79,6 @@ export function TestIfWithChildren(__output) {
 
 		const args = [
 			__output,
-
 			{
 				children: function children(__output) {
 					_$_.push_component();
@@ -262,7 +261,6 @@ export function TestIfWithSiblingsAndChildren(__output) {
 
 		const args = [
 			__output,
-
 			{
 				children: function children(__output) {
 					_$_.push_component();

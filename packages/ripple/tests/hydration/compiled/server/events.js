@@ -221,12 +221,10 @@ export function ParentWithChildButton(__output) {
 
 			const args = [
 				__output,
-
 				{
 					onClick: () => {
 						_$_.update(count);
 					},
-
 					label: "Click me"
 				}
 			];

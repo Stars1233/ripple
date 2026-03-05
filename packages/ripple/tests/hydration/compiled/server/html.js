@@ -178,7 +178,6 @@ export function HtmlInChildren(__output) {
 
 		const args = [
 			__output,
-
 			{
 				children: function children(__output) {
 					_$_.push_component();
@@ -216,7 +215,6 @@ export function HtmlInChildrenWithSiblings(__output) {
 
 		const args = [
 			__output,
-
 			{
 				children: function children(__output) {
 					_$_.push_component();
@@ -263,7 +261,6 @@ export function MultipleHtmlInChildren(__output) {
 
 		const args = [
 			__output,
-
 			{
 				children: function children(__output) {
 					_$_.push_component();
@@ -347,7 +344,6 @@ export function HtmlWithCommentsInChildren(__output) {
 
 		const args = [
 			__output,
-
 			{
 				children: function children(__output) {
 					_$_.push_component();
@@ -554,11 +550,9 @@ export function HtmlWithServerData(__output) {
 
 		const args = [
 			__output,
-
 			{
 				editPath: "docs/introduction.md",
 				nextLink: { href: '/docs/quick-start', text: 'Quick Start' },
-
 				toc: [
 					{ href: '#intro', text: 'Introduction' },
 					{ href: '#features', text: 'Features' }
@@ -600,7 +594,6 @@ export function HtmlWithClientDefaults(__output) {
 
 		const args = [
 			__output,
-
 			{
 				children: function children(__output) {
 					_$_.push_component();
@@ -638,7 +631,6 @@ export function HtmlWithUndefinedContent(__output) {
 
 		const args = [
 			__output,
-
 			{
 				children: function children(__output) {
 					_$_.push_component();
@@ -813,7 +805,6 @@ export function HtmlAfterSwitchInChildren(__output) {
 
 		const args = [
 			__output,
-
 			{
 				children: function children(__output) {
 					_$_.push_component();
@@ -823,10 +814,8 @@ export function HtmlAfterSwitchInChildren(__output) {
 
 						const args = [
 							__output,
-
 							{
 								level: 1,
-
 								children: function children(__output) {
 									_$_.push_component();
 									__output.push('Title');
@@ -1009,10 +998,8 @@ function SideNav(__output, { currentPath }) {
 
 					const args = [
 						__output,
-
 						{
 							title: "Getting Started",
-
 							children: function children(__output) {
 								_$_.push_component();
 
@@ -1021,7 +1008,6 @@ function SideNav(__output, { currentPath }) {
 
 									const args = [
 										__output,
-
 										{
 											href: "/intro",
 											text: "Introduction",
@@ -1037,7 +1023,6 @@ function SideNav(__output, { currentPath }) {
 
 									const args = [
 										__output,
-
 										{
 											href: "/start",
 											text: "Quick Start",
@@ -1068,10 +1053,8 @@ function SideNav(__output, { currentPath }) {
 
 					const args = [
 						__output,
-
 						{
 							title: "Guide",
-
 							children: function children(__output) {
 								_$_.push_component();
 
@@ -1080,7 +1063,6 @@ function SideNav(__output, { currentPath }) {
 
 									const args = [
 										__output,
-
 										{
 											href: "/guide/app",
 											text: "Application",
@@ -1096,7 +1078,6 @@ function SideNav(__output, { currentPath }) {
 
 									const args = [
 										__output,
-
 										{
 											href: "/guide/syntax",
 											text: "Syntax",
@@ -1312,7 +1293,6 @@ export function ArticleWithChildrenThenSibling(__output) {
 
 			const args = [
 				__output,
-
 				{
 					children: function children(__output) {
 						_$_.push_component();
@@ -1414,7 +1394,6 @@ export function ArticleWithHtmlChildThenSibling(__output) {
 
 			const args = [
 				__output,
-
 				{
 					children: function children(__output) {
 						_$_.push_component();
@@ -1557,7 +1536,6 @@ export function InlineArticleWithHtmlChild(__output) {
 
 		const args = [
 			__output,
-
 			{
 				children: function children(__output) {
 					_$_.push_component();
@@ -1786,11 +1764,9 @@ export function DocsLayoutWithData(__output) {
 
 		const args = [
 			__output,
-
 			{
 				editPath: "docs/styling.md",
 				nextLink: { href: '/next', text: 'Next' },
-
 				children: function children(__output) {
 					_$_.push_component();
 					__output.push('<div');
@@ -1827,7 +1803,6 @@ export function DocsLayoutWithoutData(__output) {
 
 		const args = [
 			__output,
-
 			{
 				children: function children(__output) {
 					_$_.push_component();
@@ -1857,7 +1832,6 @@ export function DocsLayoutWithoutData(__output) {
 
 async function DocsLayoutExact(
 	__output,
-
 	{
 		children,
 		editPath = '',
@@ -2112,12 +2086,10 @@ export function DocsLayoutExactWithData(__output) {
 
 		const args = [
 			__output,
-
 			{
 				editPath: "docs/guide/styling.md",
 				prevLink: { href: '/prev', text: 'Previous' },
 				nextLink: { href: '/next', text: 'Next' },
-
 				toc: [
 					{ href: '#intro', text: 'Introduction' },
 					{ href: '#usage', text: 'Usage' }
@@ -2163,13 +2135,11 @@ export function DocsLayoutExactWithoutData(__output) {
 
 		const args = [
 			__output,
-
 			{
 				editPath,
 				prevLink,
 				nextLink,
 				toc,
-
 				children: function children(__output) {
 					_$_.push_component();
 					__output.push('<div');
@@ -2336,10 +2306,8 @@ export function NestedTemplateInLayout(__output) {
 
 		const args = [
 			__output,
-
 			{
 				data: doc,
-
 				children: function children(__output) {
 					_$_.push_component();
 					__output.push('<div');
