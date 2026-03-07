@@ -702,7 +702,9 @@ function flush_microtasks() {
 		}
 	}
 
+	flush_count++;
 	if (flush_count > 1001) {
+		flush_count = 0;
 		return;
 	}
 	var previous_queued_root_blocks = queued_root_blocks;
