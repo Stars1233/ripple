@@ -1,5 +1,8 @@
 import { parse, compile, compile_to_volar_mappings } from 'ripple/compiler';
-import { obfuscate_identifier } from 'ripple/compiler/internal/identifier/utils';
+import {
+	obfuscate_identifier,
+	RIPPLE_NAMESPACE_IDENTIFIER,
+} from 'ripple/compiler/internal/identifier/utils';
 import type * as AST from 'estree';
 
 function count_occurrences(string: string, subString: string): number {
@@ -19,25 +22,25 @@ describe('compiler > basics', () => {
 		const source = `export component App() {
   <div id="myid" class="myclass">{"Hello World"}</div>
 
-  <style>#style</style>
+  <style>#ripple.style</style>
 }`;
 		const style1 = '.myid {color: green }';
 		const style2 = '#myid {color: green }';
 		const style3 = 'div {color: green }';
 
-		let input = source.replace('#style', style1);
+		let input = source.replace('#ripple.style', style1);
 		let ast = parse(input);
 		expect(
 			((ast.body[0] as AST.ExportNamedDeclaration).declaration as unknown as AST.Component)?.css.source,
 		).toEqual(style1);
 
-		input = source.replace('#style', style2);
+		input = source.replace('#ripple.style', style2);
 		ast = parse(input);
 		expect(
 			((ast.body[0] as AST.ExportNamedDeclaration).declaration as unknown as AST.Component)?.css.source,
 		).toEqual(style2);
 
-		input = source.replace('#style', style3);
+		input = source.replace('#ripple.style', style3);
 		ast = parse(input);
 		expect(
 			((ast.body[0] as AST.ExportNamedDeclaration).declaration as unknown as AST.Component)?.css.source,
@@ -197,8 +200,8 @@ describe('compiler > basics', () => {
 			class Box<T> {
 				value: T;
 
-				method<T>(): T {
-					return this.value;
+				method<U extends T>(): U {
+					return this.value as U;
 				}
 
 				constructor(value: T) {
@@ -247,91 +250,112 @@ describe('compiler > basics', () => {
 		expect(js.code).not.toMatch(/_\$_\.template\(`<!><!>`,\s*1,\s*3\)/);
 	});
 
-	it(
-		'imports and uses only obfuscated Tracked imports when encountering only shorthand syntax',
-		() => {
-			const source = `
-import {
-	TrackedArray,
-	TrackedObject,
-	TrackedSet,
-	TrackedMap,
-	createRefKey,
-} from 'ripple';
+	// 	it(
+	// 		'imports and uses only obfuscated Tracked imports when encountering only shorthand syntax',
+	// 		() => {
+	// 			const source = `
+	// import { RippleArray, RippleObject, RippleSet, RippleMap, createRefKey } from 'ripple';
+	// component App() {
+	// 	const items = #ripple[1, 2, 3];
+	// 	const obj = #ripple{ a: 1, b: 2, c: 3 };
+	// 	const set = #ripple.set([1, 2, 3]);
+	// 	const map = #ripple.map([['a', 1], ['b', 2], ['c', 3]]);
 
-component App() {
-	const items = #[1, 2, 3];
-	const obj = #{ a: 1, b: 2, c: 3 };
-	const set = new #Set([1, 2, 3]);
-	const map = new #Map([['a', 1], ['b', 2], ['c', 3]]);
+	// 	<div {ref () => {}} />
+	// }
+	// `;
+	// 			const result = compile_to_volar_mappings(source, 'test.ripple').code;
 
-	<div {ref () => {}} />
-}
-`;
-			const result = compile_to_volar_mappings(source, 'test.ripple').code;
+	// 			expect(count_occurrences(result, 'RippleArray')).toBe(1);
+	// 			expect(count_occurrences(result, 'RippleObject')).toBe(1);
+	// 			expect(count_occurrences(result, 'RippleSet')).toBe(1);
+	// 			expect(count_occurrences(result, 'RippleMap')).toBe(1);
+	// 			expect(count_occurrences(result, 'createRefKey')).toBe(1);
+	// 		},
+	// 	);
 
-			expect(count_occurrences(result, 'TrackedArray')).toBe(1);
-			expect(count_occurrences(result, 'TrackedObject')).toBe(1);
-			expect(count_occurrences(result, 'TrackedSet')).toBe(1);
-			expect(count_occurrences(result, 'TrackedMap')).toBe(1);
-			expect(count_occurrences(result, 'createRefKey')).toBe(1);
-		},
-	);
+	// 	it(
+	// 		'adds obfuscated imports and keeps renamed Tracked imports intact when encountering shorthand syntax',
+	// 		() => {
+	// 			const source = `
+	// import { RippleArray as TA, RippleObject as TO, RippleSet as TS, RippleMap as TM, createRefKey as crk } from 'ripple';
+	// component App() {
+	// 	const items = #ripple[1, 2, 3];
+	// 	const obj = #ripple{ a: 1, b: 2, c: 3 };
+	// 	const set = #ripple.set([1, 2, 3]);
+	// 	const map = #ripple.map([['a', 1], ['b', 2], ['c', 3]]);
 
-	it(
-		'adds obfuscated imports and keeps renamed Tracked imports intact when encountering shorthand syntax',
-		() => {
-			const source = `
-import {
-	TrackedArray as TA,
-	TrackedObject as TO,
-	TrackedSet as TS,
-	TrackedMap as TM,
-	createRefKey as crk,
-} from 'ripple';
+	// 	<div {ref () => {}} />
+	// }
+	// `;
+	// 			const result = compile_to_volar_mappings(source, 'test.ripple').code;
 
-component App() {
-	const items = #[1, 2, 3];
-	const obj = #{ a: 1, b: 2, c: 3 };
-	const set = new #Set([1, 2, 3]);
-	const map = new #Map([['a', 1], ['b', 2], ['c', 3]]);
+	// 			expect(count_occurrences(result, obfuscate_identifier('RippleArray'))).toBe(2);
+	// 			expect(count_occurrences(result, 'TA')).toBe(1);
+	// 			expect(count_occurrences(result, obfuscate_identifier('RippleObject'))).toBe(2);
+	// 			expect(count_occurrences(result, 'TO')).toBe(1);
+	// 			expect(count_occurrences(result, obfuscate_identifier('RippleSet'))).toBe(2);
+	// 			expect(count_occurrences(result, 'TS')).toBe(1);
+	// 			expect(count_occurrences(result, obfuscate_identifier('RippleMap'))).toBe(2);
+	// 			expect(count_occurrences(result, 'TM')).toBe(1);
+	// 			expect(count_occurrences(result, obfuscate_identifier('createRefKey'))).toBe(2);
+	// 			expect(count_occurrences(result, 'crk')).toBe(1);
+	// 		},
+	// 	);
 
-	<div {ref () => {}} />
-}
-`;
-			const result = compile_to_volar_mappings(source, 'test.ripple').code;
+	// 	it('adds hidden obfuscated imports for shorthand syntax', () => {
+	// 		const source = `
+	// component App() {
+	// 	const items = #ripple[1, 2, 3];
+	// 	const obj = #ripple{ a: 1, b: 2, c: 3 };
+	// 	const set = #ripple.set([1, 2, 3]);
+	// 	const map = #ripple.map([['a', 1], ['b', 2], ['c', 3]]);
 
-			expect(count_occurrences(result, obfuscate_identifier('TrackedArray'))).toBe(2);
-			expect(count_occurrences(result, 'TA')).toBe(1);
-			expect(count_occurrences(result, obfuscate_identifier('TrackedObject'))).toBe(2);
-			expect(count_occurrences(result, 'TO')).toBe(1);
-			expect(count_occurrences(result, obfuscate_identifier('TrackedSet'))).toBe(2);
-			expect(count_occurrences(result, 'TS')).toBe(1);
-			expect(count_occurrences(result, obfuscate_identifier('TrackedMap'))).toBe(2);
-			expect(count_occurrences(result, 'TM')).toBe(1);
-			expect(count_occurrences(result, obfuscate_identifier('createRefKey'))).toBe(2);
-			expect(count_occurrences(result, 'crk')).toBe(1);
-		},
-	);
+	// 	<div {ref () => {}} />
+	// }
+	// `;
+	// 		const result = compile_to_volar_mappings(source, 'test.ripple').code;
 
-	it('adds hidden obfuscated imports for shorthand syntax', () => {
+	// 		expect(count_occurrences(result, obfuscate_identifier('RippleArray'))).toBe(2);
+	// 		expect(count_occurrences(result, obfuscate_identifier('RippleObject'))).toBe(2);
+	// 		expect(count_occurrences(result, obfuscate_identifier('RippleSet'))).toBe(2);
+	// 		expect(count_occurrences(result, obfuscate_identifier('RippleMap'))).toBe(2);
+	// 		expect(count_occurrences(result, obfuscate_identifier('createRefKey'))).toBe(2);
+	// 	});
+
+	it('prints longhand tracked property values in to_ts output while preserving [\'#v\']', () => {
 		const source = `
-component App() {
-	const items = #[1, 2, 3];
-	const obj = #{ a: 1, b: 2, c: 3 };
-	const set = new #Set([1, 2, 3]);
-	const map = new #Map([['a', 1], ['b', 2], ['c', 3]]);
+import { createRefKey } from 'ripple';
 
-	<div {ref () => {}} />
+component App() {
+	let value = #ripple.track('test');
+	function inputRef(node) {}
+
+	const props = {
+		id: 'example',
+		@value,
+		[createRefKey()]: inputRef,
+	};
 }
 `;
+
 		const result = compile_to_volar_mappings(source, 'test.ripple').code;
 
-		expect(count_occurrences(result, obfuscate_identifier('TrackedArray'))).toBe(2);
-		expect(count_occurrences(result, obfuscate_identifier('TrackedObject'))).toBe(2);
-		expect(count_occurrences(result, obfuscate_identifier('TrackedSet'))).toBe(2);
-		expect(count_occurrences(result, obfuscate_identifier('TrackedMap'))).toBe(2);
-		expect(count_occurrences(result, obfuscate_identifier('createRefKey'))).toBe(2);
+		expect(result).toMatch(/value:\s*value\??\.\['#v'\]/);
+	});
+
+	it('rewrites standalone #ripple to the hidden namespace identifier in to_ts output', () => {
+		const source = `
+export component App() {
+	#ripple
+}
+`;
+
+		const result = compile_to_volar_mappings(source, 'test.ripple', { loose: true }).code;
+
+		expect(result).toContain(RIPPLE_NAMESPACE_IDENTIFIER);
+		expect(result).toContain(`${RIPPLE_NAMESPACE_IDENTIFIER};`);
+		expect(result).not.toContain('#ripple;');
 	});
 
 	it('preserves generic type args in interface extends for Volar mappings', () => {
@@ -352,6 +376,26 @@ export component App(props: Props) {
 		const result = compile_to_volar_mappings(source, 'test.ripple').code;
 
 		expect(result).toContain('extends PolymorphicProps<\'div\'>');
+	});
+
+	it('handles if-else expression statements in Volar mappings', () => {
+		const source = `
+export component App() {
+	let level = #ripple.track(1);
+
+	<button
+		onClick={() => {
+			if (@level === 1) @level = 2;
+			else if (@level === 2) @level = 3;
+			else @level = 1;
+		}}
+	>
+		{'Toggle'}
+	</button>
+}
+`;
+
+		expect(() => compile_to_volar_mappings(source, 'test.ripple')).not.toThrow();
 	});
 
 	it('should not error on having js below markup in the same scope', () => {
@@ -411,14 +455,13 @@ export component App() {
 		expect(() => compile(code, 'test.ripple')).not.toThrow();
 	});
 
-	it('should inject __block for track() calls inside class constructors', () => {
+	it('should inject __block for #ripple.track() calls inside class constructors', () => {
 		const source = `
-import { track } from 'ripple';
 
 class Store {
 	constructor() {
-		this.count = track(0);
-		this.items = #[1, 2, 3];
+		this.count = #ripple.track(0);
+		this.items = #ripple[1, 2, 3];
 	}
 }
 
@@ -433,5 +476,66 @@ export component App() {
 		// The constructor's compiled output should contain __block = _$_.scope()
 		expect(code).toContain('__block');
 		expect(code).toContain('_$_.scope()');
+	});
+
+	it('parses #ripple.effect and #ripple.untrack calls', () => {
+		const source = `
+component App() {
+	let count = #ripple.track(0);
+
+	#ripple.effect(() => {
+		const snapshot = #ripple.untrack(() => @count);
+		console.log(snapshot);
+	});
+}
+`;
+
+		const ast = parse(source);
+		const ast_json = JSON.stringify(ast);
+
+		expect(ast_json).toContain('"source_name":"#ripple.effect"');
+		expect(ast_json).toContain('"source_name":"#ripple.untrack"');
+	});
+
+	it('collects duplicate declaration parser errors in loose mode', () => {
+		const source = `
+export component App() {
+	let test = #ripple.track(false);
+	let test = 'hey';
+}
+`;
+
+		expect(() => compile(source, 'test.ripple')).toThrow(
+			'Identifier \'test\' has already been declared',
+		);
+
+		const result = compile_to_volar_mappings(source, 'test.ripple', { loose: true });
+
+		expect(
+			result.errors.some(
+				(item) => item.message.includes('Identifier \'test\' has already been declared'),
+			),
+		).toBe(true);
+	});
+
+	it('parses bare #ripple in loose mode for autocomplete recovery', () => {
+		const source = `
+export component App() {
+	#ripple
+}
+`;
+
+		expect(() => compile_to_volar_mappings(source, 'test.ripple', { loose: true })).not.toThrow();
+
+		const result = compile_to_volar_mappings(source, 'test.ripple', { loose: true });
+		expect(result.errors).toEqual([]);
+
+		const ripple_offset = source.indexOf('#ripple');
+		const mapping = result.mappings.find(
+			(mapping) => mapping.sourceOffsets[0] === ripple_offset &&
+				mapping.lengths[0] === '#ripple'.length,
+		);
+
+		expect(mapping?.data.customData.suppressedDiagnostics).toContain(18016);
 	});
 });

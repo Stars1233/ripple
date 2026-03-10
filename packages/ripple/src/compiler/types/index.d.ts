@@ -13,7 +13,25 @@ interface BaseNodeMetaData {
 	scoped?: boolean;
 	path: AST.Node[];
 	has_template?: boolean;
-	source_name?: string | '#Map' | '#Set' | '#server' | '#style';
+	source_name?:
+		| string
+		| '#ripple'
+		| '#ripple.map'
+		| '#ripple.set'
+		| '#ripple.server'
+		| '#ripple.style'
+		| '#ripple.array'
+		| '#ripple.object'
+		| '#ripple.effect'
+		| '#ripple.track'
+		| '#ripple.trackSplit'
+		| '#ripple.untrack'
+		| '#ripple.url'
+		| '#ripple.urlSearchParams'
+		| '#ripple.date'
+		| '#ripple.mediaQuery'
+		| '#ripple.context'
+		| '#ripple.validate';
 	is_capitalized?: boolean;
 	has_await?: boolean;
 	commentContainerId?: number;
@@ -62,6 +80,12 @@ declare module 'estree' {
 	}
 	interface ArrowFunctionExpression extends FunctionLikeTS {
 		metadata: FunctionMetaData;
+	}
+
+	interface NewExpression {
+		metadata: BaseNodeMetaData & {
+			skipNewMapping?: boolean;
+		};
 	}
 
 	type Accessibility = 'public' | 'protected' | 'private'; // missing in acorn-typescript types
@@ -136,10 +160,8 @@ declare module 'estree' {
 	}
 
 	interface ExpressionMap {
-		TrackedArrayExpression: TrackedArrayExpression;
-		TrackedObjectExpression: TrackedObjectExpression;
-		TrackedMapExpression: TrackedMapExpression;
-		TrackedSetExpression: TrackedSetExpression;
+		RippleArrayExpression: RippleArrayExpression;
+		RippleObjectExpression: RippleObjectExpression;
 		TrackedExpression: TrackedExpression;
 		StyleIdentifier: StyleIdentifier;
 		ServerIdentifier: ServerIdentifier;
@@ -332,8 +354,8 @@ declare module 'estree' {
 	/**
 	 * Tracked Expressions
 	 */
-	interface TrackedArrayExpression extends Omit<AST.ArrayExpression, 'type'> {
-		type: 'TrackedArrayExpression';
+	interface RippleArrayExpression extends Omit<AST.ArrayExpression, 'type'> {
+		type: 'RippleArrayExpression';
 		elements: (AST.Expression | AST.SpreadElement | null)[];
 	}
 
@@ -342,19 +364,9 @@ declare module 'estree' {
 		type: 'TrackedExpression';
 	}
 
-	interface TrackedObjectExpression extends Omit<AST.ObjectExpression, 'type'> {
-		type: 'TrackedObjectExpression';
+	interface RippleObjectExpression extends Omit<AST.ObjectExpression, 'type'> {
+		type: 'RippleObjectExpression';
 		properties: (AST.Property | AST.SpreadElement)[];
-	}
-
-	interface TrackedMapExpression extends AST.BaseExpression {
-		type: 'TrackedMapExpression';
-		arguments: (AST.Expression | AST.SpreadElement)[];
-	}
-
-	interface TrackedSetExpression extends AST.BaseExpression {
-		type: 'TrackedSetExpression';
-		arguments: (AST.Expression | AST.SpreadElement)[];
 	}
 
 	/**
@@ -1146,7 +1158,7 @@ export interface Binding {
 	metadata: {
 		is_dynamic_component?: boolean;
 		pattern?: AST.Identifier;
-		is_tracked_object?: boolean;
+		is_ripple_object?: boolean;
 	} | null;
 	/** Kind of binding */
 	kind: BindingKind;
@@ -1171,6 +1183,25 @@ export interface ScopeRoot {
 	/** Generate unique identifier name */
 	unique(preferred_name: string): AST.Identifier;
 }
+
+export interface ScopeConstructorInterface {
+	root: ScopeRoot;
+	parent: ScopeInterface | null;
+	porous: boolean;
+	error_options: {
+		loose: boolean;
+		errors: RippleCompileError[];
+		filename: string;
+		comments?: AST.CommentWithLocation[];
+	};
+}
+
+export type ScopeConstructorParameters = [
+	root: ScopeConstructorInterface['root'],
+	parent: ScopeConstructorInterface['parent'],
+	porous: ScopeConstructorInterface['porous'],
+	error_options: ScopeConstructorInterface['error_options'],
+];
 
 /**
  * Lexical scope for variable bindings

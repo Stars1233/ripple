@@ -25,8 +25,10 @@ import {
 	normalize_children,
 	is_binding_function,
 	is_element_dynamic,
+	is_ripple_track_call,
 	hash,
 	flatten_switch_consequent,
+	get_ripple_namespace_call_name,
 } from '../../../utils.js';
 import { escape } from '../../../../utils/escaping.js';
 import { is_event_attribute } from '../../../../utils/events.js';
@@ -450,25 +452,75 @@ const visitors = {
 		if (!context.state.to_ts) {
 			delete node.typeArguments;
 		}
+
+		const callee = node.callee;
+		const source_name = callee.type === 'Identifier' ? callee.metadata?.source_name : undefined;
+		const ripple_runtime_method = get_ripple_namespace_call_name(source_name);
+
+		if (ripple_runtime_method !== null) {
+			return {
+				...node,
+				callee: b.member(b.id('_$_'), b.id(ripple_runtime_method)),
+				arguments: /** @type {(AST.Expression | AST.SpreadElement)[]} */ ([
+					...node.arguments.map((arg) => context.visit(arg)),
+				]),
+			};
+		}
+
+		if (is_ripple_track_call(callee, context)) {
+			const track_method_name =
+				callee.type === 'Identifier'
+					? callee.name === 'trackSplit'
+						? 'track_split'
+						: 'track'
+					: callee.type === 'MemberExpression' && callee.property.type === 'Identifier'
+						? callee.property.name === 'trackSplit'
+							? 'track_split'
+							: 'track'
+						: 'track';
+
+			return {
+				...node,
+				callee: b.member(b.id('_$_'), b.id(track_method_name)),
+				arguments: /** @type {(AST.Expression | AST.SpreadElement)[]} */ (
+					node.arguments.map((arg) => context.visit(arg))
+				),
+			};
+		}
+
+		// Check for more than two nested level calls, like #ripple.array.from()
+		if (
+			callee.type === 'MemberExpression' &&
+			callee.object.metadata?.source_name?.startsWith('#ripple.') &&
+			callee.object.type === 'Identifier' &&
+			callee.property.type === 'Identifier'
+		) {
+			const object = callee.object;
+			const property = callee.property;
+			const source_name = /** @type {string} */ (object.metadata?.source_name);
+
+			const method_name = get_ripple_namespace_call_name(source_name);
+			if (method_name !== null) {
+				return b.member(
+					b.id('_$_'),
+					b.member(
+						b.id(method_name),
+						b.call(
+							b.id(property.name),
+							.../** @type {(AST.Expression | AST.SpreadElement)[]} */ (
+								node.arguments.map((arg) => context.visit(arg))
+							),
+						),
+					),
+				);
+			}
+		}
+
 		return context.next();
 	},
 
 	NewExpression(node, context) {
-		// Special handling for TrackedMapExpression and TrackedSetExpression
-		// When source is "new #Map(...)", the callee is TrackedMapExpression with empty arguments
-		// and the actual arguments are in NewExpression.arguments
 		const callee = node.callee;
-		if (callee.type === 'TrackedMapExpression' || callee.type === 'TrackedSetExpression') {
-			// Use NewExpression's arguments (the callee has empty arguments from parser)
-			const argsToUse = node.arguments.length > 0 ? node.arguments : callee.arguments;
-			// For SSR, use regular Map/Set
-			const constructorName = callee.type === 'TrackedMapExpression' ? 'Map' : 'Set';
-			return b.new(
-				b.id(constructorName),
-				undefined,
-				.../** @type {AST.Expression[]} */ (argsToUse.map((arg) => context.visit(arg))),
-			);
-		}
 
 		if (!context.state.to_ts) {
 			delete node.typeArguments;
@@ -1511,7 +1563,7 @@ const visitors = {
 		return b.call('_$_.get', /** @type {AST.Expression} */ (context.visit(node.argument)));
 	},
 
-	TrackedObjectExpression(node, context) {
+	RippleObjectExpression(node, context) {
 		// For SSR, we just evaluate the object as-is since there's no reactivity
 		return b.object(
 			/** @type {(AST.Property | AST.SpreadElement)[]} */
@@ -1519,12 +1571,10 @@ const visitors = {
 		);
 	},
 
-	TrackedArrayExpression(node, context) {
-		// For SSR, we just evaluate the array as-is since there's no reactivity
-		return b.array(
-			/** @type {(AST.Expression | AST.SpreadElement)[]} */
-			(
-				/** @param {AST.Node} el */
+	RippleArrayExpression(node, context) {
+		return b.call(
+			'_$_.ripple_array',
+			.../** @type {(AST.Expression | AST.SpreadElement)[]} */ (
 				node.elements.map((el) => context.visit(/** @type {AST.Node} */ (el)))
 			),
 		);

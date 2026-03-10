@@ -12,9 +12,9 @@ let init = false;
 /**
  * @template T
  * @extends {Set<T>}
- * @returns {TrackedSet<T>}
+ * @returns {RippleSet<T>}
  */
-export class TrackedSet extends Set {
+export class RippleSet extends Set {
 	/** @type {Tracked} */
 	#tracked_size;
 	/** @type {Map<T, Tracked>} */
@@ -49,7 +49,7 @@ export class TrackedSet extends Set {
 	 * @returns {void}
 	 */
 	#init() {
-		var proto = TrackedSet.prototype;
+		var proto = RippleSet.prototype;
 		var set_proto = Set.prototype;
 
 		for (const method of introspect_methods) {
@@ -75,7 +75,7 @@ export class TrackedSet extends Set {
 			) {
 				this.size;
 
-				if (other instanceof TrackedSet) {
+				if (other instanceof RippleSet) {
 					other.size;
 				}
 
@@ -94,11 +94,11 @@ export class TrackedSet extends Set {
 			) {
 				this.size;
 
-				if (other instanceof TrackedSet) {
+				if (other instanceof RippleSet) {
 					other.size;
 				}
 
-				return new TrackedSet(/** @type {any} */ (set_proto)[method].apply(this, [other, ...v]));
+				return new RippleSet(/** @type {any} */ (set_proto)[method].apply(this, [other, ...v]));
 			};
 		}
 	}
@@ -200,11 +200,11 @@ export class TrackedSet extends Set {
 }
 
 /**
- * @template V
+ * @template T
  * @param {Block} block
- * @param {...any} args
- * @returns {TrackedSet<V>}
+ * @param {Iterable<T>} [iterable]
+ * @returns {RippleSet<T>}
  */
-export function tracked_set(block, ...args) {
-	return with_scope(block, () => new TrackedSet(...args));
+export function ripple_set(block, iterable) {
+	return with_scope(block, () => new RippleSet(iterable));
 }

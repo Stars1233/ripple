@@ -1,18 +1,19 @@
-import { track, trackSplit, flushSync, effect, untrack } from 'ripple';
+import type { PropsWithChildren, Tracked } from 'ripple';
+import { flushSync } from 'ripple';
 
 describe('basic client > reactivity', () => {
 	it('renders multiple reactive lexical blocks', () => {
 		component Basic() {
 			<div>
 				let obj = {
-					count: track(0),
+					count: #ripple.track(0),
 				};
 
 				<span>{obj.@count}</span>
 			</div>
 			<div>
 				let b = {
-					count: track(0),
+					count: #ripple.track(0),
 				};
 
 				<button
@@ -53,27 +54,27 @@ describe('basic client > reactivity', () => {
 
 			<div>
 				let obj = {
-					count: track(0),
+					count: #ripple.track(0),
 				};
 
-				<span>{obj[@count]}</span>
+				<span>{obj.@[count]}</span>
 			</div>
 			<div>
 				let b = {
-					count: track(0),
+					count: #ripple.track(0),
 				};
 
 				<button
 					onClick={() => {
-						b[@count]--;
+						b.@[count]--;
 					}}
 				>
 					{'-'}
 				</button>
-				<span class="count">{b[@count]}</span>
+				<span class="count">{b.@[count]}</span>
 				<button
 					onClick={() => {
-						b[@count]++;
+						b.@[count]++;
 					}}
 				>
 					{'+'}
@@ -97,7 +98,7 @@ describe('basic client > reactivity', () => {
 
 	it('renders with computed reactive state', () => {
 		component Basic() {
-			let count = track(5);
+			let count = #ripple.track(5);
 
 			<div class="count">{@count}</div>
 			<div class="doubled">{@count * 2}</div>
@@ -134,11 +135,11 @@ describe('basic client > reactivity', () => {
 		let logs: string[] = [];
 
 		component App() {
-			let first = track(0);
-			let second = track(0);
+			let first = #ripple.track(0);
+			let second = #ripple.track(0);
 			const arr = [first, second];
 
-			const total = track(() => arr.reduce((a, b) => a + @b, 0));
+			const total = #ripple.track(() => arr.reduce((a, b) => a + @b, 0));
 
 			<button
 				onClick={() => {
@@ -155,7 +156,7 @@ describe('basic client > reactivity', () => {
 				{'second: ' + @second}
 			</button>
 
-			effect(() => {
+			#ripple.effect(() => {
 				let _arr: number[] = [];
 
 				arr.forEach((item) => {
@@ -165,7 +166,7 @@ describe('basic client > reactivity', () => {
 				logs.push(_arr.join(', '));
 			});
 
-			effect(() => {
+			#ripple.effect(() => {
 				if (arr.map((a) => @a).includes(1)) {
 					logs.push('arr includes 1');
 				}
@@ -210,7 +211,7 @@ describe('basic client > reactivity', () => {
 
 	it('uses track get and set where both mutate value', () => {
 		component App() {
-			let count = track(0, (v) => v + 1, (v) => v * 2);
+			let count = #ripple.track(0, (v) => v + 1, (v) => v * 2);
 
 			<div class="count">{@count}</div>
 			<button
@@ -236,7 +237,7 @@ describe('basic client > reactivity', () => {
 
 	it('uses track get and set where set only mutates value', () => {
 		component App() {
-			let count = track(1, (v) => v, (v) => v * 2);
+			let count = #ripple.track(1, (v) => v, (v) => v * 2);
 
 			<div class="count">{@count}</div>
 			<button
@@ -262,7 +263,7 @@ describe('basic client > reactivity', () => {
 
 	it('uses track get and set where get only mutates value', () => {
 		component App() {
-			let count = track(0, (v) => v + 1, (v) => v);
+			let count = #ripple.track(0, (v) => v + 1, (v) => v);
 
 			<div class="count">{@count}</div>
 			<button
@@ -290,7 +291,7 @@ describe('basic client > reactivity', () => {
 		let logs: number[] = [];
 
 		component App() {
-			let count = track(0, (v) => v, (next, prev) => {
+			let count = #ripple.track(0, (v) => v, (next, prev) => {
 				logs.push(prev, next);
 				return next;
 			});
@@ -313,11 +314,11 @@ describe('basic client > reactivity', () => {
 		expect(logs).toEqual([0, 1]);
 	});
 
-	it('doesn\'t error on mutating a tracked variable in track() setter', () => {
+	it('doesn\'t error on mutating a tracked variable in #ripple.track() setter', () => {
 		component Basic() {
-			let count = track(0);
+			let count = #ripple.track(0);
 
-			const doubled = track(0, undefined, (value) => {
+			const doubled = #ripple.track(0, undefined, (value) => {
 				@count += value;
 				return value;
 			});
@@ -334,9 +335,9 @@ describe('basic client > reactivity', () => {
 		let state: { count?: number } = {};
 
 		component Basic() {
-			let count = track(0);
+			let count = #ripple.track(0);
 
-			effect(() => {
+			#ripple.effect(() => {
 				state.count = @count;
 			});
 		}
@@ -358,10 +359,10 @@ describe('basic client > reactivity', () => {
 		} = {};
 
 		component Basic() {
-			let count = track(5);
+			let count = #ripple.track(5);
 
-			effect(() => {
-				untrack(() => {
+			#ripple.effect(() => {
+				#ripple.untrack(() => {
 					state.initialValue = @count;
 					state.preIncrement = ++@count;
 					state.postIncrement = @count++;
@@ -386,10 +387,10 @@ describe('basic client > reactivity', () => {
 	describe('track/trackSplit APIs', () => {
 		it('errors on invalid value as null for track with trackSplit', () => {
 			component App() {
-				let message = track('');
+				let message = #ripple.track('');
 
 				try {
-					const [a, b, rest] = trackSplit(null, ['a', 'b']);
+					const [a, b, rest] = #ripple.trackSplit(null, ['a', 'b']);
 				} catch (e) {
 					@message = (e as Error).message;
 				}
@@ -405,10 +406,10 @@ describe('basic client > reactivity', () => {
 
 		it('errors on invalid value as array for track with trackSplit', () => {
 			component App() {
-				let message = track('');
+				let message = #ripple.track('');
 
 				try {
-					const [a, b, rest] = trackSplit([1, 2, 3], ['a', 'b']);
+					const [a, b, rest] = #ripple.trackSplit([1, 2, 3], ['a', 'b']);
 				} catch (e) {
 					@message = (e as Error).message;
 				}
@@ -424,11 +425,11 @@ describe('basic client > reactivity', () => {
 
 		it('errors on invalid value as tracked for track with trackSplit', () => {
 			component App() {
-				const t = track({ a: 1, b: 2, c: 3 });
-				let message = track('');
+				const t = #ripple.track({ a: 1, b: 2, c: 3 });
+				let message = #ripple.track('');
 
 				try {
-					const [a, b, rest] = trackSplit(t, ['a', 'b']);
+					const [a, b, rest] = #ripple.trackSplit(t, ['a', 'b']);
 				} catch (e) {
 					@message = (e as Error).message;
 				}
@@ -444,7 +445,7 @@ describe('basic client > reactivity', () => {
 
 		it('returns undefined for non-existent props in track with trackSplit', () => {
 			component App() {
-				const [a, b, rest] = trackSplit({ a: 1, c: 1 }, ['a', 'b']);
+				const [a, b, rest] = #ripple.trackSplit({ a: 1, c: 1 }, ['a', 'b']);
 
 				<pre>{@a}</pre>
 				<pre>{String(@b)}</pre>
@@ -464,8 +465,8 @@ describe('basic client > reactivity', () => {
 
 		it('returns the same tracked object if plain track is called with a tracked object', () => {
 			component App() {
-				const t = track({ a: 1, b: 2, c: 3 });
-				const doublet = track(t);
+				const t = #ripple.track({ a: 1, b: 2, c: 3 });
+				const doublet = #ripple.track(t);
 
 				<pre>{t === doublet}</pre>
 			}
@@ -480,8 +481,8 @@ describe('basic client > reactivity', () => {
 			let logs: string[] = [];
 
 			component App() {
-				let count = track(0);
-				let name = track('Click Me');
+				let count = #ripple.track(0);
+				let name = #ripple.track('Click Me');
 
 				function buttonRef(el: HTMLButtonElement) {
 					logs.push('ref called');
@@ -493,7 +494,7 @@ describe('basic client > reactivity', () => {
 				<Child
 					class="my-button"
 					onClick={() => @name === 'Click Me' ? @name = 'Clicked' : @name = 'Click Me'}
-					{@count}
+					{count}
 					{ref buttonRef}
 				>
 					{@name}
@@ -502,8 +503,12 @@ describe('basic client > reactivity', () => {
 				<button onClick={() => @count++}>{'Increment Count'}</button>
 			}
 
-			component Child(props: PropsWithChildren<{ count: Tracked<number> }>) {
-				const [children, count, rest] = trackSplit(props, ['children', 'count']);
+			component Child(props: PropsWithChildren<{
+				count: Tracked<number>;
+				class: string;
+				onClick: () => void;
+			}>) {
+				const [children, count, rest] = #ripple.trackSplit(props, ['children', 'count']);
 
 				if (@count < 2) {
 					<button {...@rest}>

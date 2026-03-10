@@ -26,6 +26,7 @@ export {
 	destroy_block,
 	move_block,
 	root,
+	user_effect as effect,
 } from './blocks.js';
 
 export { event, render_event, delegate } from './events.js';
@@ -50,6 +51,8 @@ export {
 	update_pre,
 	update_property,
 	update_pre_property,
+	track,
+	track_split,
 	push_component,
 	pop_component,
 	untrack,
@@ -77,13 +80,28 @@ export { switch_block as switch } from './switch.js';
 
 export { template, append, text } from './template.js';
 
-export { tracked_array } from '../../array.js';
+export {
+	ripple_array,
+	ripple_array_from,
+	ripple_array_of,
+	ripple_array_from_async,
+} from '../../array.js';
 
-export { tracked_object } from '../../object.js';
+export { ripple_object } from '../../object.js';
 
-export { tracked_map } from '../../map.js';
+export { ripple_map } from '../../map.js';
 
-export { tracked_set } from '../../set.js';
+export { ripple_set } from '../../set.js';
+
+export { ripple_date } from '../../date.js';
+
+export { ripple_url } from '../../url.js';
+
+export { ripple_url_search_params } from '../../url-search-params.js';
+
+export { media_query } from '../../media-query.js';
+
+export { context } from './context.js';
 
 export { head } from './head.js';
 

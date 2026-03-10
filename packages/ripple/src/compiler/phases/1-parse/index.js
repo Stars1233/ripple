@@ -184,6 +184,53 @@ function RipplePlugin(config) {
 			}
 
 			/**
+			 * @param {number} position
+			 * @param {string} message
+			 */
+			#report_recoverable_error(position, message) {
+				const start = Math.max(0, Math.min(position, this.input.length));
+				const end = Math.min(this.input.length, start + 1);
+				const start_loc = acorn.getLineInfo(this.input, start);
+				const end_loc = acorn.getLineInfo(this.input, end);
+
+				error(
+					message,
+					this.#filename,
+					/** @type {AST.NodeWithLocation} */ ({
+						start,
+						end,
+						loc: {
+							start: start_loc,
+							end: end_loc,
+						},
+					}),
+					this.#loose ? this.#errors : undefined,
+				);
+			}
+
+			/**
+			 * In loose mode, keep parsing after duplicate declaration diagnostics so
+			 * editor tooling can continue producing AST and mappings.
+			 * @param {number} position
+			 * @param {string | { message?: string }} message
+			 */
+			raiseRecoverable(position, message) {
+				const error_message =
+					typeof message === 'string'
+						? message
+						: typeof message?.message === 'string'
+							? message.message
+							: String(message);
+
+				if (error_message.includes('has already been declared')) {
+					this.#report_recoverable_error(position, error_message);
+					return;
+				}
+
+				return super.raiseRecoverable(position, error_message);
+			}
+
+			/**
 			 * Override to allow single-parameter generic arrow functions without trailing comma.
 			 * By default, @sveltejs/acorn-typescript throws an error for `<T>() => {}` when JSX is enabled
 			 * because it can't disambiguate from JSX. However, the parser still parses it correctly
@@ -593,141 +640,72 @@ function RipplePlugin(config) {
 
 				if (code === 35) {
 					// # character
-					// Look ahead to see if this is followed by [ for tuple syntax or 'server' keyword
 					if (this.pos + 1 < this.input.length) {
-						const nextChar = this.input.charCodeAt(this.pos + 1);
-						if (nextChar === 91 || nextChar === 123) {
-							// [ or { character
-							// This is a tuple literal #[ or #{
-							// Consume both # and [ or {
-							++this.pos; // consume #
-							++this.pos; // consume [ or {
-							if (nextChar === 123) {
-								return this.finishToken(tt.braceL, '#{');
-							} else {
-								return this.finishToken(tt.bracketL, '#[');
+						/** @param {string} value */
+						const startsWith = (value) =>
+							this.input.slice(this.pos, this.pos + value.length) === value;
+						/** @param {number} length */
+						const char_after = (length) =>
+							this.pos + length < this.input.length ? this.input.charCodeAt(this.pos + length) : -1;
+						/** @param {number} ch */
+						const is_ripple_delimiter = (ch) =>
+							ch === 40 || // (
+							ch === 41 || // )
+							ch === 60 || // <
+							ch === 46 || // .
+							ch === 44 || // ,
+							ch === 59 || // ;
+							ch === 91 || // [
+							ch === 93 || // ]
+							ch === 123 || // {
+							ch === 125 || // }
+							ch === 32 || // space
+							ch === 9 || // tab
+							ch === 10 || // newline
+							ch === 13 || // carriage return
+							ch === -1; // EOF
+
+						if (startsWith('#ripple[')) {
+							this.pos += 8;
+							return this.finishToken(tt.bracketL, '#ripple[');
+						}
+
+						if (startsWith('#ripple{')) {
+							this.pos += 8;
+							return this.finishToken(tt.braceL, '#ripple{');
+						}
+
+						const ripple_keywords = [
+							'#ripple.map',
+							'#ripple.set',
+							'#ripple.array',
+							'#ripple.object',
+							'#ripple.track',
+							'#ripple.trackSplit',
+							'#ripple.untrack',
+							'#ripple.effect',
+							'#ripple.context',
+							'#ripple.date',
+							'#ripple.url',
+							'#ripple.urlSearchParams',
+							'#ripple.mediaQuery',
+							'#ripple.server',
+							'#ripple.style',
+							'#ripple.validate',
+						];
+
+						for (let i = 0; i < ripple_keywords.length; i++) {
+							const keyword = ripple_keywords[i];
+							if (startsWith(keyword) && is_ripple_delimiter(char_after(keyword.length))) {
+								this.pos += keyword.length;
+								return this.finishToken(tt.name, keyword);
 							}
 						}
 
-						// Check if this is #Map or #Set
-						if (this.input.slice(this.pos, this.pos + 4) === '#Map') {
-							const charAfter =
-								this.pos + 4 < this.input.length ? this.input.charCodeAt(this.pos + 4) : -1;
-							if (charAfter === 40 || charAfter === 60) {
-								// ( or < character (for generics like #Map<string, number>)
-								this.pos += 4; // consume '#Map'
-								return this.finishToken(tt.name, '#Map');
-							} else if (this.#loose) {
-								// In loose mode, produce token even without parens (incomplete syntax)
-								this.pos += 4; // consume '#Map'
-								return this.finishToken(tt.name, '#Map');
-							}
+						if (this.#loose && startsWith('#ripple') && is_ripple_delimiter(char_after(7))) {
+							this.pos += 7;
+							return this.finishToken(tt.name, '#ripple');
 						}
-						if (this.input.slice(this.pos, this.pos + 4) === '#Set') {
-							const charAfter =
-								this.pos + 4 < this.input.length ? this.input.charCodeAt(this.pos + 4) : -1;
-							if (charAfter === 40 || charAfter === 60) {
-								// ( or < character (for generics like #Set<number>)
-								this.pos += 4; // consume '#Set'
-								return this.finishToken(tt.name, '#Set');
-							} else if (this.#loose) {
-								// In loose mode, produce token even without parens (incomplete syntax)
-								this.pos += 4; // consume '#Set'
-								return this.finishToken(tt.name, '#Set');
-							}
-						}
-
-						// Check if this is #server
-						if (this.input.slice(this.pos, this.pos + 7) === '#server') {
-							// Check that next char after 'server' is whitespace, {, . (dot), or EOF
-							const charAfter =
-								this.pos + 7 < this.input.length ? this.input.charCodeAt(this.pos + 7) : -1;
-							if (
-								charAfter === 123 || // {
-								charAfter === 46 || // . (dot)
-								charAfter === 32 || // space
-								charAfter === 9 || // tab
-								charAfter === 10 || // newline
-								charAfter === 13 || // carriage return
-								charAfter === -1 // EOF
-							) {
-								// { or . or whitespace or EOF
-								this.pos += 7; // consume '#server'
-								return this.finishToken(tt.name, '#server');
-							}
-						}
-
-						if (this.input.slice(this.pos, this.pos + 6) === '#style') {
-							// Check that next char after 'style' is . (dot), [, whitespace, or EOF
-							const charAfter =
-								this.pos + 6 < this.input.length ? this.input.charCodeAt(this.pos + 6) : -1;
-							if (
-								charAfter === 46 || // . (dot)
-								charAfter === 91 || // [
-								charAfter === 32 || // space
-								charAfter === 9 || // tab
-								charAfter === 10 || // newline
-								charAfter === 13 || // carriage return
-								charAfter === -1 // EOF
-							) {
-								// { or . or whitespace or EOF
-								this.pos += 6; // consume '#style'
-								return this.finishToken(tt.name, '#style');
-							}
-						}
-
-						// Check if this is an invalid #Identifier pattern
-						// Valid patterns: #[, #{, #Map(, #Map<, #Set(, #Set<, #server, #style
-						// If we see # followed by an uppercase letter that isn't Map or Set, it's an error
-						// In loose mode, allow incomplete identifiers like #M, #Ma, #S, #Se for autocomplete
-						if (nextChar >= 65 && nextChar <= 90) {
-							// A-Z
-							// Extract the identifier name
-							let identEnd = this.pos + 1;
-							while (identEnd < this.input.length) {
-								const ch = this.input.charCodeAt(identEnd);
-								if (
-									(ch >= 65 && ch <= 90) ||
-									(ch >= 97 && ch <= 122) ||
-									(ch >= 48 && ch <= 57) ||
-									ch === 95
-								) {
-									// A-Z, a-z, 0-9, _
-									identEnd++;
-								} else {
-									break;
-								}
-							}
-							const identName = this.input.slice(this.pos + 1, identEnd);
-							if (identName !== 'Map' && identName !== 'Set') {
-								// In loose mode, allow incomplete identifiers (prefixes of Map/Set)
-								// This supports autocomplete scenarios where user is still typing
-								const isIncompleteMap = 'Map'.startsWith(identName);
-								const isIncompleteSet = 'Set'.startsWith(identName);
-
-								if (!this.#loose || (!isIncompleteMap && !isIncompleteSet)) {
-									this.raise(
-										this.pos,
-										`Invalid tracked syntax '#${identName}'. Only #Map and #Set are currently supported using shorthand tracked syntax.`,
-									);
-								} else {
-									// In loose mode with valid prefix, consume the token and return it
-									// This allows the parser to handle incomplete syntax gracefully
-									this.pos = identEnd; // consume '#' + identifier
-									return this.finishToken(tt.name, '#' + identName);
-								}
-							}
-						}
-
-						// In loose mode, handle bare # or # followed by unrecognized characters
-						if (this.#loose) {
-							this.pos++; // consume '#'
-							return this.finishToken(tt.name, '#');
-						}
-					} else if (this.#loose) {
-						// In loose mode, handle bare # at EOF
-						this.pos++; // consume '#'
-						return this.finishToken(tt.name, '#');
 					}
 				}
 				if (code === 64) {
@@ -927,40 +905,66 @@ function RipplePlugin(config) {
 			}
 
 			/**
-			 * Parse expression atom - handles TrackedArray and TrackedObject literals
+			 * Parse expression atom - handles RippleArray and RippleObject literals
 			 * @type {Parse.Parser['parseExprAtom']}
 			 */
 			parseExprAtom(refDestructuringErrors, forNew, forInit) {
+				const lookahead_type = this.lookahead().type;
+				const is_next_call_token = lookahead_type === tt.parenL || lookahead_type === tt.relational;
+
 				// Check if this is @(expression) for unboxing tracked values
 				if (this.type === tt.parenL && this.value === '@(') {
 					return this.parseTrackedExpression();
 				}
 
-				// Check if this is #server identifier for server function calls
-				if (this.type === tt.name && this.value === '#server') {
+				// Check if this is #ripple.server identifier for server function calls
+				if (this.type === tt.name && this.value === '#ripple.server') {
 					const node = this.startNode();
 					this.next();
 					return /** @type {AST.ServerIdentifier} */ (this.finishNode(node, 'ServerIdentifier'));
 				}
 
-				if (this.type === tt.name && this.value === '#style') {
+				if (this.type === tt.name && this.value === '#ripple.style') {
 					const node = this.startNode();
 					this.next();
 					return /** @type {AST.StyleIdentifier} */ (this.finishNode(node, 'StyleIdentifier'));
 				}
 
-				// Check if this is #Map( or #Set(
-				if (this.type === tt.name && (this.value === '#Map' || this.value === '#Set')) {
-					const type = this.value === '#Map' ? 'TrackedMapExpression' : 'TrackedSetExpression';
-					return this.parseTrackedCollectionExpression(type);
+				if (this.type === tt.name && typeof this.value === 'string') {
+					const ripple_identifier_map = {
+						'#ripple.array': 'RippleArray',
+						'#ripple.object': 'RippleObject',
+						'#ripple.track': 'track',
+						'#ripple.trackSplit': 'trackSplit',
+						'#ripple.untrack': 'untrack',
+						'#ripple.effect': 'effect',
+						'#ripple.context': 'Context',
+						'#ripple.date': 'RippleDate',
+						'#ripple.map': 'RippleMap',
+						'#ripple.set': 'RippleSet',
+						'#ripple.url': 'RippleURL',
+						'#ripple.urlSearchParams': 'RippleURLSearchParams',
+						'#ripple.mediaQuery': 'MediaQuery',
+					};
+
+					const identifier_name =
+						ripple_identifier_map[/** @type {keyof typeof ripple_identifier_map} */ (this.value)];
+					if (identifier_name !== undefined) {
+						const node = /** @type {AST.Identifier} */ (this.startNode());
+						node.name = identifier_name;
+						node.metadata ??= { path: [] };
+						node.metadata.source_name = this.value;
+						this.next();
+						return this.finishNode(node, 'Identifier');
+					}
 				}
 
-				// In loose mode, handle incomplete #Map/#Set prefixes (e.g., #M, #Ma, #S, #Se)
+				// In loose mode, handle incomplete #ripple prefixes for autocomplete
 				if (
 					this.#loose &&
 					this.type === tt.name &&
 					typeof this.value === 'string' &&
-					this.value.startsWith('#')
+					this.value === '#ripple'
 				) {
 					// Return an Identifier node for incomplete tracked syntax
 					const node = /** @type {AST.Identifier} */ (this.startNode());
@@ -969,11 +973,11 @@ function RipplePlugin(config) {
 					return this.finishNode(node, 'Identifier');
 				}
 
-				// Check if this is a tuple literal starting with #[
-				if (this.type === tt.bracketL && this.value === '#[') {
-					return this.parseTrackedArrayExpression();
-				} else if (this.type === tt.braceL && this.value === '#{') {
-					return this.parseTrackedObjectExpression();
+				// Check if this is a tuple literal starting with #ripple[
+				if (this.type === tt.bracketL && this.value === '#ripple[') {
+					return this.parseRippleArrayExpression();
+				} else if (this.type === tt.braceL && this.value === '#ripple{') {
+					return this.parseRippleObjectExpression();
 				}
 
 				// Check if this is a component expression (e.g., in object literal values)
@@ -1077,79 +1081,11 @@ function RipplePlugin(config) {
 			}
 
 			/**
-			 * Parse `#Map(...)` or `#Set(...)` syntax for tracked collections
-			 * Creates a TrackedMap or TrackedSet node with the arguments property
-			 * @type {Parse.Parser['parseTrackedCollectionExpression']}
+			 * @type {Parse.Parser['parseRippleArrayExpression']}
 			 */
-			parseTrackedCollectionExpression(type) {
-				const node =
-					/** @type {(AST.TrackedMapExpression | AST.TrackedSetExpression) & AST.NodeWithLocation} */ (
-						this.startNode()
-					);
-				this.next(); // consume '#Map' or '#Set'
-
-				// Check if we should NOT consume the parentheses
-				// This happens when #Map/#Set appears as a callee in 'new #Map(...)'
-				// In this case, the parentheses and arguments belong to the NewExpression
-				// We detect this by checking if next token is '(' but we just consumed a token
-				// that came right after 'new' keyword (indicated by context or recent token)
-
-				// Simple heuristic: if the input around our start position looks like 'new #Map('
-				// then don't consume the parens
-				const beforeStart = this.input.substring(Math.max(0, node.start - 5), node.start);
-				const isAfterNew = /new\s*$/.test(beforeStart);
-
-				if (!isAfterNew) {
-					// If we reach here, it means #Map or #Set is being called without 'new'
-					// Throw a TypeError to match JavaScript class constructor behavior
-					const constructorName =
-						type === 'TrackedMapExpression' ? '#Map (TrackedMap)' : '#Set (TrackedSet)';
-					this.raise(
-						node.start,
-						`TypeError: Class constructor ${constructorName} cannot be invoked without 'new'`,
-					);
-				}
-
-				// Don't consume parens or generics - they belong to NewExpression
-				// When used as "new #Map(...)" the next token is '('
-				// When used as "new #Map<K,V>(...)" the next token is '<' (relational)
-				if (this.type === tt.parenL || (this.type === tt.relational && this.value === '<')) {
-					node.arguments = [];
-					return this.finishNode(node, type);
-				}
-
-				this.expect(tt.parenL); // expect '('
-
-				node.arguments = [];
-				// Parse arguments similar to function call arguments
-				let first = true;
-				while (!this.eat(tt.parenR)) {
-					if (!first) {
-						this.expect(tt.comma);
-						if (this.afterTrailingComma(tt.parenR)) break;
-					} else {
-						first = false;
-					}
-
-					if (this.type === tt.ellipsis) {
-						// Spread argument
-						const arg = this.parseSpread();
-						node.arguments.push(arg);
-					} else {
-						// Regular argument
-						node.arguments.push(this.parseMaybeAssign(false));
-					}
-				}
-
-				return this.finishNode(node, type);
-			}
-
-			/**
-			 * @type {Parse.Parser['parseTrackedArrayExpression']}
-			 */
-			parseTrackedArrayExpression() {
-				const node = /** @type {AST.TrackedArrayExpression} */ (this.startNode());
-				this.next(); // consume the '#['
+			parseRippleArrayExpression() {
+				const node = /** @type {AST.RippleArrayExpression} */ (this.startNode());
+				this.next(); // consume the '#ripple['
 
 				node.elements = [];
 
@@ -1179,15 +1115,15 @@ function RipplePlugin(config) {
 					}
 				}
 
-				return this.finishNode(node, 'TrackedArrayExpression');
+				return this.finishNode(node, 'RippleArrayExpression');
 			}
 
 			/**
-			 * @type {Parse.Parser['parseTrackedObjectExpression']}
+			 * @type {Parse.Parser['parseRippleObjectExpression']}
 			 */
-			parseTrackedObjectExpression() {
-				const node = /** @type {AST.TrackedObjectExpression} */ (this.startNode());
-				this.next(); // consume the '#{'
+			parseRippleObjectExpression() {
+				const node = /** @type {AST.RippleObjectExpression} */ (this.startNode());
+				this.next(); // consume the '#ripple{'
 
 				node.properties = [];
 
@@ -1214,7 +1150,7 @@ function RipplePlugin(config) {
 					}
 				}
 
-				return this.finishNode(node, 'TrackedObjectExpression');
+				return this.finishNode(node, 'RippleObjectExpression');
 			}
 
 			/**
@@ -1247,7 +1183,7 @@ function RipplePlugin(config) {
 					if (declareName) {
 						this.declareName(
 							node.id.name,
-							BINDING_TYPES.BIND_VAR,
+							BINDING_TYPES.BIND_FUNCTION,
 							/** @type {AST.NodeWithLocation} */ (node.id).start,
 						);
 					}
@@ -1256,7 +1192,7 @@ function RipplePlugin(config) {
 					if (declareName && node.id) {
 						this.declareName(
 							node.id.name,
-							BINDING_TYPES.BIND_VAR,
+							BINDING_TYPES.BIND_FUNCTION,
 							/** @type {AST.NodeWithLocation} */ (node.id).start,
 						);
 					}
@@ -2497,16 +2433,16 @@ function RipplePlugin(config) {
 					);
 				}
 
-				if (this.value === '#server') {
-					// Peek ahead to see if this is a server block (#server { ... }) vs
-					// a server identifier expression (#server.fn(), #server.fn().then())
+				if (this.value === '#ripple.server') {
+					// Peek ahead to see if this is a server block (#ripple.server { ... }) vs
+					// a server identifier expression (#ripple.server.fn(), #ripple.server.fn().then())
 					let peek_pos = this.end;
 					while (peek_pos < this.input.length && /\s/.test(this.input[peek_pos])) peek_pos++;
 					if (peek_pos < this.input.length && this.input.charCodeAt(peek_pos) === 123) {
 						// Next non-whitespace character is '{' — parse as server block
 						return this.parseServerBlock();
 					}
-					// Otherwise fall through to parse as expression statement (e.g., #server.fn().then(...))
+					// Otherwise fall through to parse as expression statement (e.g., #ripple.server.fn().then(...))
 				}
 
 				if (this.value === 'component') {
@@ -2969,12 +2905,12 @@ function get_comment_handlers(source, comments, index = 0) {
 								node_array = parent.consequent;
 							} else if (
 								parent.type === 'ArrayExpression' ||
-								parent.type === 'TrackedArrayExpression'
+								parent.type === 'RippleArrayExpression'
 							) {
 								node_array = parent.elements;
 							} else if (
 								parent.type === 'ObjectExpression' ||
-								parent.type === 'TrackedObjectExpression'
+								parent.type === 'RippleObjectExpression'
 							) {
 								node_array = parent.properties;
 							} else if (

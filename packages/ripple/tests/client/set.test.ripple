@@ -1,16 +1,16 @@
-import { flushSync, TrackedSet, track } from 'ripple';
+import { flushSync, RippleSet } from 'ripple';
 
-describe('TrackedSet', () => {
+describe('RippleSet', () => {
 	it('handles add and delete operations', () => {
 		component SetTest() {
-			let items = new TrackedSet([1, 2, 3]);
+			let items = new RippleSet([1, 2, 3]);
 
 			<button onClick={() => items.add(4)}>{'add'}</button>
 			<button onClick={() => items.delete(2)}>{'delete'}</button>
 			<Child {items} />
 		}
 
-		component Child({ items }: { items: TrackedSet<number> }) {
+		component Child({ items }: { items: RippleSet<number> }) {
 			<pre>{JSON.stringify(items)}</pre>
 			<pre>{items.size}</pre>
 		}
@@ -35,13 +35,13 @@ describe('TrackedSet', () => {
 
 	it('handles clear operation', () => {
 		component SetTest() {
-			let items = new TrackedSet([1, 2, 3]);
+			let items = new RippleSet([1, 2, 3]);
 
 			<button onClick={() => items.clear()}>{'clear'}</button>
 			<Child {items} />
 		}
 
-		component Child({ items }: { items: TrackedSet<number> }) {
+		component Child({ items }: { items: RippleSet<number> }) {
 			<pre>{JSON.stringify(items)}</pre>
 			<pre>{items.size}</pre>
 		}
@@ -59,8 +59,8 @@ describe('TrackedSet', () => {
 
 	it('handles has operation', () => {
 		component SetTest() {
-			let items = new TrackedSet([1, 2, 3]);
-			let hasValue = track(() => items.has(2));
+			let items = new RippleSet([1, 2, 3]);
+			let hasValue = #ripple.track(() => items.has(2));
 
 			<button onClick={() => items.delete(2)}>{'delete'}</button>
 			<pre>{@hasValue}</pre>
@@ -78,9 +78,9 @@ describe('TrackedSet', () => {
 		expect(container.querySelectorAll('pre')[0].textContent).toBe('false');
 	});
 
-	it('creates empty TrackedSet using #Set() shorthand syntax', () => {
+	it('creates empty RippleSet using #ripple.set() shorthand syntax', () => {
 		component SetTest() {
-			let items = new #Set();
+			let items = #ripple.set();
 
 			<button onClick={() => items.add(1)}>{'add'}</button>
 			<pre>{items.size}</pre>
@@ -97,10 +97,10 @@ describe('TrackedSet', () => {
 		expect(container.querySelector('pre').textContent).toBe('1');
 	});
 
-	it('creates TrackedSet with initial values using #Set() shorthand syntax', () => {
+	it('creates RippleSet with initial values using #ripple.set() shorthand syntax', () => {
 		component SetTest() {
-			let items = new #Set([1, 2, 3, 4]);
-			let hasValue = track(() => items.has(3));
+			let items = #ripple.set([1, 2, 3, 4]);
+			let hasValue = #ripple.track(() => items.has(3));
 
 			<button onClick={() => items.delete(3)}>{'delete'}</button>
 			<pre>{items.size}</pre>
@@ -120,10 +120,10 @@ describe('TrackedSet', () => {
 		expect(container.querySelectorAll('pre')[1].textContent).toBe('false');
 	});
 
-	it('handles all operations with #Set() shorthand syntax', () => {
+	it('handles all operations with #ripple.set() shorthand syntax', () => {
 		component SetTest() {
-			let items = new #Set([10, 20, 30]);
-			let values = track(() => Array.from(items.values()));
+			let items = #ripple.set([10, 20, 30]);
+			let values = #ripple.track(() => Array.from(items.values()));
 
 			<button onClick={() => items.add(40)}>{'add'}</button>
 			<button onClick={() => items.delete(20)}>{'delete'}</button>

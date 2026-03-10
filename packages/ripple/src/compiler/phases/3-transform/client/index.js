@@ -56,9 +56,11 @@ import {
 	is_inside_left_side_assignment,
 	hash,
 	flatten_switch_consequent,
+	get_ripple_namespace_call_name,
 } from '../../../utils.js';
 import {
 	CSS_HASH_IDENTIFIER,
+	RIPPLE_NAMESPACE_IDENTIFIER,
 	STYLE_IDENTIFIER,
 	SERVER_IDENTIFIER,
 	obfuscate_identifier,
@@ -343,15 +345,76 @@ function visit_title_element(node, context) {
 /**
  * @param {string} name
  * @param {TransformClientContext} context
+ * @param {boolean} [is_obfuscated]
  * @returns {string}
  */
-function set_hidden_import_from_ripple(name, context) {
-	name = obfuscate_identifier(name);
+function set_hidden_import_from_ripple(name, context, is_obfuscated = false) {
+	if (!is_obfuscated) {
+		name = obfuscate_identifier(name);
+	}
 	if (!context.state.imports.has(`import { ${name} } from 'ripple/compiler/internal/import'`)) {
 		context.state.imports.add(`import { ${name} } from 'ripple/compiler/internal/import'`);
 	}
 
 	return name;
+}
+
+/**
+ * @param {AST.NodeWithLocation} loc_info
+ * @param {number} [start_offset]
+ * @param {number} [length]
+ * @returns {AST.NodeWithLocation}
+ */
+function slice_loc_info(loc_info, start_offset = 0, length) {
+	if (length === undefined) {
+		length = loc_info.end - loc_info.start - start_offset;
+	}
+	return {
+		start: loc_info.start + start_offset,
+		end: loc_info.start + start_offset + length,
+		loc: {
+			start: {
+				line: loc_info.loc.start.line,
+				column: loc_info.loc.start.column + start_offset,
+			},
+			end: {
+				line: loc_info.loc.start.line,
+				column: loc_info.loc.start.column + start_offset + length,
+			},
+		},
+	};
+}
+
+/**
+ * @param {string} property_name
+ * @param {string} source_name
+ * @param {AST.NodeWithLocation} loc_info
+ * @param {TransformClientContext} context
+ * @returns {AST.MemberExpression}
+ */
+function build_ripple_namespace_member(property_name, source_name, loc_info, context) {
+	const namespace_alias = set_hidden_import_from_ripple(RIPPLE_NAMESPACE_IDENTIFIER, context, true);
+	const namespace_loc = slice_loc_info(loc_info, 0, '#ripple'.length);
+	const namespace_id = b.id(namespace_alias, namespace_loc);
+	namespace_id.metadata.source_name = '#ripple';
+
+	const property_loc = slice_loc_info(loc_info, '#ripple.'.length, property_name.length);
+	const property_id = b.id(property_name, property_loc);
+
+	return b.member(namespace_id, property_id, false, false, loc_info);
+}
+
+/**
+ * @param {string | undefined} name
+ * @returns {boolean}
+ */
+function ripple_namespace_requires_block(name) {
+	return (
+		name !== undefined &&
+		name !== '#ripple.effect' &&
+		name !== '#ripple.untrack' &&
+		name !== '#ripple.context'
+	);
 }
 
 /**
@@ -404,6 +467,17 @@ const visitors = {
 
 		if (is_reference(node, parent)) {
 			if (context.state.to_ts) {
+				if (node.metadata?.source_name === '#ripple' || node.name === '#ripple') {
+					const namespace_alias = set_hidden_import_from_ripple(
+						RIPPLE_NAMESPACE_IDENTIFIER,
+						context,
+						true,
+					);
+					const namespace_id = b.id(namespace_alias, /** @type {AST.NodeWithLocation} */ (node));
+					namespace_id.metadata.source_name = '#ripple';
+					return namespace_id;
+				}
+
 				if (node.tracked) {
 					// Check if this identifier is used as a dynamic component/element
 					// by checking if it has a capitalized name in metadata
@@ -468,13 +542,13 @@ const visitors = {
 
 	ServerIdentifier(node, context) {
 		const id = b.id(SERVER_IDENTIFIER);
-		id.metadata.source_name = '#server';
+		id.metadata.source_name = '#ripple.server';
 		return { ...node, ...id };
 	},
 
 	StyleIdentifier(node, context) {
 		const id = b.id(STYLE_IDENTIFIER);
-		id.metadata.source_name = '#style';
+		id.metadata.source_name = '#ripple.style';
 		return { ...node, ...id };
 	},
 
@@ -529,12 +603,55 @@ const visitors = {
 		}
 		const callee = node.callee;
 		const parent = context.path.at(-1);
+		const source_name = callee.type === 'Identifier' ? callee.metadata?.source_name : undefined;
+		const ripple_runtime_method = get_ripple_namespace_call_name(source_name);
+		const ripple_method_requires_block = ripple_namespace_requires_block(source_name);
 
 		if (context.state.metadata?.tracking === false) {
 			context.state.metadata.tracking = true;
 		}
 
+		if (!context.state.to_ts && ripple_runtime_method !== null) {
+			return {
+				...node,
+				callee: b.member(b.id('_$_'), b.id(ripple_runtime_method)),
+				arguments: /** @type {(AST.Expression | AST.SpreadElement)[]} */ ([
+					...(ripple_method_requires_block ? [b.id('__block')] : []),
+					...node.arguments.map((arg) => context.visit(arg)),
+				]),
+			};
+		}
+
+		if (context.state.to_ts && source_name?.startsWith('#ripple.')) {
+			const property_name = source_name.replace('#ripple.', '');
+			const namespace_member = build_ripple_namespace_member(
+				property_name,
+				source_name,
+				/** @type {AST.NodeWithLocation} */ (callee),
+				context,
+			);
+
+			return {
+				...node,
+				callee: namespace_member,
+				arguments: /** @type {(AST.Expression | AST.SpreadElement)[]} */ (
+					node.arguments.map((arg) => context.visit(arg))
+				),
+			};
+		}
+
 		if (!context.state.to_ts && is_ripple_track_call(callee, context)) {
+			const track_method_name =
+				callee.type === 'Identifier'
+					? callee.name === 'trackSplit'
+						? 'track_split'
+						: 'track'
+					: callee.type === 'MemberExpression' && callee.property.type === 'Identifier'
+						? callee.property.name === 'trackSplit'
+							? 'track_split'
+							: 'track'
+						: 'track';
+
 			if (callee.type === 'Identifier' && callee.name === 'track') {
 				if (node.arguments.length === 0) {
 					node.arguments.push(b.void0, b.void0, b.void0);
@@ -546,11 +663,69 @@ const visitors = {
 			}
 			return {
 				...node,
+				callee: b.member(b.id('_$_'), b.id(track_method_name)),
 				arguments: /** @type {(AST.Expression | AST.SpreadElement)[]} */ ([
 					...node.arguments.map((arg) => context.visit(arg)),
 					b.id('__block'),
 				]),
 			};
+		}
+
+		// Check for more than two nested level calls, like #ripple.array.from()
+		if (
+			callee.type === 'MemberExpression' &&
+			callee.object.metadata?.source_name?.startsWith('#ripple.') &&
+			callee.object.type === 'Identifier' &&
+			callee.property.type === 'Identifier'
+		) {
+			const object = callee.object;
+			const property = callee.property;
+			const source_name = /** @type {string} */ (object.metadata?.source_name);
+			const property_name = source_name.replace('#ripple.', '');
+
+			if (context.state.to_ts) {
+				// e.g. `#ripple.array`
+				const namespace_member = build_ripple_namespace_member(
+					property_name,
+					source_name,
+					/** @type {AST.NodeWithLocation} */ (node.callee),
+					context,
+				);
+
+				return /** @type {AST.CallExpression} */ ({
+					...node,
+					callee: {
+						...namespace_member,
+						// e.g. `array.from`
+						property: b.member(
+							/** @type {AST.Identifier} */ (namespace_member.property),
+							property,
+							false,
+							false,
+							slice_loc_info(/** @type {AST.NodeWithLocation} */ (node.callee), '#ripple.'.length),
+						),
+					},
+					arguments: node.arguments.map((arg) => context.visit(arg)),
+				});
+			} else {
+				const method_name = get_ripple_namespace_call_name(source_name);
+				const requires_block = ripple_namespace_requires_block(source_name);
+				if (method_name !== null) {
+					return b.member(
+						b.id('_$_'),
+						b.member(
+							b.id(method_name),
+							b.call(
+								b.id(property.name),
+								.../** @type {(AST.Expression | AST.SpreadElement)[]} */ ([
+									...(requires_block ? [b.id('__block')] : []),
+									...node.arguments.map((arg) => context.visit(arg)),
+								]),
+							),
+						),
+					);
+				}
+			}
 		}
 
 		if (
@@ -630,43 +805,6 @@ const visitors = {
 			context.state.metadata.tracking = true;
 		}
 
-		// Special handling for TrackedMapExpression and TrackedSetExpression
-		// When source is "new #Map(...)" or "new #Map<K,V>(...)", the callee is TrackedMapExpression
-		// with empty arguments and the actual arguments are in NewExpression.arguments
-		if (callee.type === 'TrackedMapExpression' || callee.type === 'TrackedSetExpression') {
-			// Use NewExpression's arguments (the callee has empty arguments from parser)
-			const argsToUse = node.arguments.length > 0 ? node.arguments : callee.arguments;
-
-			if (context.state.to_ts) {
-				const className = callee.type === 'TrackedMapExpression' ? 'TrackedMap' : 'TrackedSet';
-				const alias = set_hidden_import_from_ripple(className, context);
-				const calleeId = b.id(alias);
-				calleeId.loc = callee.loc;
-				calleeId.metadata = {
-					source_name: callee.type === 'TrackedMapExpression' ? '#Map' : '#Set',
-					path: [...context.path],
-				};
-				/** @type {AST.NewExpression} */
-				const newExpr = b.new(
-					calleeId,
-					/** @type {AST.NodeWithLocation} */ (node),
-					.../** @type {AST.Expression[]} */ (argsToUse.map((arg) => context.visit(arg))),
-				);
-				// Preserve typeArguments for generics syntax like new #Map<string, number>()
-				if (node.typeArguments) {
-					newExpr.typeArguments = node.typeArguments;
-				}
-				return newExpr;
-			}
-
-			const helperName = callee.type === 'TrackedMapExpression' ? 'tracked_map' : 'tracked_set';
-			return b.call(
-				`_$_.${helperName}`,
-				b.id('__block'),
-				.../** @type {AST.Expression[]} */ (argsToUse.map((arg) => context.visit(arg))),
-			);
-		}
-
 		if (
 			context.state.to_ts ||
 			!is_inside_component(context, true) ||
@@ -695,54 +833,67 @@ const visitors = {
 		return b.call('_$_.with_scope', b.id('__block'), b.thunk(new_node));
 	},
 
-	TrackedArrayExpression(node, context) {
+	RippleArrayExpression(node, context) {
 		if (context.state.to_ts) {
-			const arrayAlias = set_hidden_import_from_ripple('TrackedArray', context);
-
-			return b.call(
-				b.member(b.id(arrayAlias), b.id('from')),
-				b.array(
-					/** @type {(AST.Expression | AST.SpreadElement)[]} */ (
-						node.elements.map((el) => context.visit(/** @type {AST.Node} */ (el)))
-					),
-				),
+			const arrayAlias = set_hidden_import_from_ripple('RippleArray', context);
+			const id = b.id(
+				arrayAlias,
+				slice_loc_info(/** @type {AST.NodeWithLocation} */ (node), 0, '#ripple'.length),
 			);
+			id.metadata.source_name = '#ripple';
+
+			return {
+				type: 'NewExpression',
+				callee: id,
+				arguments: /** @type {(AST.Expression | AST.SpreadElement)[]} */ (
+					node.elements.map((el) => context.visit(/** @type {AST.Node} */ (el)))
+				),
+				metadata: { path: [] },
+			};
 		}
 
 		return b.call(
-			'_$_.tracked_array',
-			b.array(
-				/** @type {(AST.Expression | AST.SpreadElement)[]} */ (
-					node.elements.map((el) => context.visit(/** @type {AST.Node} */ (el)))
-				),
-			),
+			'_$_.ripple_array',
 			b.id('__block'),
+			.../** @type {(AST.Expression | AST.SpreadElement)[]} */ (
+				node.elements.map((el) => context.visit(/** @type {AST.Node} */ (el)))
+			),
 		);
 	},
 
-	TrackedObjectExpression(node, context) {
+	RippleObjectExpression(node, context) {
 		if (context.state.to_ts) {
-			const objectAlias = set_hidden_import_from_ripple('TrackedObject', context);
-
-			return b.new(
-				b.id(objectAlias),
+			const objectAlias = set_hidden_import_from_ripple('RippleObject', context);
+			const id = b.id(
+				objectAlias,
+				slice_loc_info(/** @type {AST.NodeWithLocation} */ (node), 0, '#ripple'.length),
+			);
+			id.metadata.source_name = '#ripple';
+			const new_node = b.new(
+				id,
 				/** @type {AST.NodeWithLocation} */ (node),
 				b.object(
 					/** @type {(AST.Property | AST.SpreadElement)[]} */ (
 						node.properties.map((prop) => context.visit(prop))
 					),
+					slice_loc_info(/** @type {AST.NodeWithLocation} */ (node), '#ripple'.length),
 				),
 			);
+			// force the source mapping to skip the constructor,
+			// otherwise the mapping will be off by 4 and the whole
+			// new expression will be mapped to the source which doesn't have `new `
+			new_node.metadata.skipNewMapping = true;
+			return new_node;
 		}
 
 		return b.call(
-			'_$_.tracked_object',
+			'_$_.ripple_object',
+			b.id('__block'),
 			b.object(
 				/** @type {(AST.Property | AST.SpreadElement)[]} */ (
 					node.properties.map((prop) => context.visit(prop))
 				),
 			),
-			b.id('__block'),
 		);
 	},
 
@@ -2217,10 +2368,15 @@ const visitors = {
 		let alternate_id;
 
 		if (node.alternate !== null) {
-			const alternate = /** @type {AST.BlockStatement | AST.IfStatement} */ (node.alternate);
+			const alternate = /** @type {AST.Statement} */ (node.alternate);
 			const alternate_scope = context.state.scopes.get(alternate) || context.state.scope;
 			/** @type {AST.Node[]} */
-			let alternate_body = alternate.type === 'IfStatement' ? [alternate] : alternate.body;
+			let alternate_body =
+				alternate.type === 'IfStatement'
+					? [alternate]
+					: alternate.type === 'BlockStatement'
+						? alternate.body
+						: [alternate];
 			const alternate_block = b.block(
 				transform_body(alternate_body, {
 					...context,
@@ -2498,8 +2654,8 @@ const visitors = {
 
 			const server_identifier = b.id(SERVER_IDENTIFIER);
 			server_identifier.loc = node.loc;
-			// Add source_name to properly map longer generated back to '#server'
-			server_identifier.metadata.source_name = '#server';
+			// Add source_name to properly map longer generated back to '#ripple.server'
+			server_identifier.metadata.source_name = '#ripple.server';
 
 			const server_const = b.const(server_identifier, value);
 			server_const.loc = node.loc;
@@ -2508,7 +2664,7 @@ const visitors = {
 		}
 
 		if (!context.state.serverIdentifierPresent) {
-			// no point printing the client-side block if #server.func is not used
+			// no point printing the client-side block if #ripple.server.func is not used
 			return b.empty;
 		}
 
@@ -2829,10 +2985,14 @@ function transform_ts_child(node, context) {
 		let alternate;
 
 		if (node.alternate !== null) {
-			const alternate_node = /** @type {AST.BlockStatement | AST.IfStatement} */ (node.alternate);
+			const alternate_node = /** @type {AST.Statement} */ (node.alternate);
 			const alternate_scope = context.state.scopes.get(alternate_node) || context.state.scope;
 			const alternate_body =
-				alternate_node.type === 'IfStatement' ? [alternate_node] : alternate_node.body;
+				alternate_node.type === 'IfStatement'
+					? [alternate_node]
+					: alternate_node.type === 'BlockStatement'
+						? alternate_node.body
+						: [alternate_node];
 			alternate = b.block(
 				transform_body(alternate_body, {
 					...context,
@@ -4083,14 +4243,30 @@ function create_tsx_with_typescript_support(comments) {
 			}
 		},
 		NewExpression(node, context) {
-			if (!node.loc) {
-				base_tsx.NewExpression?.(node, context);
-				return;
+			const loc = /** @type {AST.SourceLocation} */ (node.loc) ?? null;
+
+			if (loc && !node?.metadata?.skipNewMapping) {
+				context.location(loc.start.line, loc.start.column);
 			}
-			const loc = /** @type {AST.SourceLocation} */ (node.loc);
-			context.location(loc.start.line, loc.start.column);
-			base_tsx.NewExpression?.(node, context);
-			context.location(loc.end.line, loc.end.column);
+			context.write('new ');
+
+			if (loc && node?.metadata?.skipNewMapping) {
+				context.location(loc.start.line, loc.start.column);
+			}
+
+			context.visit(node.callee);
+			if (node.typeArguments) {
+				context.visit(node.typeArguments);
+			}
+			context.write('(');
+			for (let i = 0; i < node.arguments.length; i++) {
+				if (i > 0) context.write(', ');
+				context.visit(node.arguments[i]);
+			}
+			context.write(')');
+			if (loc) {
+				context.location(loc.end.line, loc.end.column);
+			}
 		},
 		TemplateLiteral(node, context) {
 			if (!node.loc) {
@@ -4214,6 +4390,15 @@ function create_tsx_with_typescript_support(comments) {
 				}
 			} else {
 				if (node.shorthand) {
+					// Shorthand object properties require an Identifier value. When the
+					// transformed value is a tracked MemberExpression (for example
+					// @value), emit longhand to keep valid output.
+					if (node.value.type === 'MemberExpression' && node.value.tracked) {
+						context.visit(node.key);
+						context.write(': ');
+						context.visit(node.value);
+						return;
+					}
 					// only visit value since key and value are the same
 					// or the value will contain the key like in AssignmentPattern: { foo = 1 }
 					context.visit(node.value);
@@ -4458,11 +4643,7 @@ function create_tsx_with_typescript_support(comments) {
 			if (node.loc) {
 				context.location(node.loc.start.line, node.loc.start.column);
 			}
-			if (typeof node.name === 'string') {
-				context.write(node.name);
-			} else if (node.name && node.name.name) {
-				context.write(node.name.name);
-			}
+			context.write(node.name);
 			if (node.constraint) {
 				context.write(' extends ');
 				context.visit(node.constraint);
@@ -4603,11 +4784,7 @@ function create_tsx_with_typescript_support(comments) {
 					context.location(tp.loc.start.line, tp.loc.start.column);
 				}
 				// Write the parameter name
-				if (typeof tp.name === 'string') {
-					context.write(tp.name);
-				} else if (tp.name && tp.name.name) {
-					context.write(tp.name.name);
-				}
+				context.write(tp.name);
 				// In mapped types, constraint uses 'in' instead of 'extends'
 				if (tp.constraint) {
 					context.write(' in ');

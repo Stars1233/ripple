@@ -5,7 +5,7 @@
 
 import { Readable } from 'stream';
 import { DERIVED, UNINITIALIZED, TRACKED } from '../client/constants.js';
-import { is_tracked_object, get_descriptor, define_property, is_array } from '../client/utils.js';
+import { is_ripple_object, get_descriptor, define_property, is_array } from '../client/utils.js';
 import { escape } from '../../../utils/escaping.js';
 import { is_boolean_attribute } from '../../../compiler/utils.js';
 import { clsx } from 'clsx';
@@ -19,6 +19,7 @@ import {
 export { escape };
 export { register_component_css as register_css } from './css-registry.js';
 export { hash } from '../../../utils/hashing.js';
+export { context } from './context.js';
 
 /** @type {null | Component} */
 export let active_component = null;
@@ -427,7 +428,7 @@ export function aborted() {
  * @returns {any}
  */
 export function get(tracked) {
-	if (!is_tracked_object(tracked)) {
+	if (!is_ripple_object(tracked)) {
 		return tracked;
 	}
 
@@ -590,7 +591,7 @@ export function spread_attrs(attrs, css_hash) {
 
 		if (typeof value === 'function') continue;
 
-		if (is_tracked_object(value)) {
+		if (is_ripple_object(value)) {
 			value = get(value);
 		}
 
@@ -628,7 +629,7 @@ function tracked(v, get, set) {
  * @returns {Tracked | Derived}
  */
 export function track(v, get, set) {
-	var is_tracked = is_tracked_object(v);
+	var is_tracked = is_ripple_object(v);
 
 	if (is_tracked) {
 		return v;
@@ -655,7 +656,7 @@ export function track(v, get, set) {
  * @returns {Tracked[]}
  */
 export function track_split(v, l) {
-	var is_tracked = is_tracked_object(v);
+	var is_tracked = is_ripple_object(v);
 
 	if (is_tracked || typeof v !== 'object' || v === null || is_array(v)) {
 		throw new TypeError('Invalid value: expected a non-tracked object');
@@ -673,7 +674,7 @@ export function track_split(v, l) {
 		key = l[i];
 
 		if (props.includes(key)) {
-			if (is_tracked_object(v[key])) {
+			if (is_ripple_object(v[key])) {
 				t = v[key];
 			} else {
 				t = tracked(undefined);
@@ -698,4 +699,96 @@ export function track_split(v, l) {
 	out.push(tracked(rest));
 
 	return out;
+}
+
+/**
+ * @param {any} _
+ * @param {ConstructorParameters<typeof URL>} params
+ * @returns {URL}
+ */
+export function ripple_url(_, ...params) {
+	return new URL(...params);
+}
+
+/**
+ * @param {any} _
+ * @param {ConstructorParameters<typeof URLSearchParams>} params
+ * @returns {URLSearchParams}
+ */
+export function ripple_url_search_params(_, ...params) {
+	return new URLSearchParams(...params);
+}
+
+/**
+ * @param {ConstructorParameters<typeof Date>} params
+ * @returns {Date}
+ */
+export function ripple_date(...params) {
+	return new Date(...params);
+}
+
+/**
+ * @param {string} query
+ * @param {boolean} [matches]
+ * @returns {boolean}
+ */
+export function media_query(query, matches = false) {
+	void query;
+	return matches;
+}
+
+/**
+ * @param {() => void} _fn
+ * @returns {void}
+ */
+export function effect(_fn) {
+	return;
+}
+
+/**
+ * @template T
+ * @param  {...T} elements
+ * @returns {T[]}
+ */
+export function ripple_array(...elements) {
+	return new Array(...elements);
+}
+
+/**
+ * @template T
+ * @param {ArrayLike<T> | Iterable<T>} arrayLike
+ * @param {(v: T, k: number) => any | undefined} [map_fn]
+ * @param {any} [thisArg]
+ * @returns {T[]}
+ */
+ripple_array.from = function (arrayLike, map_fn, thisArg) {
+	return map_fn ? Array.from(arrayLike, map_fn, thisArg) : Array.from(arrayLike);
+};
+
+/**
+ * @template T
+ * @param  {...T} items
+ * @returns {T[]}
+ */
+ripple_array.of = function (...items) {
+	return Array.of(...items);
+};
+
+/**
+ * @template T
+ * @param {ArrayLike<T> | Iterable<T>} arrayLike
+ * @param {(v: T, k: number) => any | undefined} [map_fn]
+ * @param {any} [thisArg]
+ * @returns {Promise<T[]>}
+ */
+ripple_array.from_async = async function (arrayLike, map_fn, thisArg) {
+	return map_fn ? Array.fromAsync(arrayLike, map_fn, thisArg) : Array.fromAsync(arrayLike);
+};
+
+/**
+ * @param {object} obj
+ * @returns {object}
+ */
+export function ripple_object(obj) {
+	return obj;
 }

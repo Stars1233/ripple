@@ -1,13 +1,11 @@
 // @ts-nocheck
 import * as _$_ from 'ripple/internal/server';
 
-import { track } from 'ripple/server';
-
 export async function IfWithChildren(__output, { children }) {
 	return _$_.async(async () => {
 		_$_.push_component();
 
-		let expanded = track(true);
+		let expanded = _$_.track(true);
 
 		__output.push('<div');
 		__output.push(' class="container"');
@@ -111,7 +109,7 @@ export function TestIfWithChildren(__output) {
 export function IfWithStaticChildren(__output) {
 	_$_.push_component();
 
-	let expanded = track(true);
+	let expanded = _$_.track(true);
 
 	__output.push('<div');
 	__output.push(' class="container"');
@@ -168,7 +166,7 @@ export async function IfWithSiblingsAndChildren(__output, { children }) {
 	return _$_.async(async () => {
 		_$_.push_component();
 
-		let expanded = track(true);
+		let expanded = _$_.track(true);
 
 		__output.push('<section');
 		__output.push(' class="group"');
@@ -293,7 +291,7 @@ export function TestIfWithSiblingsAndChildren(__output) {
 export function ElementWithChildrenThenIf(__output) {
 	_$_.push_component();
 
-	let show = track(true);
+	let show = _$_.track(true);
 
 	__output.push('<div');
 	__output.push(' class="wrapper"');
@@ -358,7 +356,7 @@ export function ElementWithChildrenThenIf(__output) {
 export function DeepNestingThenIf(__output) {
 	_$_.push_component();
 
-	let visible = track(true);
+	let visible = _$_.track(true);
 
 	__output.push('<section');
 	__output.push(' class="outer"');
@@ -438,7 +436,7 @@ export function DeepNestingThenIf(__output) {
 export function DomElementChildrenThenSibling(__output) {
 	_$_.push_component();
 
-	let activeTab = track('code');
+	let activeTab = _$_.track('code');
 
 	__output.push('<div');
 	__output.push(' class="tabs"');
@@ -515,7 +513,7 @@ export function DomElementChildrenThenSibling(__output) {
 export function DomChildrenThenStaticSiblings(__output) {
 	_$_.push_component();
 
-	let count = track(0);
+	let count = _$_.track(0);
 
 	__output.push('<div');
 	__output.push(' class="container"');

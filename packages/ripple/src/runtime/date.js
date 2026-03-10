@@ -1,18 +1,17 @@
 /** @import { Block, Derived } from '#client' */
-import { safe_scope, tracked, get, derived, set } from './internal/client/runtime.js';
+import { safe_scope, tracked, get, derived, set, with_scope } from './internal/client/runtime.js';
 
 var init = false;
 
-export class TrackedDate extends Date {
+export class RippleDate extends Date {
 	#time;
 	/** @type {Map<keyof Date, Derived>} */
 	#deriveds = new Map();
 	/** @type {Block} */
 	#block;
 
-	/** @param {any[]} params */
+	/** @param {ConstructorParameters<typeof Date>} params */
 	constructor(...params) {
-		// @ts-ignore
 		super(...params);
 
 		var block = (this.#block = safe_scope());
@@ -24,7 +23,7 @@ export class TrackedDate extends Date {
 	#init() {
 		init = true;
 
-		var proto = TrackedDate.prototype;
+		var proto = RippleDate.prototype;
 		var date_proto = Date.prototype;
 
 		var methods = /** @type {Array<keyof Date & string>} */ (
@@ -70,4 +69,15 @@ export class TrackedDate extends Date {
 			}
 		}
 	}
+}
+
+/**
+ * @param {Block} block
+ * @param {ConstructorParameters<typeof Date>} params
+ * @returns {RippleDate}
+ */
+export function ripple_date(block, ...params) {
+	return with_scope(block, () => {
+		return new RippleDate(...params);
+	});
 }

@@ -1,9 +1,9 @@
-import { get, increment, safe_scope, tracked } from './internal/client/runtime.js';
+import { get, increment, safe_scope, tracked, with_scope } from './internal/client/runtime.js';
 import { get_current_url } from './url.js';
 
 export const REPLACE = Symbol();
 
-export class TrackedURLSearchParams extends URLSearchParams {
+export class RippleURLSearchParams extends URLSearchParams {
 	#block = safe_scope();
 	#version = tracked(0, this.#block);
 	#url = get_current_url();
@@ -143,4 +143,15 @@ export class TrackedURLSearchParams extends URLSearchParams {
 		get(this.#version);
 		return super.size;
 	}
+}
+
+/**
+ * @param {import('#client').Block} block
+ * @param  {ConstructorParameters<typeof URLSearchParams>} params
+ * @returns {RippleURLSearchParams}
+ */
+export function ripple_url_search_params(block, ...params) {
+	return with_scope(block, () => {
+		return new RippleURLSearchParams(...params);
+	});
 }

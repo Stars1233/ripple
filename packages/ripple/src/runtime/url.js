@@ -1,14 +1,14 @@
-import { get, set, safe_scope, tracked } from './internal/client/runtime.js';
-import { REPLACE, TrackedURLSearchParams } from './url-search-params.js';
+import { get, set, safe_scope, tracked, with_scope } from './internal/client/runtime.js';
+import { REPLACE, RippleURLSearchParams } from './url-search-params.js';
 
-/** @type {TrackedURL | null} */
+/** @type {RippleURL | null} */
 let current_url = null;
 
 export function get_current_url() {
 	return current_url;
 }
 
-export class TrackedURL extends URL {
+export class RippleURL extends URL {
 	#block = safe_scope();
 	#protocol = tracked(super.protocol, this.#block);
 	#username = tracked(super.username, this.#block);
@@ -29,7 +29,7 @@ export class TrackedURL extends URL {
 		super(url);
 
 		current_url = this;
-		this.#searchParams = new TrackedURLSearchParams(url.searchParams);
+		this.#searchParams = new RippleURLSearchParams(url.searchParams);
 		current_url = null;
 	}
 
@@ -161,4 +161,14 @@ export class TrackedURL extends URL {
 	toJSON() {
 		return this.href;
 	}
+}
+
+/**
+ * @param {import('#client').Block} block
+ * @param {string | URL} url
+ * @param {string | URL} [base]
+ * @returns {RippleURL}
+ */
+export function ripple_url(block, url, base) {
+	return with_scope(block, () => new RippleURL(url, base));
 }

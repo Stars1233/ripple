@@ -413,7 +413,7 @@ export function convert_source_map_to_mappings(
 				if (node.name && node.loc) {
 					/** @type {Token} */
 					let token;
-					// Check if this identifier was changed in metadata (e.g., #Map -> TrackedMap)
+					// Check if this identifier was changed in metadata (e.g., #Map -> RippleMap)
 					// Or if it was capitalized during transformation
 					if (node.metadata?.source_name) {
 						token = {
@@ -422,6 +422,22 @@ export function convert_source_map_to_mappings(
 							loc: node.loc,
 							metadata: {},
 						};
+
+						if (node.metadata.source_name === '#ripple') {
+							// Suppress the private-identifier parse diagnostic while the user is
+							// still typing a namespace access like `#ripple.` for completions.
+							token.metadata.suppressedDiagnostics = [18016];
+						}
+
+						if (
+							node.metadata.source_name === '#ripple.server' ||
+							node.metadata.source_name === '#ripple.style'
+						) {
+							// Let TextMate own the coloring for these namespace forms.
+							// Their dedicated AST nodes otherwise cause semantic tokens to repaint
+							// the full '#ripple.server' / '#ripple.style' span after TS attaches.
+							token.mappingData = { ...mapping_data, semantic: false };
+						}
 					} else {
 						token = {
 							source: node.name,
@@ -429,9 +445,10 @@ export function convert_source_map_to_mappings(
 							loc: node.loc,
 							metadata: {},
 						};
-						if (node.name === '#') {
-							// Suppress 'Invalid character' to allow typing out the shorthands
-							token.metadata.suppressedDiagnostics = [1127];
+						if (node.name === '#ripple') {
+							// Suppress the private-identifier parse diagnostic while the user is
+							// still typing a namespace access like `#ripple.` for completions.
+							token.metadata.suppressedDiagnostics = [18016];
 						}
 						// No transformation - source and generated names are the same
 					}
@@ -618,7 +635,6 @@ export function convert_source_map_to_mappings(
 								data: {
 									...mapping_data,
 									customData: {
-										generatedLengths: [length],
 										hover:
 											'```css\n.' +
 											name +
@@ -748,7 +764,6 @@ export function convert_source_map_to_mappings(
 					// but since we already map the opening - start, we just need the proper end
 					// and it was causing some issues with mappings
 					mapping.generatedLengths = [mapping.generatedLengths[0] + 1];
-					mapping.data.customData.generatedLengths = mapping.generatedLengths;
 					mappings.push(mapping);
 				}
 
@@ -1135,7 +1150,6 @@ export function convert_source_map_to_mappings(
 						if (node.optional) {
 							mapping.generatedLengths[0] = mapping.generatedLengths[0] + '.?'.length;
 						}
-						mapping.data.customData.generatedLengths = mapping.generatedLengths;
 					}
 
 					mappings.push(mapping);
@@ -1300,7 +1314,6 @@ export function convert_source_map_to_mappings(
 					const return_keyword_length = 'return'.length;
 					mapping.lengths = [return_keyword_length];
 					mapping.generatedLengths = [return_keyword_length];
-					mapping.data.customData.generatedLengths = mapping.generatedLengths;
 
 					mappings.push(mapping);
 				}
@@ -2035,9 +2048,7 @@ export function convert_source_map_to_mappings(
 		const gen_start = loc_to_offset(gen_line_col.line, gen_line_col.column, gen_line_offsets);
 
 		/** @type {CustomMappingData} */
-		const customData = {
-			generatedLengths: [gen_length],
-		};
+		const customData = {};
 
 		// Add optional metadata from token if present
 		if ('wordHighlight' in token.metadata) {
@@ -2107,9 +2118,7 @@ export function convert_source_map_to_mappings(
 			generatedLengths: [1],
 			data: {
 				...mapping_data,
-				customData: {
-					generatedLengths: [1],
-				},
+				customData: {},
 			},
 		});
 	}
@@ -2126,7 +2135,6 @@ export function convert_source_map_to_mappings(
 			data: {
 				...mapping_data,
 				customData: {
-					generatedLengths: [region.content.length],
 					embeddedId: region.id,
 					content: region.content,
 				},

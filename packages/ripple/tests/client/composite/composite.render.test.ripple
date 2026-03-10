@@ -1,4 +1,4 @@
-import { track, flushSync, TrackedArray } from 'ripple';
+import { flushSync, RippleArray, type Component } from 'ripple';
 
 describe('composite > render', () => {
 	it('renders composite components', () => {
@@ -7,7 +7,7 @@ describe('composite > render', () => {
 		}
 
 		component App() {
-			let count = track(0);
+			let count = #ripple.track(0);
 
 			<button onClick={() => @count++}>{'Increment'}</button>
 			<Button {@count} />
@@ -73,7 +73,7 @@ describe('composite > render', () => {
 
 	it('handles generics', () => {
 		component ArrayTest() {
-			let items = new TrackedArray<number>();
+			let items = new RippleArray<number>();
 			items.push.apply(items, [1, 2, 3, 4, 5]);
 
 			<pre>{items ? JSON.stringify(items) : 'Loading...'}</pre>
@@ -83,9 +83,18 @@ describe('composite > render', () => {
 	});
 
 	it('should not render <undefined> tag when a passed in component is undefined', () => {
-		component Child({ children, NonExistent, ...props }) {
+		component Child({
+			children,
+			NonExistent,
+			...props
+		}: {
+			children?: Component;
+			NonExistent?: Component;
+			[key: string]: any;
+		}) {
 			<div {...props}>
 				<children />
+				// @ts-expect-error - intentionally testing behavior when a component is undefined
 				<NonExistent />
 			</div>
 		}

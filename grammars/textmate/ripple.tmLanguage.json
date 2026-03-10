@@ -362,12 +362,6 @@
           "include": "#record-literal"
         },
         {
-          "include": "#tracked-map-literal"
-        },
-        {
-          "include": "#tracked-set-literal"
-        },
-        {
           "include": "#expression-operators"
         },
         {
@@ -4036,12 +4030,6 @@
           "include": "#record-literal"
         },
         {
-          "include": "#tracked-map-literal"
-        },
-        {
-          "include": "#tracked-set-literal"
-        },
-        {
           "include": "#this-literal"
         },
         {
@@ -4074,7 +4062,7 @@
     },
     "tuple-literal": {
       "name": "meta.tuple.literal.js",
-      "begin": "(#)(\\[)",
+      "begin": "(#ripple)(\\[)",
       "beginCaptures": {
         "1": {
           "name": "keyword.control.tuple.js"
@@ -4100,7 +4088,7 @@
     },
     "record-literal": {
       "name": "meta.record.literal.js",
-      "begin": "(#)(\\{)",
+      "begin": "(#ripple)(\\{)",
       "beginCaptures": {
         "1": {
           "name": "keyword.control.record.js"
@@ -4118,64 +4106,6 @@
       "patterns": [
         {
           "include": "#object-member"
-        }
-      ]
-    },
-    "tracked-map-literal": {
-      "name": "meta.tracked.map.literal.js",
-      "begin": "(#)(Map)(\\()",
-      "beginCaptures": {
-        "1": {
-          "name": "keyword.control.tracked.js"
-        },
-        "2": {
-          "name": "entity.name.type.js"
-        },
-        "3": {
-          "name": "meta.brace.round.js"
-        }
-      },
-      "end": "\\)",
-      "endCaptures": {
-        "0": {
-          "name": "meta.brace.round.js"
-        }
-      },
-      "patterns": [
-        {
-          "include": "#expression"
-        },
-        {
-          "include": "#punctuation-comma"
-        }
-      ]
-    },
-    "tracked-set-literal": {
-      "name": "meta.tracked.set.literal.js",
-      "begin": "(#)(Set)(\\()",
-      "beginCaptures": {
-        "1": {
-          "name": "keyword.control.tracked.js"
-        },
-        "2": {
-          "name": "entity.name.type.js"
-        },
-        "3": {
-          "name": "meta.brace.round.js"
-        }
-      },
-      "end": "\\)",
-      "endCaptures": {
-        "0": {
-          "name": "meta.brace.round.js"
-        }
-      },
-      "patterns": [
-        {
-          "include": "#expression"
-        },
-        {
-          "include": "#punctuation-comma"
         }
       ]
     },
@@ -6603,10 +6533,10 @@
           }
         },
         {
-          "include": "#server-member-expression"
+          "include": "#style-member-expression"
         },
         {
-          "include": "#style-member-expression"
+          "include": "#ripple-member-expression"
         },
         {
           "include": "#jsx-ref-modifier"
@@ -6660,10 +6590,10 @@
           }
         },
         {
-          "include": "#server-member-expression"
+          "include": "#style-member-expression"
         },
         {
-          "include": "#style-member-expression"
+          "include": "#ripple-member-expression"
         },
         {
           "include": "#jsx-html-modifier"
@@ -6803,12 +6733,18 @@
     },
     "server-block": {
       "name": "meta.server-block.js",
-      "begin": "(#server)\\s*(\\{)",
+      "begin": "(#ripple)(\\.)(server)\\s*(\\{)",
       "beginCaptures": {
         "1": {
-          "name": "storage.type.server.js"
+          "name": "keyword.control.ripple.js"
         },
         "2": {
+          "name": "punctuation.accessor.js"
+        },
+        "3": {
+          "name": "entity.name.function.js"
+        },
+        "4": {
           "name": "punctuation.definition.block.js"
         }
       },
@@ -6826,7 +6762,7 @@
     },
     "defer-block": {
       "name": "meta.defer-block.js",
-      "begin": "(#defer)\\s*(\\{)",
+      "begin": "(#ripple\\.defer)\\s*(\\{)",
       "beginCaptures": {
         "1": {
           "name": "storage.type.defer.js"
@@ -6847,12 +6783,12 @@
         }
       ]
     },
-    "server-member-expression": {
-      "name": "meta.server-member-expression.js",
-      "match": "(#server)(\\.)([_$[:alpha:]][_$[:alnum:]]*)",
+    "ripple-member-expression": {
+      "name": "meta.ripple-member-expression.js",
+      "match": "(#ripple)(\\.)([_$[:alpha:]][_$[:alnum:]]*)",
       "captures": {
         "1": {
-          "name": "storage.type.server.js"
+          "name": "keyword.control.ripple.js"
         },
         "2": {
           "name": "punctuation.accessor.js"
@@ -6865,28 +6801,19 @@
     "style-member-expression": {
       "patterns": [
         {
-          "name": "meta.style-member-expression.dot.js",
-          "match": "(#style)(\\.)([_$[:alpha:]][_$[:alnum:]]*)",
-          "captures": {
+          "name": "meta.style-member-expression.computed.js",
+          "begin": "(#ripple)(\\.)(style)(\\[)",
+          "beginCaptures": {
             "1": {
-              "name": "storage.type.style.js"
+              "name": "keyword.control.ripple.js"
             },
             "2": {
               "name": "punctuation.accessor.js"
             },
             "3": {
-              "name": "variable.other.property.js"
-            }
-          }
-        },
-        {
-          "name": "meta.style-member-expression.computed.js",
-          "begin": "(#style)(\\[)",
-          "beginCaptures": {
-            "1": {
-              "name": "storage.type.style.js"
+              "name": "entity.name.function.js"
             },
-            "2": {
+            "4": {
               "name": "meta.brace.square.js"
             }
           },
@@ -7177,10 +7104,10 @@
           }
         },
         {
-          "include": "#server-member-expression"
+          "include": "#style-member-expression"
         },
         {
-          "include": "#style-member-expression"
+          "include": "#ripple-member-expression"
         },
         {
           "include": "#jsx-ref-modifier"

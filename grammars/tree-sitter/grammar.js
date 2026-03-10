@@ -47,12 +47,7 @@ module.exports = grammar({
 		[$.primary_expression, $.pattern],
 		[$.array_pattern, $.array],
 		[$.object_pattern, $.object],
-		[$._formal_parameter, $.primary_expression],
-		[$.jsx_opening_element, $.jsx_self_closing_element],
 		[$.expression, $.jsx_element_name],
-		[$.primary_expression, $.await_expression],
-		[$.primary_expression, $.component_declaration],
-		[$.primary_expression, $.fragment_declaration],
 		[$.statement_block, $.object],
 		[$.method_definition, $.arrow_function],
 		[$.shorthand_property_identifier, $.shorthand_property_identifier_pattern],
@@ -81,9 +76,6 @@ module.exports = grammar({
 		[$.computed_property_name, $.array],
 		[$.assignment_expression, $.initializer],
 		[$.do_statement],
-		[$.jsx_element, $.expression_statement],
-		[$.jsx_self_closing_element, $.expression_statement],
-		[$.jsx_element, $.primary_expression],
 		[$.component_statement, $.primary_expression],
 		[$.function_declaration, $.function_expression],
 		[$.required_parameter, $.type, $.type_identifier],
@@ -104,8 +96,6 @@ module.exports = grammar({
 		[$.intersection_type, $.function_type],
 		[$.union_type, $.function_type],
 		[$.for_in_statement, $.primary_expression],
-		[$.for_of_statement, $.for_statement],
-		[$.for_in_statement, $.for_statement],
 	],
 
 	rules: {
@@ -178,6 +168,7 @@ module.exports = grammar({
 				$.export_statement,
 				$.import_statement,
 				$.declaration,
+				$.server_block,
 				$.expression_statement,
 				$.if_statement,
 				$.switch_statement,
@@ -376,6 +367,7 @@ module.exports = grammar({
 			choice(
 				$.jsx_element,
 				$.jsx_self_closing_element,
+				$.server_block,
 				$.variable_declaration,
 				$.lexical_declaration,
 				$.function_declaration,
@@ -547,6 +539,7 @@ module.exports = grammar({
 			choice(
 				$.this,
 				$.super,
+				$.ripple_namespace_identifier,
 				$.identifier,
 				$._reserved_identifier,
 				$.number,
@@ -561,8 +554,11 @@ module.exports = grammar({
 				$.array,
 				$.reactive_object,
 				$.reactive_array,
-				$.tracked_map_expression,
-				$.tracked_set_expression,
+				$.ripple_map_expression,
+				$.ripple_set_expression,
+				$.server_member_expression,
+				$.style_member_expression,
+				$.style_subscript_expression,
 				$.function_expression,
 				$.arrow_function,
 				$.class_expression,
@@ -571,13 +567,15 @@ module.exports = grammar({
 				$.subscript_expression,
 				$.jsx_element,
 				$.jsx_self_closing_element,
-				$.server_block,
-				$.defer_block,
 			),
 
-		server_block: ($) => seq('#server', '{', repeat($.statement), '}'),
+		server_block: ($) => seq('#ripple.server', '{', repeat($.statement), '}'),
 
-		defer_block: ($) => seq('#defer', '{', repeat($.statement), '}'),
+		server_member_expression: ($) => seq('#ripple.server', '.', field('property', $.identifier)),
+
+		style_member_expression: ($) => seq('#ripple.style', '.', field('property', $.identifier)),
+
+		style_subscript_expression: ($) => seq('#ripple.style', '[', field('index', $.expression), ']'),
 
 		unbox_expression: ($) =>
 			prec.left(
@@ -595,7 +593,7 @@ module.exports = grammar({
 
 		reactive_object: ($) =>
 			seq(
-				'#{',
+				'#ripple{',
 				commaSep(
 					choice(
 						$.pair,
@@ -610,11 +608,11 @@ module.exports = grammar({
 			),
 
 		reactive_array: ($) =>
-			seq('#[', commaSep(choice($.expression, $.spread_element)), optional(','), ']'),
+			seq('#ripple[', commaSep(choice($.expression, $.spread_element)), optional(','), ']'),
 
-		tracked_map_expression: ($) => seq('#Map', optional($.type_arguments), $.arguments),
+		ripple_map_expression: ($) => seq('#ripple.map', optional($.type_arguments), $.arguments),
 
-		tracked_set_expression: ($) => seq('#Set', optional($.type_arguments), $.arguments),
+		ripple_set_expression: ($) => seq('#ripple.set', optional($.type_arguments), $.arguments),
 
 		yield_expression: ($) => prec.right(seq('yield', optional('*'), optional($.expression))),
 
@@ -974,6 +972,8 @@ module.exports = grammar({
 		},
 
 		private_property_identifier: ($) => /#[a-zA-Z_$][a-zA-Z0-9_$]*/,
+
+		ripple_namespace_identifier: ($) => '#ripple',
 
 		_reserved_identifier: ($) =>
 			choice('arguments', 'await', 'component', 'fragment', 'track', 'untrack'),

@@ -1,7 +1,5 @@
-import { track } from 'ripple';
-
 export component SwitchStatic() {
-	const status = 'success';
+	const status: string = 'success';
 	switch (status) {
 		case 'success':
 			<div class="status-success">{'Success'}</div>
@@ -15,7 +13,7 @@ export component SwitchStatic() {
 }
 
 export component SwitchReactive() {
-	let status = track<'a' | 'b' | 'c'>('a');
+	let status = #ripple.track<'a' | 'b' | 'c'>('a');
 	<button
 		class="toggle"
 		onClick={() => {
@@ -39,7 +37,7 @@ export component SwitchReactive() {
 }
 
 export component SwitchFallthrough() {
-	const val = 1;
+	const val: number = 1;
 	switch (val) {
 		case 1:
 		case 2:
@@ -51,7 +49,7 @@ export component SwitchFallthrough() {
 }
 
 export component SwitchNumericLevels() {
-	let level = track<1 | 2 | 3>(1);
+	let level = #ripple.track<1 | 2 | 3>(1);
 	<button
 		class="level-toggle"
 		onClick={() => {
@@ -76,7 +74,7 @@ export component SwitchNumericLevels() {
 }
 
 export component SwitchBlockScoped() {
-	let level = track<1 | 2 | 3>(1);
+	let level = #ripple.track<1 | 2 | 3>(1);
 	<button
 		class="block-toggle"
 		onClick={() => {
@@ -104,7 +102,7 @@ export component SwitchBlockScoped() {
 }
 
 export component SwitchNoBreak() {
-	let level = track<1 | 2 | 3>(1);
+	let level = #ripple.track<1 | 2 | 3>(1);
 	<button
 		class="nobreak-toggle"
 		onClick={() => {

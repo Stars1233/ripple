@@ -1,5 +1,3 @@
-import { track } from 'ripple';
-
 export component StaticHtml() {
 	const html = '<p><strong>Bold</strong> text</p>';
 	<div>{html html}</div>
@@ -229,7 +227,7 @@ component NavItem({
 }
 
 component SidebarSection({ title, children }: { title: string; children: any }) {
-	let expanded = track(true);
+	let expanded = #ripple.track(true);
 	<section class="sidebar-section">
 		<div class="section-header">
 			<h2>{title}</h2>

@@ -930,10 +930,8 @@ export namespace Parse {
 			| AST.ServerIdentifier
 			| AST.StyleIdentifier
 			| AST.TrackedExpression
-			| AST.TrackedMapExpression
-			| AST.TrackedSetExpression
-			| AST.TrackedArrayExpression
-			| AST.TrackedObjectExpression
+			| AST.RippleArrayExpression
+			| AST.RippleObjectExpression
 			| AST.Component
 			| AST.Identifier
 			| AST.Literal;
@@ -956,15 +954,11 @@ export namespace Parse {
 		/** Parse parenthesized expression (just the expression) */
 		parseParenExpression(): AST.Expression;
 
-		parseTrackedCollectionExpression(
-			type: 'TrackedMapExpression' | 'TrackedSetExpression',
-		): AST.TrackedMapExpression | AST.TrackedSetExpression;
-
-		parseTrackedArrayExpression(): AST.TrackedArrayExpression;
+		parseRippleArrayExpression(): AST.RippleArrayExpression;
 
 		parseTrackedExpression(): AST.TrackedExpression;
 
-		parseTrackedObjectExpression(): AST.TrackedObjectExpression;
+		parseRippleObjectExpression(): AST.RippleObjectExpression;
 
 		/**
 		 * Parse item in parentheses (can be overridden for flow/ts)
@@ -1131,6 +1125,8 @@ export namespace Parse {
 		): AST.TSTypeParameterDeclaration;
 
 		tsCheckTypeAnnotationForReadOnly(node: AST.TSTypeOperator): void;
+
+		tsParseTypeArguments(): AST.Node;
 
 		/**
 		 * Get property kind from name

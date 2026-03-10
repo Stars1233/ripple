@@ -210,11 +210,23 @@
         "named": true
       },
       {
-        "type": "server_block",
+        "type": "ripple_namespace_identifier",
+        "named": true
+      },
+      {
+        "type": "server_member_expression",
         "named": true
       },
       {
         "type": "string",
+        "named": true
+      },
+      {
+        "type": "style_member_expression",
+        "named": true
+      },
+      {
+        "type": "style_subscript_expression",
         "named": true
       },
       {
@@ -238,11 +250,11 @@
         "named": false
       },
       {
-        "type": "tracked_map_expression",
+        "type": "ripple_map_expression",
         "named": true
       },
       {
-        "type": "tracked_set_expression",
+        "type": "ripple_set_expression",
         "named": true
       },
       {
@@ -321,6 +333,10 @@
       },
       {
         "type": "return_statement",
+        "named": true
+      },
+      {
+        "type": "server_block",
         "named": true
       },
       {
@@ -1167,6 +1183,10 @@
         },
         {
           "type": "return_statement",
+          "named": true
+        },
+        {
+          "type": "server_block",
           "named": true
         },
         {
@@ -2714,6 +2734,7 @@
   {
     "type": "program",
     "named": true,
+    "root": true,
     "fields": {},
     "children": {
       "multiple": true,
@@ -2962,6 +2983,22 @@
     }
   },
   {
+    "type": "server_member_expression",
+    "named": true,
+    "fields": {
+      "property": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "shorthand_property_identifier",
     "named": true,
     "fields": {},
@@ -3057,6 +3094,38 @@
           "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "style_member_expression",
+    "named": true,
+    "fields": {
+      "property": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "style_subscript_expression",
+    "named": true,
+    "fields": {
+      "index": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "expression",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -3253,7 +3322,7 @@
     }
   },
   {
-    "type": "tracked_map_expression",
+    "type": "ripple_map_expression",
     "named": true,
     "fields": {},
     "children": {
@@ -3272,7 +3341,7 @@
     }
   },
   {
-    "type": "tracked_set_expression",
+    "type": "ripple_set_expression",
     "named": true,
     "fields": {},
     "children": {
@@ -3711,23 +3780,27 @@
     "named": false
   },
   {
-    "type": "#Map",
+    "type": "#ripple.map",
     "named": false
   },
   {
-    "type": "#Set",
+    "type": "#ripple.server",
     "named": false
   },
   {
-    "type": "#[",
+    "type": "#ripple.set",
     "named": false
   },
   {
-    "type": "#server",
+    "type": "#ripple.style",
     "named": false
   },
   {
-    "type": "#{",
+    "type": "#ripple[",
+    "named": false
+  },
+  {
+    "type": "#ripple{",
     "named": false
   },
   {
@@ -3996,7 +4069,8 @@
   },
   {
     "type": "comment",
-    "named": true
+    "named": true,
+    "extra": true
   },
   {
     "type": "component",
@@ -4185,6 +4259,10 @@
   {
     "type": "return",
     "named": false
+  },
+  {
+    "type": "ripple_namespace_identifier",
+    "named": true
   },
   {
     "type": "set",

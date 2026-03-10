@@ -1,14 +1,51 @@
 ; Keywords
 (component_declaration "component" @keyword)
 (fragment_declaration "fragment" @keyword)
-(server_block "#server" @keyword)
-(defer_block "#defer" @keyword)
+(server_block "#ripple.server" @keyword)
+
+(server_member_expression
+  "#ripple.server" @keyword
+  "." @punctuation.delimiter
+  property: (identifier) @property)
+
+(style_member_expression
+  "#ripple.style" @keyword
+  "." @punctuation.delimiter
+  property: (identifier) @property)
+
+(style_subscript_expression
+  "#ripple.style" @keyword
+  "[" @punctuation.bracket
+  "]" @punctuation.bracket)
 
 ; Reserved identifiers
 [
   "track"
   "untrack"
 ] @function.builtin
+
+; Hash-prefixed reactive builtins
+(
+  (member_expression
+    object: (_) @ripple_prefix @keyword
+    "." @punctuation.delimiter
+    property: (identifier) @ripple_builtin @function.builtin)
+  (#eq? @ripple_prefix "#ripple")
+  (#match? @ripple_builtin "^(track|untrack|effect|trackSplit|date|array|object|context|url|mediaQuery|urlSearchParams|createSubscriber|async|validate)$")
+)
+
+(
+  (member_expression
+    object: (member_expression
+      object: (_) @ripple_prefix @keyword
+      "." @punctuation.delimiter
+      property: (identifier) @ripple_array)
+    "." @punctuation.delimiter
+    property: (identifier) @ripple_array_static @function.builtin)
+  (#eq? @ripple_prefix "#ripple")
+  (#eq? @ripple_array "array")
+  (#match? @ripple_array_static "^(fromAsync|from|of)$")
+)
 
 ; Functions
 (component_declaration
@@ -151,6 +188,7 @@
   "return"
   "throw"
   "try"
+  "pending"
   "catch"
   "finally"
 ] @keyword.control
@@ -225,12 +263,25 @@
 
 ; Reactive constructs (placed after generic punctuation so special tokens win)
 (unbox_expression "@" @operator.special)
+
+(ripple_map_expression
+  "#ripple.map" @function.builtin
+  (arguments
+    "(" @punctuation.bracket
+    ")" @punctuation.bracket))
+
+(ripple_set_expression
+  "#ripple.set" @function.builtin
+  (arguments
+    "(" @punctuation.bracket
+    ")" @punctuation.bracket))
+
 (reactive_array
-  "#[" @punctuation.special
+  "#ripple[" @punctuation.special
   "]" @punctuation.special)
 
 (reactive_object
-  "#{" @punctuation.special
+  "#ripple{" @punctuation.special
   "}" @punctuation.special)
 
 (template_substitution
