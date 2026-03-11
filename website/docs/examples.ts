@@ -748,7 +748,7 @@ export default component App() {
 	},
 	{
 		title: 'createRefKey',
-		code: `
+		code: `import { createRefKey } from 'ripple';
 
 export default component App() {
   let value = #ripple.track('');
