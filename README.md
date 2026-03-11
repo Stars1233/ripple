@@ -194,12 +194,10 @@ export component App() {
 ### Effects & Side Effects
 
 ```jsx
-import { effect } from 'ripple';
-
 export component App() {
   let count = #ripple.track(0);
 
-  effect(() => {
+  #ripple.effect(() => {
     console.log('Count changed:', @count);
   });
 
