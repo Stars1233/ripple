@@ -219,10 +219,10 @@ ones that can be used for event attributes with the object syntax.
 <Code console>
 
 ```ripple
-import { effect, on } from 'ripple';
+import { on } from 'ripple';
 
 export component App() {
-  effect(() => {
+  #ripple.effect(() => {
     // on component mount
     const removeListener = on(window, 'resize', () => {
       console.log('Window resized!');

@@ -382,8 +382,7 @@ export default component App() {
 	},
 	{
 		title: 'Simple Reactive Array',
-		code: `import { effect } from 'ripple';
-
+		code: `
 export default component App() {
 	let first = #ripple.track(1);
 	let second = #ripple.track(2);

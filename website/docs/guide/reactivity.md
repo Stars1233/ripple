@@ -280,12 +280,10 @@ simply be passed by reference between boundaries:
 <Code console>
 
 ```ripple
-import { effect } from 'ripple';
-
 function createDouble(count) {
   const double = #ripple.track(() => @count * 2);
 
-  effect(() => {
+  #ripple.effect(() => {
     console.log('Count:', @count)
   });
 
@@ -354,12 +352,10 @@ use `effect`:
 <Code console>
 
 ```ripple
-import { effect } from 'ripple';
-
 export component App() {
   let count = #ripple.track(0);
 
-  effect(() => {
+  #ripple.effect(() => {
     console.log(@count);
   });
 
@@ -376,12 +372,12 @@ The `tick()` function returns a Promise that resolves after all pending reactive
 <Code console>
 
 ```ripple
-import { effect, tick } from 'ripple';
+import { tick } from 'ripple';
 
 export component App() {
   let count = #ripple.track(0);
 
-  effect(() => {
+  #ripple.effect(() => {
     @count;
 
     if (@count === 0) {
@@ -405,16 +401,14 @@ export component App() {
 <Code console>
 
 ```ripple
-import { effect, untrack } from 'ripple';
-
 export component App() {
   let count = #ripple.track(10);
   let double = #ripple.track(() => @count * 2);
   let quadruple = #ripple.track(() => @double * 2);
 
-  effect(() => {
+  #ripple.effect(() => {
     // This effect will never fire again, as we've untracked the only dependency it has
-    console.log(untrack(() => @quadruple));
+    console.log(#ripple.untrack(() => @quadruple));
   })
 }
 ```
@@ -435,8 +429,6 @@ JavaScript object, like arrays:
 <Code console>
 
 ```ripple
-import { effect } from 'ripple';
-
 export component App() {
 	let first = #ripple.track(1);
 	let second = #ripple.track(2);
@@ -444,7 +436,7 @@ export component App() {
 
 	const total = #ripple.track(() => arr.reduce((a, b) => a + @b, 0));
 
-	effect(() => {
+	#ripple.effect(() => {
 		console.log(@total);
 	})
 }
