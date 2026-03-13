@@ -19,7 +19,7 @@
     "./production": {
       "import": "./src/server/production.js",
       "default": "./src/server/production.js",
-      "types": "./types/index.d.ts"
+      "types": "./types/production.d.ts"
     }
   },
   "homepage": "https://ripple-ts.com",
