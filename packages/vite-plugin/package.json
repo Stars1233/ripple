@@ -35,6 +35,7 @@
     "@ripple-ts/adapter": "workspace:*"
   },
   "devDependencies": {
+    "@types/node": "catalog:default",
     "ripple": "workspace:*",
     "type-fest": "catalog:default",
     "vite": "catalog:default"

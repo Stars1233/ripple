@@ -618,6 +618,9 @@ importers:
         specifier: workspace:*
         version: link:../adapter
     devDependencies:
+      '@types/node':
+        specifier: catalog:default
+        version: 24.11.0
       ripple:
         specifier: workspace:*
         version: link:../ripple
@@ -626,7 +629,7 @@ importers:
         version: 5.4.4
       vite:
         specifier: catalog:default
-        version: 7.3.1(@types/node@25.3.3)(jiti@2.6.1)(lightningcss@1.31.1)
+        version: 7.3.1(@types/node@24.11.0)(jiti@2.6.1)(lightningcss@1.31.1)
 
   packages/vscode-plugin:
     dependencies:

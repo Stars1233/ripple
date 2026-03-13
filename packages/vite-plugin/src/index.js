@@ -1,6 +1,6 @@
 /** @import {PackageJson} from 'type-fest' */
 /** @import {Plugin, ResolvedConfig, ViteDevServer} from 'vite' */
-/** @import {RipplePluginOptions, RippleConfigOptions, ResolvedRippleConfig, Route, Middleware, RenderRoute} from '@ripple-ts/vite-plugin' */
+/** @import {RipplePluginOptions, RippleConfigOptions, ResolvedRippleConfig, Route, RenderRoute} from '@ripple-ts/vite-plugin' */
 
 /// <reference types="ripple/compiler/internal/rpc" />
 
