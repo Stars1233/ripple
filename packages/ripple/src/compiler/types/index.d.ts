@@ -103,13 +103,13 @@ declare module 'estree' {
 
 	interface ClassDeclaration {
 		typeParameters?: AST.TSTypeParameterDeclaration;
-		superTypeArguments?: AST.TSTypeParameterInstantiation;
+		superTypeParameters?: AST.TSTypeParameterInstantiation;
 		implements?: AST.TSClassImplements[];
 	}
 
 	interface ClassExpression {
 		typeParameters?: AST.TSTypeParameterDeclaration;
-		superTypeArguments?: AST.TSTypeParameterInstantiation;
+		superTypeParameters?: AST.TSTypeParameterInstantiation;
 		implements?: AST.TSClassImplements[];
 	}
 
