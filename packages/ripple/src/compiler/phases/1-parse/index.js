@@ -873,6 +873,49 @@ function RipplePlugin(config) {
 			}
 
 			/**
+			 * Override isLet to recognize `let &{` and `let &[` as variable declarations.
+			 * Acorn's isLet checks the char after `let` and only recognizes `{`, `[`, or identifiers.
+			 * The `&` char (38) is not in that set, so `let &{...}` would not be parsed as a declaration.
+			 * @param {string} context
+			 * @returns {boolean}
+			 */
+			isLet(context) {
+				if (!this.isContextual('let')) return false;
+				const skip = /\s*/y;
+				skip.lastIndex = this.pos;
+				const match = skip.exec(this.input);
+				if (!match) return super.isLet(context);
+				const next = this.pos + match[0].length;
+				const nextCh = this.input.charCodeAt(next);
+				// If next char is &, check if char after & is { or [
+				if (nextCh === 38) {
+					const afterAmp = this.input.charCodeAt(next + 1);
+					if (afterAmp === 123 || afterAmp === 91) return true;
+				}
+				return super.isLet(context);
+			}
+
+			/**
+			 * Parse binding atom - handles lazy destructuring patterns (&{...} and &[...])
+			 * When & is directly followed by { or [, parse as a lazy destructuring pattern.
+			 * The resulting ObjectPattern/ArrayPattern node gets a `lazy: true` flag.
+			 */
+			parseBindingAtom() {
+				if (this.type === tt.bitwiseAND) {
+					// Check that the char immediately after & is { or [ (no whitespace)
+					const charAfterAmp = this.input.charCodeAt(this.end);
+					if (charAfterAmp === 123 || charAfterAmp === 91) {
+						// & directly followed by { or [ — lazy destructuring
+						this.next(); // consume &, now current token is { or [
+						const pattern = super.parseBindingAtom();
+						pattern.lazy = true;
+						return pattern;
+					}
+				}
+				return super.parseBindingAtom();
+			}
+
+			/**
 			 * Parse expression atom - handles RippleArray and RippleObject literals
 			 * @type {Parse.Parser['parseExprAtom']}
 			 */

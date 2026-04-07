@@ -25,6 +25,7 @@ interface BaseNodeMetaData {
 	is_reactive?: boolean;
 	lone_return?: boolean;
 	forceMapping?: boolean;
+	lazy_id?: string;
 }
 
 interface FunctionMetaData extends BaseNodeMetaData {
@@ -103,6 +104,14 @@ declare module 'estree' {
 		typeAnnotation?: TSTypeAnnotation | undefined;
 		decorators: TSESTree.Decorator[];
 		optional: boolean;
+	}
+
+	// Lazy destructuring patterns (&{...} and &[...])
+	interface ObjectPattern {
+		lazy?: boolean;
+	}
+	interface ArrayPattern {
+		lazy?: boolean;
 	}
 
 	// We mark the whole node as marked when member is @[expression]
@@ -1106,6 +1115,8 @@ export type BindingKind =
 	| 'rest_prop'
 	| 'prop'
 	| 'prop_fallback'
+	| 'lazy'
+	| 'lazy_fallback'
 	| 'index';
 
 /**
