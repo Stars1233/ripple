@@ -1,5 +1,5 @@
 ---
-'ripple': minor
+'ripple': patch
 ---
 
 Remove `#ripple` namespace syntax in favor of direct imports from `'ripple'`
