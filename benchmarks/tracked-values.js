@@ -30,7 +30,6 @@ async function run_suite(n) {
 
 	// Pre-allocate arrays for setup/teardown
 	let values;
-	let derived_values;
 
 	// ── Creation ──────────────────────────────────────────────
 	bench.add(`create ${n.toLocaleString()} tracked values`, () => {
