@@ -71,7 +71,7 @@ count++;                    // convenient direct access via lazy destructuring
 console.log(countTracked.value);  // equivalent: read via .value on the tracked object
 ```
 
-::: tip When to use `.value`
+::: info When to use `.value`
 Use `.value` when you need to work with the `Tracked<V>` object directly, such
 as storing tracked values in arrays or objects, or passing them to functions and
 components that expect `Tracked<T>`. Use `&[...]` lazy destructuring for
