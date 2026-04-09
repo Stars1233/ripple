@@ -7,31 +7,31 @@ title: Reactivity in Ripple
 ## Reactive Variables
 
 You use `track` to create a single tracked value. The `track` function will
-create a `Tracked<T>` object that is not accessible from the outside, and
-instead you must use `@` to read or write to the tracked value. You can pass the
+create a `Tracked<T>` object, and with `&[]` lazy destructuring you get a
+variable that reads and writes to the tracked value directly. You can pass the
 `Tracked<T>` object between components, functions and context to read and write
 to the value in different parts of your codebase.
 
 ```ts
 import { track } from 'ripple';
 
-let name = track('World');
-let count = track(0);
+let &[name] = track('World');
+let &[count] = track(0);
 
 // Updates automatically trigger re-renders
-@count++;
+count++;
 ```
 
-Objects can also contain tracked values with `@` to access the reactive object
-property:
+Objects can also contain tracked values:
 
 ```ts
 import { track } from 'ripple';
 
-let counter = { current: track(0) };
+let &[current] = track(0);
+let counter = { current };
 
 // Updates automatically trigger re-renders
-counter.@current++;
+current++;
 ```
 
 Tracked derived values are also `Tracked<T>` objects, except that you pass a function
@@ -40,11 +40,11 @@ to `track` rather than a value:
 ```ts
 import { track } from 'ripple';
 
-let count = track(0);
-let double = track(() => @count * 2);
-let quadruple = track(() => @double * 2);
+let &[count] = track(0);
+let &[double] = track(() => count * 2);
+let &[quadruple] = track(() => double * 2);
 
-console.log(@quadruple);
+console.log(quadruple);
 ```
 
 Derived tracked values can also be written to for **optimistic state**. The
@@ -54,13 +54,13 @@ takes precedence and overrides it:
 ```ts
 import { track } from 'ripple';
 
-let count = track(0);
-let double = track(() => @count * 2);
+let &[count] = track(0);
+let &[double] = track(() => count * 2);
 
 // Write optimistically — shows 99 immediately
-@double = 99;
+double = 99;
 
-// When @count next changes, double reverts to @count * 2
+// When count next changes, double reverts to count * 2
 ```
 
 If you want to use a tracked value inside a reactive context, such as an effect
@@ -69,13 +69,13 @@ but you don't want that value to be a tracked dependency, you can use `untrack`:
 ```ts
 import { track, effect, untrack } from 'ripple';
 
-let count = track(0);
-let double = track(() => @count * 2);
-let quadruple = track(() => @double * 2);
+let &[count] = track(0);
+let &[double] = track(() => count * 2);
+let &[quadruple] = track(() => double * 2);
 
 effect(() => {
   // This effect will never fire again, as we've untracked the only dependency it has
-  console.log(untrack(() => @quadruple));
+  console.log(untrack(() => quadruple));
 })
 ```
 
@@ -89,8 +89,8 @@ created on access from an active component context.
 The optional get and set parameters of the `track` function let you customize
 how a tracked value is read or written, similar to property accessors but
 expressed as pure functions. The get function receives the current stored value
-and its return value is exposed when the tracked value is accessed / unboxed
-with `@`. The set function should return the value that will actually be stored
+and its return value is exposed when the tracked value is read
+via `&[]` lazy destructuring. The set function should return the value that will actually be stored
 and receives two parameters: the first is the one being assigned and the second
 is the previous value. The get and set functions may be useful for tasks such
 as logging, validating, or transforming values before they are exposed or stored.
@@ -99,7 +99,7 @@ as logging, validating, or transforming values before they are exposed or stored
 import { track } from 'ripple';
 
 export component App() {
-  let count = track(0,
+  let &[count] = track(0,
     (current) => {
       console.log(current);
       return current;
@@ -151,7 +151,7 @@ reactivity:
 component Child(&{ count, className, children }: Props) {
   // count, className, children are lazily read from the props object
   <button class={className}><@children /></button>
-  <pre>{`Count is: ${@count}`}</pre>
+  <pre>{`Count is: ${count}`}</pre>
 }
 ```
 
@@ -182,13 +182,12 @@ The `trackSplit` function is an alternative approach that "splits" a plain
 object — such as component props — into individually boxed `Tracked<V>`
 variables and an extra `rest` property containing the remaining unspecified
 object properties. Unlike lazy destructuring, `trackSplit` creates actual
-`Tracked` wrappers that can be passed by reference across boundaries and used
-with `@` syntax.
+`Tracked` wrappers that can be passed by reference across boundaries.
 
 ```ripple
 import { trackSplit } from 'ripple';
 
-const [children, count, rest] = trackSplit(props, ['children', 'count']);
+const &[children, count, rest] = trackSplit(props, ['children', 'count']);
 ```
 
 For most cases, lazy destructuring (`&{...}`) is simpler and preferred. Use
@@ -211,15 +210,15 @@ import { trackSplit, track } from 'ripple';
 component Child(props: PropsWithChildren<{ count: Tracked<number>, className: string }>) {
   // children, count are always reactive
   // but className is passed in as a read-only reactive value
-  const [children, count, className, rest] = trackSplit(props, ['children', 'count', 'class']);
+  const &[children, count, className, rest] = trackSplit(props, ['children', 'count', 'class']);
 
-  <button class={@className} {...@rest}><@children /></button>
-  <pre>{`Count is: ${@count}`}</pre>
-  <button onClick={() => @count++}>{'Increment Count'}</button>
+  <button class={className} {...rest}><@children /></button>
+  <pre>{`Count is: ${count}`}</pre>
+  <button onClick={() => count++}>{'Increment Count'}</button>
 }
 
 export component App() {
-    let count = track(0,
+    let &[count] = track(0,
     (current) => {
       console.log('getter', current);
       return current;
@@ -229,8 +228,8 @@ export component App() {
       return next;
     }
   );
-  let className = track('shadow');
-  let name = track('Click Me');
+  let &[className] = track('shadow');
+  let &[name] = track('Click Me');
 
   function buttonRef(el) {
     console.log('ref called with', el);
@@ -240,11 +239,11 @@ export component App() {
   }
 
   <Child
-    class={@className}
-    onClick={() => { @name === 'Click Me' ? @name = 'Clicked' : @name = 'Click Me'; @className = ''}}
+    class={className}
+    onClick={() => { name === 'Click Me' ? name = 'Clicked' : name = 'Click Me'; className = ''}}
     {count}
     {ref buttonRef}
-  >{@name}</Child>;
+  >{name}</Child>;
 }
 ```
 
@@ -278,23 +277,23 @@ simply be passed by reference between boundaries:
 ```ripple
 import { track, effect } from 'ripple';
 
-function createDouble(count) {
-  const double = track(() => @count * 2);
+function createDouble(&[count]) {
+  const &[double] = track(() => count * 2);
 
   effect(() => {
-    console.log('Count:', @count)
+    console.log('Count:', count)
   });
 
   return double;
 }
 
 export component App() {
-  let count = track(0);
+  let &[count, countTracked] = track(0);
 
-  const double = createDouble(count);
+  const &[double] = createDouble(countTracked);
 
-  <div>{'Double: ' + @double}</div>
-  <button onClick={() => { @count++; }}>{'Increment'}</button>
+  <div>{'Double: ' + double}</div>
+  <button onClick={() => { count++; }}>{'Increment'}</button>
 }
 ```
 
@@ -307,8 +306,8 @@ components based on reactive state. Instead of hardcoding which component to
 show, you can store a component in a `Tracked` via `track()`, and update it at
 runtime. When the tracked value changes, Ripple automatically unmounts the
 previous component and mounts the new one. Dynamic components are written with
-the `<@Component />` tag, where the @ both unwraps the tracked reference and
-tells the compiler that the component is dynamic. This makes it straightforward
+the `<@Component />` tag, where the `@` tells the compiler that the component
+is dynamic. This makes it straightforward
 to pass components as props or swap them directly within a component, enabling
 flexible, state-driven UIs with minimal boilerplate.
 
@@ -318,16 +317,16 @@ flexible, state-driven UIs with minimal boilerplate.
 import { track } from 'ripple';
 
 export component App() {
-  let swapMe = track(() => Child1);
+  let &[swapMe, swapMeTracked] = track(() => Child1);
 
-  <Child {swapMe} />
+  <Child swapMe={swapMeTracked} />
 
-  <button onClick={() => @swapMe = @swapMe === Child1 ? Child2 : Child1}>
+  <button onClick={() => swapMe = swapMe === Child1 ? Child2 : Child1}>
 		{'Swap Component'}
 	</button>
 }
 
-component Child({ swapMe }: {swapMe: Tracked<Component>}) {
+component Child(&{ swapMe }: {swapMe: Tracked<Component>}) {
   <@swapMe />
 }
 
@@ -354,13 +353,13 @@ use `effect`:
 import { track, effect } from 'ripple';
 
 export component App() {
-  let count = track(0);
+  let &[count] = track(0);
 
   effect(() => {
-    console.log(@count);
+    console.log(count);
   });
 
-  <button onClick={() => @count++}>{'Increment'}</button>
+  <button onClick={() => count++}>{'Increment'}</button>
 }
 ```
 
@@ -376,12 +375,12 @@ The `tick()` function returns a Promise that resolves after all pending reactive
 import { tick, track, effect } from 'ripple';
 
 export component App() {
-  let count = track(0);
+  let &[count] = track(0);
 
   effect(() => {
-    @count;
+    count;
 
-    if (@count === 0) {
+    if (count === 0) {
       console.log('initial run, skipping');
       return;
     }
@@ -391,7 +390,7 @@ export component App() {
     });
   });
 
-  <button onClick={() => @count++}>{'Increment'}</button>
+  <button onClick={() => count++}>{'Increment'}</button>
 }
 ```
 
@@ -405,13 +404,13 @@ export component App() {
 import { track, effect, untrack } from 'ripple';
 
 export component App() {
-  let count = track(10);
-  let double = track(() => @count * 2);
-  let quadruple = track(() => @double * 2);
+  let &[count] = track(10);
+  let &[double] = track(() => count * 2);
+  let &[quadruple] = track(() => double * 2);
 
   effect(() => {
     // This effect will never fire again, as we've untracked the only dependency it has
-    console.log(untrack(() => @quadruple));
+    console.log(untrack(() => quadruple));
   })
 }
 ```
@@ -435,14 +434,14 @@ JavaScript object, like arrays:
 import { track, effect } from 'ripple';
 
 export component App() {
-	let first = track(1);
-	let second = track(2);
+	let &[first] = track(1);
+	let &[second] = track(2);
 	const arr = [first, second];
 
-	const total = track(() => arr.reduce((a, b) => a + @b, 0));
+	const &[total] = track(() => arr.reduce((a, b) => a + b.value, 0));
 
 	effect(() => {
-		console.log(@total);
+		console.log(total);
 	})
 }
 ```
@@ -462,8 +461,7 @@ supports all of its methods and properties. Import it from `'ripple'`.
 All elements existing or new of the `RippleArray` are
 reactive and respond to the various array operations such as push, pop, shift,
 unshift, etc. Even if you reference a non-existent element, once it is added, the
-original reference will react to the change. You do NOT need to use the unboxing
-`@` with the elements of the array.
+original reference will react to the change.
 
 ```ripple
 import { RippleArray } from 'ripple';
@@ -502,8 +500,7 @@ export component App() {
 of its methods and properties. Import it from `'ripple'`.
 `RippleObject` fully supports shallow reactivity and any property on the root
 level is reactive. You can even reference non-existent properties and once added
-the original reference reacts to the change. You do NOT need to use the unboxing
-`@` with the properties of the `RippleObject`.
+the original reference reacts to the change.
 
 ```ripple
 import { RippleObject } from 'ripple';
@@ -557,8 +554,8 @@ export component App() {
   <p>{"Direct usage: set contains 2: "}{set.has(2)}</p>
 
   // reactive assignment
-  let has = track(() => set.has(2));
-  <p>{"Assigned usage: set contains 2: "}{@has}</p>
+  let &[has] = track(() => set.has(2));
+  <p>{"Assigned usage: set contains 2: "}{has}</p>
 
   <button onClick={() => set.delete(2)}>{"Delete 2"}</button>
   <button onClick={() => set.add(2)}>{"Add 2"}</button>
@@ -593,8 +590,8 @@ export component App() {
   <p>{"Direct usage: map has an item with key 2: "}{map.has(2)}</p>
 
   // reactive assignment
-  let has = track(() => map.has(2));
-  <p>{"Assigned usage: map has an item with key 2: "}{@has}</p>
+  let &[has] = track(() => map.has(2));
+  <p>{"Assigned usage: map has an item with key 2: "}{has}</p>
 
   <button onClick={() => map.delete(2)}>{"Delete item with key 2"}</button>
   <button onClick={() => map.set(2, 2)}>{"Add key 2 with value 2"}</button>
@@ -632,9 +629,9 @@ export component App() {
   <p>{"ISO String: "}{date.toISOString()}</p>
 
   // reactive assignment
-  let year = track(() => date.getFullYear());
-  let month = track(() => date.getMonth());
-  <p>{"Assigned usage: Year "}{@year}{", Month "}{@month}</p>
+  let &[year] = track(() => date.getFullYear());
+  let &[month] = track(() => date.getMonth());
+  <p>{"Assigned usage: Year "}{year}{", Month "}{month}</p>
 
   <button onClick={() => date.setFullYear(2026)}>{"Change to 2026"}</button>
   <button onClick={() => date.setMonth(11)}>{"Change to December"}</button>
