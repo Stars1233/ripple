@@ -612,7 +612,7 @@ const visitors = {
 		}
 
 		// Lazy bindings from track() calls (read_unwraps) are inherently reactive —
-		// propagate tracking even without the @ prefix so that control flow (if/for/switch)
+		// propagate tracking so that control flow (if/for/switch)
 		// and early returns create reactive blocks
 		if (
 			!node.tracked &&
@@ -706,7 +706,7 @@ const visitors = {
 
 				if (propertyName && internalProperties.has(propertyName)) {
 					error(
-						`Directly accessing internal property "${propertyName}" of a tracked object is not allowed. Use \`get(${node.object.name})\` or \`@${node.object.name}\` instead.`,
+						`Directly accessing internal property "${propertyName}" of a tracked object is not allowed. Use \`${node.object.name}.value\` or \`&[]\` lazy destructuring instead.`,
 						context.state.analysis.module.filename,
 						node.property,
 						context.state.loose ? context.state.analysis.errors : undefined,
@@ -736,7 +736,7 @@ const visitors = {
 					// pass through
 				} else {
 					error(
-						`Accessing a tracked object directly is not allowed, use the \`@\` prefix to read the value inside a tracked object - for example \`@${node.object.name}${node.property.type === 'Identifier' ? `.${node.property.name}` : ''}\``,
+						`Accessing a tracked object directly is not allowed, use \`.value\` or \`&[]\` lazy destructuring to read the value inside a tracked object - for example \`${node.object.name}.value\``,
 						context.state.analysis.module.filename,
 						node.object,
 						context.state.loose ? context.state.analysis.errors : undefined,
@@ -827,20 +827,6 @@ const visitors = {
 					setup_lazy_transforms(declarator.id, lazy_id, state, writable, !!init_is_track);
 					// Store the generated identifier name on the pattern for the transform phase
 					declarator.id.metadata = { ...declarator.id.metadata, lazy_id: lazy_id.name };
-				}
-
-				const paths = extract_paths(declarator.id);
-
-				for (const path of paths) {
-					if (path.node.tracked) {
-						error(
-							'Variables cannot be reactively referenced using @',
-							state.analysis.module.filename,
-							path.node,
-							context.state.loose ? context.state.analysis.errors : undefined,
-							context.state.analysis.comments,
-						);
-					}
 				}
 
 				visit(declarator, state);
