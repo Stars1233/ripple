@@ -145,15 +145,20 @@ declare global {
 export function createRefKey(): symbol;
 
 // Base Tracked interface - all tracked values have a '#v' property containing the actual value
-export interface Tracked<V> {
+interface TrackedBase<V> {
 	'#v': V;
+	value: V;
 }
 
 // Augment Tracked to be callable when V is a Component
 // This allows <@Something /> to work in JSX when Something is Tracked<Component>
-export interface Tracked<V> {
+interface TrackedCallable<V> {
 	(props: V extends Component<infer P> ? P : never): V extends Component ? void : never;
 }
+
+// Supports indexed access: track(0)[0] → value, track(0)[1] → Tracked<V>
+// And destructuring `const [one, two] = track(0);`
+export type Tracked<V> = [V, Tracked<V>] & TrackedBase<V> & TrackedCallable<V>;
 
 // Helper type to infer component type from a function that returns a component
 // If T is a function returning a Component, extract the Component type itself, not the return type (void)

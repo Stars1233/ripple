@@ -5,7 +5,13 @@
 
 import { Readable } from 'stream';
 import { DERIVED, UNINITIALIZED, TRACKED } from '../client/constants.js';
-import { is_ripple_object, get_descriptor, define_property, is_array } from '../client/utils.js';
+import {
+	is_ripple_object,
+	get_descriptor,
+	define_property,
+	is_array,
+	array_slice,
+} from '../client/utils.js';
 import { escape } from '../../../utils/escaping.js';
 import { is_boolean_attribute } from '../../../compiler/utils.js';
 import { clsx } from 'clsx';
@@ -20,6 +26,7 @@ export { escape };
 export { register_component_css as register_css } from './css-registry.js';
 export { hash } from '../../../utils/hashing.js';
 export { context } from './context.js';
+export { array_slice };
 
 /** @type {null | Component} */
 export let active_component = null;
@@ -607,6 +614,84 @@ export function spread_attrs(attrs, css_hash) {
 
 var empty_get_set = { get: undefined, set: undefined };
 
+class TrackedValue {
+	/**
+	 * @param {any} v
+	 * @param {{ get?: Function; set?: Function }} a
+	 */
+	constructor(v, a) {
+		this.a = a;
+		this.c = 0;
+		this.f = TRACKED;
+		this.v = v;
+	}
+	get [0]() {
+		return get(/** @type {Tracked} */ (this));
+	}
+	set [0](v) {
+		set(/** @type {Tracked} */ (this), v);
+	}
+	get [1]() {
+		return this;
+	}
+	get value() {
+		return get(/** @type {Tracked} */ (this));
+	}
+	/** @param {any} v */
+	set value(v) {
+		set(/** @type {Tracked} */ (this), v);
+	}
+	/** @returns {2} */
+	get length() {
+		return 2;
+	}
+	*[Symbol.iterator]() {
+		yield get(/** @type {Tracked} */ (this));
+		yield this;
+	}
+}
+
+class DerivedValue {
+	/**
+	 * @param {Function} fn
+	 * @param {{ get?: Function; set?: Function }} a
+	 */
+	constructor(fn, a) {
+		this.a = a;
+		this.c = 0;
+		this.co = active_component;
+		/** @type {null | import('#server').Dependency} */
+		this.d = null;
+		this.f = TRACKED | DERIVED;
+		this.fn = fn;
+		this.v = UNINITIALIZED;
+	}
+	get [0]() {
+		return get(/** @type {Derived} */ (this));
+	}
+	set [0](v) {
+		set(/** @type {Derived} */ (this), v);
+	}
+	get [1]() {
+		return this;
+	}
+	get value() {
+		return get(/** @type {Derived} */ (this));
+	}
+	/** @param {any} v */
+	set value(v) {
+		set(/** @type {Derived} */ (this), v);
+	}
+	/** @returns {2} */
+	get length() {
+		return 2;
+	}
+	*[Symbol.iterator]() {
+		yield get(/** @type {Derived} */ (this));
+		yield this;
+	}
+}
+
 /**
  * @param {any} v
  * @param {(value: any) => any} [get]
@@ -614,12 +699,7 @@ var empty_get_set = { get: undefined, set: undefined };
  * @returns {Tracked}
  */
 function tracked(v, get, set) {
-	return {
-		a: get || set ? { get, set } : empty_get_set,
-		c: 0,
-		f: TRACKED,
-		v,
-	};
+	return /** @type {Tracked} */ (new TrackedValue(v, get || set ? { get, set } : empty_get_set));
 }
 
 /**
@@ -636,15 +716,7 @@ export function track(v, get, set) {
 	}
 
 	if (typeof v === 'function') {
-		return {
-			a: get || set ? { get, set } : empty_get_set,
-			c: 0,
-			co: active_component,
-			d: null,
-			f: TRACKED | DERIVED,
-			fn: v,
-			v: UNINITIALIZED,
-		};
+		return /** @type {Derived} */ (new DerivedValue(v, get || set ? { get, set } : empty_get_set));
 	}
 
 	return tracked(v, get, set);
@@ -678,7 +750,7 @@ export function track_split(v, l) {
 				t = v[key];
 			} else {
 				t = tracked(undefined);
-				t = define_property(t, '__v', /** @type {PropertyDescriptor} */ (get_descriptor(v, key)));
+				t = define_property(t, 'v', /** @type {PropertyDescriptor} */ (get_descriptor(v, key)));
 			}
 		} else {
 			t = tracked(undefined);

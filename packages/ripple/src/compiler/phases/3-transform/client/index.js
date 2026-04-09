@@ -533,7 +533,7 @@ const visitors = {
 					if (context.state.metadata?.tracking === false) {
 						context.state.metadata.tracking = true;
 					}
-					if (node.tracked) {
+					if (node.tracked && !binding?.read_unwraps) {
 						return b.call('_$_.get', build_getter(node, context));
 					}
 				}
@@ -634,17 +634,9 @@ const visitors = {
 			}
 		}
 
-		if (!context.state.to_ts && is_ripple_track_call(callee, context)) {
-			const track_method_name =
-				callee.type === 'Identifier'
-					? callee.name === 'trackSplit'
-						? 'track_split'
-						: 'track'
-					: callee.type === 'MemberExpression' && callee.property.type === 'Identifier'
-						? callee.property.name === 'trackSplit'
-							? 'track_split'
-							: 'track'
-						: 'track';
+		const matched_track_call = !context.state.to_ts ? is_ripple_track_call(callee, context) : null;
+		if (matched_track_call) {
+			const track_method_name = matched_track_call === 'trackSplit' ? 'track_split' : 'track';
 
 			if (callee.type === 'Identifier' && callee.name === 'track') {
 				if (node.arguments.length === 0) {
@@ -939,6 +931,20 @@ const visitors = {
 					declarator.id.metadata?.lazy_id
 				) {
 					declarator.id = b.id(declarator.id.metadata.lazy_id);
+				}
+			}
+		}
+
+		if (context.state.to_ts) {
+			for (const declarator of node.declarations) {
+				if (
+					(declarator.id.type === 'ObjectPattern' || declarator.id.type === 'ArrayPattern') &&
+					declarator.id.lazy
+				) {
+					declarator.id.lazy = false;
+					if (declarator.id.metadata?.lazy_id) {
+						delete declarator.id.metadata.lazy_id;
+					}
 				}
 			}
 		}
@@ -2018,6 +2024,24 @@ const visitors = {
 		}
 
 		const left = node.left;
+
+		// Handle lazy binding assignments (e.g., value = 5 where value is from let &[value] = track(0))
+		// Must come before the left.tracked check to use the binding's transform
+		if (left.type === 'Identifier') {
+			const binding = context.state.scope?.get(left.name);
+			if (binding?.transform?.assign && binding.node !== left) {
+				let value = /** @type {AST.Expression} */ (context.visit(node.right));
+
+				// For compound operators (+=, -=, *=, /=), expand to read + operation
+				if (node.operator !== '=') {
+					const operator = node.operator.slice(0, -1); // '+=' -> '+'
+					const current = binding.transform.read(left);
+					value = b.binary(/** @type {AST.BinaryOperator} */ (operator), current, value);
+				}
+
+				return binding.transform.assign(left, value);
+			}
+		}
 
 		if (
 			left.type === 'MemberExpression' &&

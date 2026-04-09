@@ -334,7 +334,7 @@ const visitors = {
 				(binding.kind === 'lazy' || binding.kind === 'lazy_fallback')
 			) {
 				const transformed = binding.transform.read(node);
-				if (node.tracked) {
+				if (node.tracked && !binding.read_unwraps) {
 					const is_right_side_of_assignment =
 						parent.type === 'AssignmentExpression' && parent.right === node;
 					if (
@@ -520,17 +520,9 @@ const visitors = {
 			}
 		}
 
-		if (is_ripple_track_call(callee, context)) {
-			const track_method_name =
-				callee.type === 'Identifier'
-					? callee.name === 'trackSplit'
-						? 'track_split'
-						: 'track'
-					: callee.type === 'MemberExpression' && callee.property.type === 'Identifier'
-						? callee.property.name === 'trackSplit'
-							? 'track_split'
-							: 'track'
-						: 'track';
+		const track_call_name = is_ripple_track_call(callee, context);
+		if (track_call_name) {
+			const track_method_name = track_call_name === 'trackSplit' ? 'track_split' : 'track';
 
 			return {
 				...node,

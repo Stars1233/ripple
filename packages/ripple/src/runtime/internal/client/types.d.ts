@@ -24,6 +24,11 @@ export type Tracked<V = any> = {
 	c: number;
 	f: number;
 	__v: V;
+	readonly [0]: V;
+	[1]: Tracked<V>;
+	value: V;
+	readonly length: 2;
+	[Symbol.iterator](): Iterator<V | Tracked<V>>;
 };
 
 export type Derived = {
@@ -37,6 +42,11 @@ export type Derived = {
 	f: number;
 	fn: Function;
 	__v: any;
+	readonly [0]: any;
+	[1]: Derived;
+	value: any;
+	readonly length: 2;
+	[Symbol.iterator](): Iterator<any | Derived>;
 };
 
 export type Block = {
