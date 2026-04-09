@@ -260,7 +260,7 @@ As an alternative to `&[]`, tracked values can be read/written via `.value`:
 
 ```ripple
 const count = track(0);
-count.value++;            // read + write via .value
+count.value++; // read + write via .value
 ```
 
 `.value` is useful when you need the `Tracked<V>` object itself (e.g., passing as
@@ -275,7 +275,8 @@ cleaner code in most cases.
 - `const &[var]` is valid when you don't mutate; use `let &[var]` when mutation is
   needed
 - `&[var]` in function params is valid for accepting `Tracked` values
-- `bindValue()` and similar APIs need the `Tracked` object, not the unwrapped value
+- `bindValue()` and similar APIs need the `Tracked` object, not the unwrapped
+  value
 
 **Implementation details:**
 
