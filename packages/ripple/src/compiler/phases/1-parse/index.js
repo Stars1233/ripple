@@ -2627,15 +2627,9 @@ function get_comment_handlers(source, comments, index = 0) {
 								isSwitchCaseSibling = true;
 							} else if (parent.type === 'SwitchCase') {
 								node_array = parent.consequent;
-							} else if (
-								parent.type === 'ArrayExpression' ||
-								parent.type === 'RippleArrayExpression'
-							) {
+							} else if (parent.type === 'ArrayExpression') {
 								node_array = parent.elements;
-							} else if (
-								parent.type === 'ObjectExpression' ||
-								parent.type === 'RippleObjectExpression'
-							) {
+							} else if (parent.type === 'ObjectExpression') {
 								node_array = parent.properties;
 							} else if (
 								parent.type === 'FunctionDeclaration' ||
