@@ -4,6 +4,7 @@
 	AnalysisResult,
 	AnalysisState,
 	AnalysisContext,
+	Context,
 	ScopeInterface,
 	Visitors,
 	TopScopedClasses,
@@ -484,10 +485,12 @@ function unwrap_template_expression(expression) {
 
 /**
  * @param {AST.Expression} expression
- * @param {AnalysisState} state
+ * @param {Context<AST.Node, AnalysisState>} context
  * @returns {boolean}
  */
-function is_children_template_expression(expression, state) {
+function is_children_template_expression(expression, context) {
+	const component = context.path.findLast((node) => node.type === 'Component');
+	const component_scope = component ? context.state.scopes.get(component) : null;
 	const unwrapped = unwrap_template_expression(expression);
 
 	if (unwrapped.type === 'MemberExpression') {
@@ -507,13 +510,25 @@ function is_children_template_expression(expression, state) {
 			const target = unwrap_template_expression(/** @type {AST.Expression} */ (unwrapped.object));
 
 			if (target.type === 'Identifier') {
-				const binding = state.scope.get(target.name);
-				return binding?.declaration_kind === 'param';
+				const binding = context.state.scope.get(target.name);
+				return binding?.declaration_kind === 'param' && binding.scope === component_scope;
 			}
 		}
 	}
 
-	return unwrapped.type === 'Identifier' && unwrapped.name === 'children';
+	if (unwrapped.type !== 'Identifier' || unwrapped.name !== 'children') {
+		return false;
+	}
+
+	const binding = context.state.scope.get(unwrapped.name);
+	return (
+		(binding?.declaration_kind === 'param' ||
+			binding?.kind === 'prop' ||
+			binding?.kind === 'prop_fallback' ||
+			binding?.kind === 'lazy' ||
+			binding?.kind === 'lazy_fallback') &&
+		binding.scope === component_scope
+	);
 }
 
 /** @type {Visitors<AST.Node, AnalysisState>} */
@@ -743,6 +758,19 @@ const visitors = {
 		}
 
 		const callee = node.callee;
+
+		if (
+			!context.path.some((path_node) => path_node.type === 'TsxCompat') &&
+			is_children_template_expression(/** @type {AST.Expression} */ (callee), context)
+		) {
+			error(
+				'`children` cannot be called like a regular function. Use element syntax instead, e.g. `<children />` or `<props.children />`.',
+				context.state.analysis.module.filename,
+				callee,
+				context.state.loose ? context.state.analysis.errors : undefined,
+				context.state.analysis.comments,
+			);
+		}
 
 		if (context.state.function_depth === 0 && is_ripple_track_call(callee, context)) {
 			error(
@@ -1446,6 +1474,7 @@ const visitors = {
 
 		const { state, visit, path } = context;
 		const is_dom_element = is_element_dom_element(node);
+		/** @type {Set<AST.Identifier>} */
 		const attribute_names = new Set();
 
 		mark_control_flow_has_template(path);
@@ -1701,12 +1730,7 @@ const visitors = {
 	Text(node, context) {
 		mark_control_flow_has_template(context.path);
 
-		if (
-			is_children_template_expression(
-				/** @type {AST.Expression} */ (node.expression),
-				context.state,
-			)
-		) {
+		if (is_children_template_expression(/** @type {AST.Expression} */ (node.expression), context)) {
 			error(
 				'`children` cannot be rendered using text interpolation. Use `<children />` instead.',
 				context.state.analysis.module.filename,
