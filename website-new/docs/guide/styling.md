@@ -40,15 +40,15 @@ Examples:
 ```ripple
 import { track } from 'ripple';
 
-let includeBaz = track(true);
-<div class={{ foo: true, bar: false, baz: @includeBaz }} />
+let &[includeBaz] = track(true);
+<div class={{ foo: true, bar: false, baz: includeBaz }} />
 // becomes: class="foo baz"
 
 <div class={['foo', { baz: false }, 0 && 'bar', [true && 'bat']]} />
 // becomes: class="foo bat"
 
-let count = track(3);
-<div class={['foo', { bar: @count > 2 }, @count > 3 && 'bat']} />
+let &[count] = track(3);
+<div class={['foo', { bar: count > 2 }, count > 3 && 'bat']} />
 // becomes: class="foo bar"
 ```
 
@@ -60,13 +60,13 @@ the `style` attribute, passing either a string or an object to it:
 ```ripple
 import { track } from 'ripple';
 
-let color = track('red');
+let &[color] = track('red');
 
-<div style={`color: ${@color}; font-weight: bold; background-color: gray`} />
-<div style={{ color: @color, fontWeight: 'bold', 'background-color': 'gray' }} />
+<div style={`color: ${color}; font-weight: bold; background-color: gray`} />
+<div style={{ color: color, fontWeight: 'bold', 'background-color': 'gray' }} />
 
 const style = {
-  @color,
+  color,
   fontWeight: 'bold',
   'background-color': 'gray',
 };
