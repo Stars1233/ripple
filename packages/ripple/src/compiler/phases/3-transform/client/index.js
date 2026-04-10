@@ -533,9 +533,6 @@ const visitors = {
 					if (context.state.metadata?.tracking === false) {
 						context.state.metadata.tracking = true;
 					}
-					if (node.tracked && !binding?.read_unwraps) {
-						return b.call('_$_.get', build_getter(node, context));
-					}
 				}
 				return build_getter(node, context);
 			}
@@ -915,6 +912,25 @@ const visitors = {
 	ClassExpression(node, context) {
 		if (!context.state.to_ts) {
 			strip_class_typescript_syntax(node, context);
+		}
+		return context.next();
+	},
+
+	ExpressionStatement(node, context) {
+		// Handle standalone lazy destructuring: &[data] = track(0); → const lazy0 = track(0);
+		if (
+			node.expression.type === 'AssignmentExpression' &&
+			node.expression.left.lazy &&
+			node.expression.left.metadata?.lazy_id
+		) {
+			if (context.state.to_ts) {
+				// In TypeScript mode, convert to a regular assignment (drop the pattern)
+				node.expression.left.lazy = false;
+				delete node.expression.left.metadata.lazy_id;
+				return context.next();
+			}
+			const right = /** @type {AST.Expression} */ (context.visit(node.expression.right));
+			return b.const(b.id(node.expression.left.metadata.lazy_id), right);
 		}
 		return context.next();
 	},
