@@ -19,7 +19,6 @@ const PREC = {
 	CALL: 12,
 	NEW: 13,
 	MEMBER: 14,
-	UNBOX: 15,
 };
 
 module.exports = grammar({
@@ -576,8 +575,6 @@ module.exports = grammar({
 
 		style_subscript_expression: ($) => seq('#style', '[', field('index', $.expression), ']'),
 
-		unbox_expression: ($) => prec.left(PREC.UNBOX, seq('@', $.identifier)),
-
 		yield_expression: ($) => prec.right(seq('yield', optional('*'), optional($.expression))),
 
 		await_expression: ($) => prec.left(PREC.CALL, seq('await', $.expression)),
@@ -863,26 +860,15 @@ module.exports = grammar({
 			),
 
 		jsx_element_name: ($) =>
-			choice(
-				$.identifier,
-				$.jsx_namespace_name,
-				$.jsx_member_name,
-				$.member_expression,
-				$.unbox_expression,
-			),
+			choice($.identifier, $.jsx_namespace_name, $.jsx_member_name, $.member_expression),
 
 		// Non-namespaced variant (used for self-closing elements)
 		jsx_non_namespaced_element_name: ($) =>
-			choice($.identifier, $.jsx_member_name, $.member_expression, $.unbox_expression),
+			choice($.identifier, $.jsx_member_name, $.member_expression),
 
-		// Support dotted names where segments may be prefixed with '@', e.g. obj.@tracked_basic
+		// Support dotted names in JSX element names (e.g. Namespace.Component)
 		// Implemented iteratively to avoid left recursion
-		jsx_member_name: ($) =>
-			seq(
-				// base identifier (no '@' here because an optional '@' may precede the tag itself)
-				$.identifier,
-				repeat1(seq('.', choice($.identifier, seq('@', $.identifier)))),
-			),
+		jsx_member_name: ($) => seq($.identifier, repeat1(seq('.', $.identifier))),
 
 		jsx_namespace_name: ($) => seq($.identifier, ':', $.identifier),
 
