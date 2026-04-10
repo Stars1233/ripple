@@ -39,14 +39,14 @@ export component App() {
   obj.count = track(0);
 
   // create another tracked variable
-  const count2 = track(0);
+  let &[count2] = track(0);
   // context2 now contains a tracked variable
   context2.set(count2);
 
   <button
     onClick={() => {
-      obj.@count++;
-      @count2++;
+      obj.count.value++;
+      count2++;
     }}
   >
     {'Click Me'}
@@ -55,11 +55,11 @@ export component App() {
   // context's reactive property count gets updated
   <pre>
     {'Context: '}
-    {context.get().@count}
+    {obj.count.value}
   </pre>
   <pre>
     {'Context2: '}
-    {@(context2.get())}
+    {context2.get().value}
   </pre>
 }
 ```

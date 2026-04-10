@@ -87,11 +87,11 @@ have to be created on access from an active component context. :::
 The optional get and set parameters of the `track` function let you customize how
 a tracked value is read or written, similar to property accessors but expressed as
 pure functions. The get function receives the current stored value and its return
-value is exposed when the tracked value is accessed / unboxed with `@`. The set
-function should return the value that will actually be stored and receives two
-parameters: the first is the one being assigned and the second is the previous
-value. The get and set functions may be useful for tasks such as logging,
-validating, or transforming values before they are exposed or stored.
+value is exposed when the tracked value is accessed via `&[]` destructuring or
+`.value`. The set function should return the value that will actually be stored
+and receives two parameters: the first is the one being assigned and the second is
+the previous value. The get and set functions may be useful for tasks such as
+logging, validating, or transforming values before they are exposed or stored.
 
 ```ripple
 import { track } from 'ripple';
@@ -483,8 +483,8 @@ supports all of its methods and properties. Import it from `'ripple'`. All
 elements existing or new of the `RippleArray` are reactive and respond to the
 various array operations such as push, pop, shift, unshift, etc. Even if you
 reference a non-existent element, once it is added, the original reference will
-react to the change. You do NOT need to use the unboxing `@` with the elements of
-the array.
+react to the change. You do NOT need to use `&[]` destructuring with the elements
+of the array.
 
 ```ripple
 import { RippleArray } from 'ripple';
@@ -526,8 +526,8 @@ export component App() {
 its methods and properties. Import it from `'ripple'`. `RippleObject` fully
 supports shallow reactivity and any property on the root level is reactive. You
 can even reference non-existent properties and once added the original reference
-reacts to the change. You do NOT need to use the unboxing `@` with the properties
-of the `RippleObject`.
+reacts to the change. You do NOT need to use `&[]` destructuring with the
+properties of the `RippleObject`.
 
 ```ripple
 import { RippleObject } from 'ripple';

@@ -537,7 +537,6 @@ module.exports = grammar({
 				$.new_expression,
 				$.yield_expression,
 				$.parenthesized_expression,
-				$.unbox_expression,
 			),
 
 		primary_expression: ($) =>
@@ -577,19 +576,7 @@ module.exports = grammar({
 
 		style_subscript_expression: ($) => seq('#style', '[', field('index', $.expression), ']'),
 
-		unbox_expression: ($) =>
-			prec.left(
-				PREC.UNBOX,
-				seq(
-					'@',
-					choice(
-						$.identifier,
-						$.member_expression,
-						$.subscript_expression,
-						$.parenthesized_expression,
-					),
-				),
-			),
+		unbox_expression: ($) => prec.left(PREC.UNBOX, seq('@', $.identifier)),
 
 		yield_expression: ($) => prec.right(seq('yield', optional('*'), optional($.expression))),
 
@@ -608,7 +595,6 @@ module.exports = grammar({
 							$.member_expression,
 							$.subscript_expression,
 							$._destructuring_pattern,
-							$.unbox_expression,
 						),
 					),
 					'=',
@@ -620,10 +606,7 @@ module.exports = grammar({
 			prec.right(
 				PREC.ASSIGN,
 				seq(
-					field(
-						'left',
-						choice($.identifier, $.member_expression, $.subscript_expression, $.unbox_expression),
-					),
+					field('left', choice($.identifier, $.member_expression, $.subscript_expression)),
 					field(
 						'operator',
 						choice(

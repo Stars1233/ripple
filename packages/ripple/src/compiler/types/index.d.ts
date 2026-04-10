@@ -116,20 +116,14 @@ declare module 'estree' {
 
 	// We mark the whole node as marked when member is @[expression]
 	// Otherwise, we only mark Identifier nodes
-	interface MemberExpression extends AST.TrackedNode {}
+	interface MemberExpression {}
 
-	// These 3 are needed so that Literal can extend TrackedNode
-	// since Literal is a union type we have to extend each individually
-	interface SimpleLiteral extends AST.LiteralTrackedNode {}
-	interface RegExpLiteral extends AST.LiteralTrackedNode {}
-	interface BigIntLiteral extends AST.LiteralTrackedNode {}
+	interface SimpleLiteral {}
+	interface RegExpLiteral {}
+	interface BigIntLiteral {}
 
 	interface TrackedNode {
 		tracked?: boolean;
-	}
-
-	interface LiteralTrackedNode extends AST.TrackedNode {
-		was_expression?: boolean;
 	}
 
 	// Include TypeScript node types and Ripple-specific nodes in NodeMap
@@ -143,7 +137,6 @@ declare module 'estree' {
 		ServerBlockStatement: ServerBlockStatement;
 		ServerIdentifier: ServerIdentifier;
 		StyleIdentifier: StyleIdentifier;
-		TrackedExpression: TrackedExpression;
 		Attribute: Attribute;
 		RefAttribute: RefAttribute;
 		SpreadAttribute: SpreadAttribute;
@@ -152,7 +145,6 @@ declare module 'estree' {
 	}
 
 	interface ExpressionMap {
-		TrackedExpression: TrackedExpression;
 		StyleIdentifier: StyleIdentifier;
 		ServerIdentifier: ServerIdentifier;
 		Text: TextNode;
@@ -343,14 +335,6 @@ declare module 'estree' {
 	interface ScriptContent extends Omit<AST.Element, 'type'> {
 		type: 'ScriptContent';
 		content: string;
-	}
-
-	/**
-	 * Tracked Expressions
-	 */
-	interface TrackedExpression extends AST.BaseExpression {
-		argument: AST.Expression;
-		type: 'TrackedExpression';
 	}
 
 	/**

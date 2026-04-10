@@ -490,13 +490,6 @@ function unwrap_template_expression(expression) {
 function is_children_template_expression(expression, state) {
 	const unwrapped = unwrap_template_expression(expression);
 
-	if (unwrapped.type === 'TrackedExpression') {
-		return is_children_template_expression(
-			/** @type {AST.Expression} */ (unwrapped.argument),
-			state,
-		);
-	}
-
 	if (unwrapped.type === 'MemberExpression') {
 		let property_name = null;
 
@@ -631,16 +624,6 @@ const visitors = {
 
 	MemberExpression(node, context) {
 		const parent = context.path.at(-1);
-
-		if (
-			context.state.metadata?.tracking === false &&
-			parent?.type !== 'AssignmentExpression' &&
-			(node.tracked ||
-				((node.property.type === 'Identifier' || node.property.type === 'Literal') &&
-					/** @type {AST.TrackedNode} */ (node.property).tracked))
-		) {
-			context.state.metadata.tracking = true;
-		}
 
 		// Track #style.className or #style['className'] references
 		if (node.object.type === 'StyleIdentifier') {
