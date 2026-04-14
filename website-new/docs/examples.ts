@@ -557,11 +557,11 @@ export default component App() {
 import type { PropsWithChildren, Tracked } from 'ripple';
 
 component Child(props: PropsWithChildren<{ count: Tracked<number> }>) {
-  const [children, count, className, rest] = trackSplit(props, ['children', 'count', 'class']);
+  const [children, &[count], &[className], &[rest]] = trackSplit(props, ['children', 'count', 'class']);
 
-  <button class={@className} {...@rest}><@children /></button>
-  <pre>{\`Count is: \${@count}\`}</pre>
-  <button onClick={() => @count++}>{'Increment Count'}</button>
+  <button class={className} {...rest}><children /></button>
+  <pre>{\`Count is: \${count}\`}</pre>
+  <button onClick={() => count++}>{'Increment Count'}</button>
 }
 
 export default component App() {
