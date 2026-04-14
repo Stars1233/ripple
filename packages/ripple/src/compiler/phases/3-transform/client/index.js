@@ -1577,7 +1577,8 @@ const visitors = {
 							child.type === 'Html' ||
 							(child.type === 'Element' &&
 								(child.id.type !== 'Identifier' || !is_element_dom_element(child))) ||
-							(child.type === 'Text' && child.expression.type !== 'Literal'),
+							((child.type === 'RippleExpression' || child.type === 'Text') &&
+								child.expression.type !== 'Literal'),
 					);
 
 				if (needs_pop) {
@@ -2638,7 +2639,7 @@ function join_template(items) {
 function transform_ts_child(node, context) {
 	const { state, visit } = context;
 
-	if (node.type === 'Text') {
+	if (node.type === 'RippleExpression' || node.type === 'Text') {
 		state.init?.push(b.stmt(/** @type {AST.Expression} */ (visit(node.expression, { ...state }))));
 	} else if (node.type === 'Html') {
 		// Do we need to do something special here?
@@ -2805,12 +2806,29 @@ function transform_ts_child(node, context) {
 			// The `is_capitalized` was never handled for MemberExpression
 			// but it should've been for the `object` part because it starts the tag
 			// But the plan is to only rely on source_name and creating a const for the tag with ['#v']
+			const source_name = /** @type {AST.Identifier} */ (node.id).name;
+			const capitalized_name = source_name.charAt(0).toUpperCase() + source_name.slice(1);
+
+			// node.id and node.openingElement.name are the SAME object (convert_from_jsx mutates
+			// the JSXIdentifier to an Identifier in-place). Capitalize the name directly so that
+			// the generated JSX uses <Tag> (uppercase) matching the capitalized variable declaration,
+			// preventing the TypeScript "declared but never read" false-negative (ts6133).
+			/** @type {AST.Identifier} */ (node.id).name = capitalized_name;
+			if (!node.id.metadata) node.id.metadata = /** @type {any} */ ({});
+			node.id.metadata.is_capitalized = true;
+			node.id.metadata.source_name = source_name;
+
 			node.openingElement.metadata = {
 				...node.openingElement.metadata,
 				is_capitalized: true,
 			};
 
 			if (!node.selfClosing && !node.unclosed) {
+				// closingElement.name is a separate JSXIdentifier (not the same object as node.id)
+				// so we need to capitalize it separately
+				if (node.closingElement.name && 'name' in node.closingElement.name) {
+					/** @type {{ name: string }} */ (node.closingElement.name).name = capitalized_name;
+				}
 				node.closingElement.metadata = {
 					...node.closingElement.metadata,
 					is_capitalized: true,
@@ -3064,6 +3082,7 @@ function transform_ts_child(node, context) {
 function is_template_or_control_flow(node) {
 	return (
 		node.type === 'Element' ||
+		node.type === 'RippleExpression' ||
 		node.type === 'Text' ||
 		node.type === 'Html' ||
 		node.type === 'TsxCompat' ||
@@ -3162,7 +3181,10 @@ function element_has_dynamic_content(element) {
 		) {
 			return true;
 		}
-		if (child.type === 'Text' && child.expression.type !== 'Literal') {
+		if (
+			(child.type === 'RippleExpression' || child.type === 'Text') &&
+			child.expression.type !== 'Literal'
+		) {
 			return true;
 		}
 		// Non-DOM element (component)
@@ -3348,9 +3370,11 @@ function transform_children(children, context) {
 		return b.id(
 			node.type == 'Element' && is_element_dom_element(node)
 				? state.scope.generate(/** @type {AST.Identifier} */ (node.id).name)
-				: node.type == 'Text'
-					? state.scope.generate('text')
-					: state.scope.generate('node'),
+				: node.type == 'RippleExpression'
+					? state.scope.generate('expression')
+					: node.type == 'Text'
+						? state.scope.generate('text')
+						: state.scope.generate('node'),
 			/** @type {AST.NodeWithLocation} */ (node.type === 'Element' ? node.openingElement : node),
 		);
 	};
@@ -3504,11 +3528,11 @@ function transform_children(children, context) {
 			/** @type {AST.Expression | undefined} */
 			let expression = undefined;
 			let is_create_text_only = false;
-			if (node.type === 'Text' || node.type === 'Html') {
+			if (node.type === 'RippleExpression' || node.type === 'Text' || node.type === 'Html') {
 				metadata = { tracking: false, await: false };
 				expression = /** @type {AST.Expression} */ (visit(node.expression, { ...state, metadata }));
 				is_create_text_only =
-					node.type === 'Text' && normalized.length === 1 && expression.type === 'Literal';
+					node.type !== 'Html' && normalized.length === 1 && expression.type === 'Literal';
 			}
 
 			if (initial === null && root && !is_create_text_only) {
@@ -3604,7 +3628,8 @@ function transform_children(children, context) {
 							child.type === 'Html' ||
 							(child.type === 'Element' &&
 								(child.id.type !== 'Identifier' || !is_element_dom_element(child))) ||
-							(child.type === 'Text' && child.expression.type !== 'Literal'),
+							((child.type === 'RippleExpression' || child.type === 'Text') &&
+								child.expression.type !== 'Literal'),
 					);
 
 					// Add pop() if we have DOM element children AND the Element visitor didn't already add pop()
@@ -3620,7 +3645,7 @@ function transform_children(children, context) {
 								// Components always generate sibling()
 								needs_sibling_call = true;
 							}
-						} else if (next_node.type === 'Text') {
+						} else if (next_node.type === 'RippleExpression' || next_node.type === 'Text') {
 							// Only dynamic text generates sibling()
 							needs_sibling_call = next_node.expression.type !== 'Literal';
 						} else if (
@@ -3666,7 +3691,7 @@ function transform_children(children, context) {
 							),
 						),
 				});
-			} else if (node.type === 'Text') {
+			} else if (node.type === 'RippleExpression' || node.type === 'Text') {
 				if (metadata?.tracking) {
 					skipped = 0;
 					state.template?.push(' ');
