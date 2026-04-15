@@ -635,6 +635,15 @@ export function normalize_children(children, context) {
 			(child.type === 'RippleExpression' || child.type === 'Text') &&
 			(prev_child?.type === 'RippleExpression' || prev_child?.type === 'Text')
 		) {
+			if (
+				(child.type === 'RippleExpression' &&
+					is_children_template_expression(child.expression, context.state.scope)) ||
+				(prev_child.type === 'RippleExpression' &&
+					is_children_template_expression(prev_child.expression, context.state.scope))
+			) {
+				continue;
+			}
+
 			if (prev_child.type === 'Text' || child.type === 'Text') {
 				prev_child.type = 'Text';
 			}
@@ -654,6 +663,91 @@ export function normalize_children(children, context) {
 	}
 
 	return normalized;
+}
+
+/**
+ * @param {AST.Expression} expression
+ * @returns {AST.Expression}
+ */
+export function unwrap_template_expression(expression) {
+	/** @type {AST.Expression} */
+	let node = expression;
+
+	while (true) {
+		if (
+			node.type === 'ParenthesizedExpression' ||
+			node.type === 'TSAsExpression' ||
+			node.type === 'TSSatisfiesExpression' ||
+			node.type === 'TSNonNullExpression' ||
+			node.type === 'TSInstantiationExpression'
+		) {
+			node = /** @type {AST.Expression} */ (node.expression);
+			continue;
+		}
+
+		if (node.type === 'ChainExpression') {
+			node = /** @type {AST.Expression} */ (node.expression);
+			continue;
+		}
+
+		break;
+	}
+
+	return node;
+}
+
+/**
+ * @param {AST.Expression} expression
+ * @param {ScopeInterface | null | undefined} scope
+ * @param {ScopeInterface | null} [component_scope]
+ * @returns {boolean}
+ */
+export function is_children_template_expression(expression, scope, component_scope = null) {
+	if (scope == null) {
+		return false;
+	}
+
+	const unwrapped = unwrap_template_expression(expression);
+
+	if (unwrapped.type === 'MemberExpression') {
+		let property_name = null;
+
+		if (!unwrapped.computed && unwrapped.property.type === 'Identifier') {
+			property_name = unwrapped.property.name;
+		} else if (
+			unwrapped.computed &&
+			unwrapped.property.type === 'Literal' &&
+			typeof unwrapped.property.value === 'string'
+		) {
+			property_name = unwrapped.property.value;
+		}
+
+		if (property_name === 'children') {
+			const target = unwrap_template_expression(/** @type {AST.Expression} */ (unwrapped.object));
+
+			if (target.type === 'Identifier') {
+				const binding = scope.get(target.name);
+				return (
+					binding?.declaration_kind === 'param' &&
+					(component_scope === null || binding.scope === component_scope)
+				);
+			}
+		}
+	}
+
+	if (unwrapped.type !== 'Identifier' || unwrapped.name !== 'children') {
+		return false;
+	}
+
+	const binding = scope.get(unwrapped.name);
+	return (
+		(binding?.declaration_kind === 'param' ||
+			binding?.kind === 'prop' ||
+			binding?.kind === 'prop_fallback' ||
+			binding?.kind === 'lazy' ||
+			binding?.kind === 'lazy_fallback') &&
+		(component_scope === null || binding.scope === component_scope)
+	);
 }
 
 /**

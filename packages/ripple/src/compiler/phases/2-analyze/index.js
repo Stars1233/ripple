@@ -26,6 +26,7 @@ import {
 	is_inside_component,
 	is_ripple_track_call,
 	is_void_element,
+	is_children_template_expression as is_children_template_expression_in_scope,
 	normalize_children,
 	is_binding_function,
 	is_inside_try_block,
@@ -689,81 +690,13 @@ function error_return_keyword(node, context, message) {
 
 /**
  * @param {AST.Expression} expression
- * @returns {AST.Expression}
- */
-function unwrap_template_expression(expression) {
-	/** @type {AST.Expression} */
-	let node = expression;
-
-	while (true) {
-		if (
-			node.type === 'ParenthesizedExpression' ||
-			node.type === 'TSAsExpression' ||
-			node.type === 'TSSatisfiesExpression' ||
-			node.type === 'TSNonNullExpression' ||
-			node.type === 'TSInstantiationExpression'
-		) {
-			node = /** @type {AST.Expression} */ (node.expression);
-			continue;
-		}
-
-		if (node.type === 'ChainExpression') {
-			node = /** @type {AST.Expression} */ (node.expression);
-			continue;
-		}
-
-		break;
-	}
-
-	return node;
-}
-
-/**
- * @param {AST.Expression} expression
  * @param {Context<AST.Node, AnalysisState>} context
  * @returns {boolean}
  */
 function is_children_template_expression(expression, context) {
 	const component = context.path.findLast((node) => node.type === 'Component');
 	const component_scope = component ? context.state.scopes.get(component) : null;
-	const unwrapped = unwrap_template_expression(expression);
-
-	if (unwrapped.type === 'MemberExpression') {
-		let property_name = null;
-
-		if (!unwrapped.computed && unwrapped.property.type === 'Identifier') {
-			property_name = unwrapped.property.name;
-		} else if (
-			unwrapped.computed &&
-			unwrapped.property.type === 'Literal' &&
-			typeof unwrapped.property.value === 'string'
-		) {
-			property_name = unwrapped.property.value;
-		}
-
-		if (property_name === 'children') {
-			const target = unwrap_template_expression(/** @type {AST.Expression} */ (unwrapped.object));
-
-			if (target.type === 'Identifier') {
-				const binding = context.state.scope.get(target.name);
-				return binding?.declaration_kind === 'param' && binding.scope === component_scope;
-			}
-		}
-	}
-
-	if (unwrapped.type !== 'Identifier' || unwrapped.name !== 'children') {
-		return false;
-	}
-
-	const binding = context.state.scope.get(unwrapped.name);
-	return (
-		(binding?.declaration_kind === 'param' ||
-			binding?.kind === 'prop' ||
-			binding?.kind === 'prop_fallback' ||
-			binding?.kind === 'lazy' ||
-			binding?.kind === 'lazy_fallback') &&
-		binding.scope === component_scope
-	);
+	return is_children_template_expression_in_scope(expression, context.state.scope, component_scope);
 }
 
 /** @type {Visitors<AST.Node, AnalysisState>} */
@@ -999,7 +932,7 @@ const visitors = {
 			is_children_template_expression(/** @type {AST.Expression} */ (callee), context)
 		) {
 			error(
-				'`children` cannot be called like a regular function. Use element syntax instead, e.g. `<children />` or `<props.children />`.',
+				'`children` cannot be called like a regular function. Render it with `{children}` or `{props.children}` instead.',
 				context.state.analysis.module.filename,
 				callee,
 				context.state.loose ? context.state.analysis.errors : undefined,
@@ -1718,6 +1651,19 @@ const visitors = {
 
 		mark_control_flow_has_template(path);
 
+		if (
+			!is_dom_element &&
+			is_children_template_expression(/** @type {AST.Expression} */ (node.id), context)
+		) {
+			error(
+				'`children` cannot be rendered as a component. Render it with `{children}` or `{props.children}` instead.',
+				state.analysis.module.filename,
+				node.id,
+				context.state.loose ? context.state.analysis.errors : undefined,
+				context.state.analysis.comments,
+			);
+		}
+
 		validate_nesting(node, context);
 
 		// Store capitalized name for dynamic components/elements
@@ -1919,31 +1865,21 @@ const visitors = {
 			}
 			/** @type {(AST.Node | AST.Expression)[]} */
 			let implicit_children = [];
-			/** @type {AST.Identifier[]} */
-			let explicit_children = [];
 
 			for (const child of node.children) {
 				if (child.type === 'Component') {
-					if (child.id?.name === 'children') {
-						explicit_children.push(child.id);
-					}
+					error(
+						'Component declarations cannot be used inside composite component children. Pass them as explicit props on the template element instead.',
+						state.analysis.module.filename,
+						child.id || child,
+						context.state.loose ? context.state.analysis.errors : undefined,
+						context.state.analysis.comments,
+					);
 				} else if (child.type !== 'EmptyStatement') {
 					implicit_children.push(
 						child.type === 'RippleExpression' || child.type === 'Text' || child.type === 'Html'
 							? child.expression
 							: child,
-					);
-				}
-			}
-
-			if (implicit_children.length > 0 && explicit_children.length > 0) {
-				for (const item of [...explicit_children, ...implicit_children]) {
-					error(
-						'Cannot have both implicit and explicit children',
-						state.analysis.module.filename,
-						item,
-						context.state.loose ? context.state.analysis.errors : undefined,
-						context.state.analysis.comments,
 					);
 				}
 			}
@@ -1974,16 +1910,6 @@ const visitors = {
 	RippleExpression(node, context) {
 		mark_control_flow_has_template(context.path);
 
-		if (is_children_template_expression(/** @type {AST.Expression} */ (node.expression), context)) {
-			error(
-				'`children` cannot be rendered using text interpolation. Use `<children />` instead.',
-				context.state.analysis.module.filename,
-				node.expression,
-				context.state.loose ? context.state.analysis.errors : undefined,
-				context.state.analysis.comments,
-			);
-		}
-
 		context.next();
 	},
 
@@ -1992,7 +1918,7 @@ const visitors = {
 
 		if (is_children_template_expression(/** @type {AST.Expression} */ (node.expression), context)) {
 			error(
-				'`children` cannot be rendered using text interpolation. Use `<children />` instead.',
+				'`children` cannot be rendered using explicit text interpolation. Use `{children}` or `{props.children}` instead.',
 				context.state.analysis.module.filename,
 				node.expression,
 				context.state.loose ? context.state.analysis.errors : undefined,

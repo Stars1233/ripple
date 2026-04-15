@@ -139,7 +139,7 @@ component Card(props: { message: string, className?: string, onClick?: () => voi
 
 component Card(props: { children: Children }) {
   <div class="card">
-    <props.children />
+    {props.children}
   </div>
 }
 
@@ -163,11 +163,11 @@ component Separate() {
 }
 
 export default component App() {
-	<Composite PropComp={Separate}>
-		component InlineComp() {
-			<p>{\`I'm an inline component.\`}</p>
-		}
-	</Composite>
+	component InlineComp() {
+		<p>{\`I'm an inline component.\`}</p>
+	}
+
+	<Composite PropComp={Separate} {InlineComp} />
 }
 `,
 	},
@@ -177,7 +177,7 @@ export default component App() {
 	<fieldset>
 		<Header />
 		<hr />
-		<children />
+		{children}
 		<hr />
 		<Footer />
 	</fieldset>
@@ -188,11 +188,12 @@ component CustomHeader() {
 }
 
 export default component App() {
-	<Card Header={CustomHeader}> // <- Header passed in as a prop
+	component Footer() {
+		<p>{'Card footer'}</p>
+	}
+
+	<Card Header={CustomHeader} {Footer}> // <- Header and Footer passed in as props
 		<p>{'Card content here'}</p>
-		component Footer() {     // <- Footer passed in as a inline component
-			<p>{'Card footer'}</p>
-		}
 	</Card>
 }
 `,
@@ -630,16 +631,16 @@ export default component App() {
 }
 
 component Child({ Button, children }) {
-  <@Button><children /></@Button>
+  <@Button>{children}</@Button>
 }
 
 component AnotherChild(props) {
-  <props.@Button><props.children /></props.@Button>
+  <props.@Button>{props.children}</props.@Button>
 }
 
 component SomeButton({ children }) {
   <button onClick={() => alert('Clicked')}>
-		<children />
+		{children}
 	</button>
 }
 
