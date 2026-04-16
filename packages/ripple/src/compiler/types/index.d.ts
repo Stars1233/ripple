@@ -1284,6 +1284,7 @@ export interface AnalysisState extends BaseState {
 	elements?: AST.Element[];
 	function_depth?: number;
 	loose?: boolean;
+	configured_compat_kinds?: Set<string>;
 	metadata: BaseStateMetaData & {
 		styleClasses?: StyleClasses;
 	};

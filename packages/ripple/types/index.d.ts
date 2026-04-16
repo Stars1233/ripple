@@ -10,24 +10,14 @@ export type RippleElement = {
 /** Type for implicit children fragments rendered with `{children}`. */
 export type Children = RippleElement;
 
-export type CompatApi = {
-	createRoot: () => void;
-	createComponent: (node: any, children_fn: () => any) => void;
-	jsx: (type: any, props: any) => any;
-};
-
-export type CompatOptions = {
-	[key: string]: CompatApi;
-};
-
 export function mount(
 	component: Component,
-	options: { target: HTMLElement; props?: Record<string, any>; compat?: CompatOptions },
+	options: { target: HTMLElement; props?: Record<string, any> },
 ): () => void;
 
 export function hydrate(
 	component: Component,
-	options: { target: HTMLElement; props?: Record<string, any>; compat?: CompatOptions },
+	options: { target: HTMLElement; props?: Record<string, any> },
 ): () => void;
 
 export function tick(): Promise<void>;
