@@ -1,5 +1,5 @@
 ---
-'ripple': minor
+'ripple': patch
 '@ripple-ts/compat-react': patch
 ---
 
