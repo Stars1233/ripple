@@ -97,6 +97,7 @@
         ],
         "extensions": [
           ".ripple",
+          ".rsrx",
           ".tsrx"
         ],
         "icon": {

@@ -58,7 +58,7 @@ ruleTester.run('no-lazy-destructuring-in-modules', rule, {
 					<div>{count}</div>
 				}
 			`,
-			filename: 'Counter.ripple',
+			filename: 'Counter.rsrx',
 		},
 		// Valid: lazy destructuring in .tsrx files should be allowed
 		{
@@ -82,7 +82,7 @@ ruleTester.run('no-lazy-destructuring-in-modules', rule, {
 					<div>{count}{name}</div>
 				}
 			`,
-			filename: 'Child.ripple',
+			filename: 'Child.rsrx',
 		},
 		// Valid: lazy object destructuring in .tsrx files
 		{

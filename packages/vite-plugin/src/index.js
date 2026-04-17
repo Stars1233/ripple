@@ -40,8 +40,8 @@ const VIRTUAL_HYDRATE_ID = 'virtual:ripple-hydrate';
 const RESOLVED_VIRTUAL_HYDRATE_ID = '\0virtual:ripple-hydrate';
 const VIRTUAL_COMPAT_ID = 'virtual:ripple-compat';
 const RESOLVED_VIRTUAL_COMPAT_ID = '\0virtual:ripple-compat';
-const RIPPLE_EXTENSIONS = ['.ripple', '.tsrx'];
-const RIPPLE_EXTENSION_PATTERN = /\.(?:ripple|tsrx)$/;
+const RIPPLE_EXTENSIONS = ['.ripple', '.rsrx', '.tsrx'];
+const RIPPLE_EXTENSION_PATTERN = /\.(?:ripple|rsrx|tsrx)$/;
 
 /**
  * @param {string} file_name

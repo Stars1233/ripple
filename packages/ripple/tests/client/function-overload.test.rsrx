@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mount, flushSync } from 'ripple';
-import { test } from './function-overload-import.ripple';
+import { test } from './function-overload-import.rsrx';
 
 describe('function overload import tests', () => {
 	describe('function overloads', () => {

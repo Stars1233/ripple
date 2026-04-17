@@ -17,7 +17,7 @@ const path = require('path');
 const { createLogging, DEBUG } = require('./utils.js');
 
 const { log, logWarning, logError } = createLogging('[Ripple Language]');
-const RIPPLE_EXTENSIONS = ['.ripple', '.tsrx'];
+const RIPPLE_EXTENSIONS = ['.ripple', '.rsrx', '.tsrx'];
 
 /**
  * @param {string} file_name

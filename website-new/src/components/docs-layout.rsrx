@@ -1,6 +1,6 @@
-import { DocsHeader } from './docs-header.ripple';
-import { Sidebar } from './sidebar.ripple';
-import { DocsFooter } from './docs-footer.ripple';
+import { DocsHeader } from './docs-header.rsrx';
+import { Sidebar } from './sidebar.rsrx';
+import { DocsFooter } from './docs-footer.rsrx';
 
 export component DocsLayout({
 	children,

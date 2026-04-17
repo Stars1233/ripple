@@ -242,7 +242,7 @@ export default component Basic() {
       <p>{'This is a basic Ripple application template.'}</p>
       <p>
         {'Edit '}
-        <code>{'src/App.ripple'}</code>
+        <code>{'src/App.rsrx'}</code>
         {' to get started.'}
       </p>
     </div>
@@ -1363,7 +1363,7 @@ import { Portal as RipplePortal } from 'ripple';`;
 		});
 
 		it('should preserve blank lines between export statements and import statements or comments', async () => {
-			const expected = `export { handler } from './test.ripple';
+			const expected = `export { handler } from './test.rsrx';
 
 import { Portal as RipplePortal } from 'ripple';
 
@@ -1940,7 +1940,7 @@ files = [...(files ?? []), ...dt.files];`;
         // <div class="editor-dot yellow" />
         <div class="editor-dot green" />
       </div>
-      <div class="editor-tab">{'Examples.ripple'}</div>
+      <div class="editor-tab">{'Examples.rsrx'}</div>
     </div>
     <div class="editor-content">
       <pre class="editor-code">

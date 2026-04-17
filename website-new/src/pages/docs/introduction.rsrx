@@ -1,7 +1,7 @@
-import { DocsLayout } from '../../components/docs-layout.ripple';
-import { DocHeading } from '../../components/doc-heading.ripple';
-import { DocCodeGroup } from '../../components/doc-code-block.ripple';
-import { DocCallout } from '../../components/doc-callout.ripple';
+import { DocsLayout } from '../../components/docs-layout.rsrx';
+import { DocHeading } from '../../components/doc-heading.rsrx';
+import { DocCodeGroup } from '../../components/doc-code-block.rsrx';
+import { DocCallout } from '../../components/doc-callout.rsrx';
 
 const toc = [
 	{ href: '#features', text: 'Features', level: 2 },
@@ -137,13 +137,13 @@ export component IntroductionPage() {
 			<li>
 				<strong>{'Prettier Support'}</strong>
 				{': Full Prettier formatting support for '}
-				<code>{'.ripple'}</code>
+				<code>{'.rsrx'}</code>
 				{' modules'}
 			</li>
 			<li>
 				<strong>{'ESLint Support'}</strong>
 				{': linting support for '}
-				<code>{'.ripple'}</code>
+				<code>{'.rsrx'}</code>
 				{' modules'}
 			</li>
 		</ul>

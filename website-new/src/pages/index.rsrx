@@ -1,8 +1,8 @@
-import { Layout } from '../components/layout.ripple';
-import { Header } from '../components/header.ripple';
-import { Actions } from '../components/actions.ripple';
-import { Editor } from '../components/editor.ripple';
-import { Content } from '../components/content.ripple';
+import { Layout } from '../components/layout.rsrx';
+import { Header } from '../components/header.rsrx';
+import { Actions } from '../components/actions.rsrx';
+import { Editor } from '../components/editor.rsrx';
+import { Content } from '../components/content.rsrx';
 
 export component IndexPage() {
 	<Layout>
