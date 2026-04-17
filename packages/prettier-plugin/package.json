@@ -28,7 +28,10 @@
     "ripple": "workspace:*",
     "prettier": "catalog:default"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@tsrx/core": "workspace:*",
+    "@tsrx/ripple": "workspace:*"
+  },
   "files": [
     "src/"
   ],
