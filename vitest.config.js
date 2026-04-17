@@ -11,7 +11,7 @@ export default defineConfig({
 					name: 'ripple-client',
 					include: [
 						'packages/ripple/tests/client/**/*.test.ripple',
-							'packages/ripple/tests/client/**/*.test.rsrx',
+						'packages/ripple/tests/client/**/*.test.rsrx',
 						'packages/ripple/tests/client/**/*.test.tsrx',
 					],
 					environment: 'jsdom',
@@ -26,7 +26,7 @@ export default defineConfig({
 					name: 'ripple-server',
 					include: [
 						'packages/ripple/tests/server/**/*.test.ripple',
-							'packages/ripple/tests/server/**/*.test.rsrx',
+						'packages/ripple/tests/server/**/*.test.rsrx',
 						'packages/ripple/tests/server/**/*.test.tsrx',
 					],
 					environment: 'node',
@@ -120,7 +120,7 @@ export default defineConfig({
 					name: 'compat-react',
 					include: [
 						'packages/compat-react/tests/**/*.test.ripple',
-							'packages/compat-react/tests/**/*.test.rsrx',
+						'packages/compat-react/tests/**/*.test.rsrx',
 						'packages/compat-react/tests/**/*.test.tsrx',
 					],
 					environment: 'jsdom',

@@ -62,9 +62,7 @@ const RIPPLE_FILE_SELECTORS = ['**/*.ripple', '**/*.rsrx', '**/*.tsrx'];
  */
 function is_ripple_file_path(file_path) {
 	return (
-		file_path.endsWith('.ripple') ||
-		file_path.endsWith('.rsrx') ||
-		file_path.endsWith('.tsrx')
+		file_path.endsWith('.ripple') || file_path.endsWith('.rsrx') || file_path.endsWith('.tsrx')
 	);
 }
 
