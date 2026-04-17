@@ -1076,9 +1076,12 @@ export function convert_source_map_to_mappings(
 				}
 				return;
 			} else if (node.type === 'CatchClause') {
-				// Visit in source order: param, body
+				// Visit in source order: param, resetParam, body
 				if (node.param) {
 					visit(node.param);
+				}
+				if (node.resetParam) {
+					visit(node.resetParam);
 				}
 				if (node.body) {
 					visit(node.body);
@@ -1410,13 +1413,6 @@ export function convert_source_map_to_mappings(
 						max_len,
 						max_len,
 					);
-
-					if (node.metadata?.inside_component_top_level) {
-						// Since we don't print component with async,
-						// we need to suppress the ts diagnostic on the 'await' keyword
-						// about being inside a non-async function
-						mapping.data.customData.suppressedDiagnostics = [1308];
-					}
 
 					mappings.push(mapping);
 				}

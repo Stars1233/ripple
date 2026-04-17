@@ -675,8 +675,7 @@ function RipplePlugin(config) {
 			 * Override isLet to recognize `let &{` and `let &[` as variable declarations.
 			 * Acorn's isLet checks the char after `let` and only recognizes `{`, `[`, or identifiers.
 			 * The `&` char (38) is not in that set, so `let &{...}` would not be parsed as a declaration.
-			 * @param {string} context
-			 * @returns {boolean}
+			 * @type {Parse.Parser['isLet']}
 			 */
 			isLet(context) {
 				if (!this.isContextual('let')) return false;
@@ -1337,12 +1336,44 @@ function RipplePlugin(config) {
 					const clause = /** @type {AST.CatchClause} */ (this.startNode());
 					this.next();
 					if (this.eat(tt.parenL)) {
-						clause.param = this.parseBindingAtom();
+						// Parse first param (error) manually to support optional second param (reset).
+						// We can't use parseCatchClauseParam() because it eats the closing paren.
+						const param = this.parseBindingAtom();
+						const simple = param.type === 'Identifier';
+						this.enterScope(simple ? BINDING_TYPES.BIND_SIMPLE_CATCH : 0);
+						this.checkLValPattern(
+							param,
+							simple ? BINDING_TYPES.BIND_SIMPLE_CATCH : BINDING_TYPES.BIND_LEXICAL,
+						);
+						const type = this.tsTryParseTypeAnnotation();
+						if (type) {
+							param.typeAnnotation = type;
+							this.resetEndLocation(param);
+						}
+						clause.param = param;
+
+						// Optional second parameter: reset function
+						if (this.eat(tt.comma)) {
+							const reset_param = this.parseBindingAtom();
+							this.checkLValSimple(reset_param, BINDING_TYPES.BIND_LEXICAL);
+							const reset_type = this.tsTryParseTypeAnnotation();
+							if (reset_type) {
+								reset_param.typeAnnotation = reset_type;
+								this.resetEndLocation(reset_param);
+							}
+							clause.resetParam = reset_param;
+						} else {
+							clause.resetParam = null;
+						}
+
 						this.expect(tt.parenR);
 					} else {
 						clause.param = null;
+						clause.resetParam = null;
+						this.enterScope(0);
 					}
-					clause.body = this.parseBlock();
+					clause.body = this.parseBlock(false);
+					this.exitScope();
 					node.handler = this.finishNode(clause, 'CatchClause');
 				}
 				node.finalizer = this.eat(tt._finally) ? this.parseBlock() : null;
@@ -2616,6 +2647,16 @@ function get_comment_handlers(source, comments, index = 0) {
 					next();
 
 					if (comments[0]) {
+						if (node.type === 'Program' && node.body.length === 0) {
+							// Collect all comments in an empty program (file with only comments)
+							while (comments.length) {
+								const comment = /** @type {AST.CommentWithLocation} */ (comments.shift());
+								(node.innerComments ||= []).push(comment);
+							}
+							if (node.innerComments && node.innerComments.length > 0) {
+								return;
+							}
+						}
 						if (node.type === 'BlockStatement' && node.body.length === 0) {
 							// Collect all comments that fall within this empty block
 							while (
@@ -2674,32 +2715,34 @@ function get_comment_handlers(source, comments, index = 0) {
 							let isArgument = false;
 							let isSwitchCaseSibling = false;
 
-							if (
-								parent.type === 'BlockStatement' ||
-								parent.type === 'Program' ||
-								parent.type === 'Component' ||
-								parent.type === 'ClassBody'
-							) {
-								node_array = parent.body;
-							} else if (parent.type === 'SwitchStatement') {
-								node_array = parent.cases;
-								isSwitchCaseSibling = true;
-							} else if (parent.type === 'SwitchCase') {
-								node_array = parent.consequent;
-							} else if (parent.type === 'ArrayExpression') {
-								node_array = parent.elements;
-							} else if (parent.type === 'ObjectExpression') {
-								node_array = parent.properties;
-							} else if (
-								parent.type === 'FunctionDeclaration' ||
-								parent.type === 'FunctionExpression' ||
-								parent.type === 'ArrowFunctionExpression'
-							) {
-								node_array = parent.params;
-								isParam = true;
-							} else if (parent.type === 'CallExpression' || parent.type === 'NewExpression') {
-								node_array = parent.arguments;
-								isArgument = true;
+							if (parent) {
+								if (
+									parent.type === 'BlockStatement' ||
+									parent.type === 'Program' ||
+									parent.type === 'Component' ||
+									parent.type === 'ClassBody'
+								) {
+									node_array = parent.body;
+								} else if (parent.type === 'SwitchStatement') {
+									node_array = parent.cases;
+									isSwitchCaseSibling = true;
+								} else if (parent.type === 'SwitchCase') {
+									node_array = parent.consequent;
+								} else if (parent.type === 'ArrayExpression') {
+									node_array = parent.elements;
+								} else if (parent.type === 'ObjectExpression') {
+									node_array = parent.properties;
+								} else if (
+									parent.type === 'FunctionDeclaration' ||
+									parent.type === 'FunctionExpression' ||
+									parent.type === 'ArrowFunctionExpression'
+								) {
+									node_array = parent.params;
+									isParam = true;
+								} else if (parent.type === 'CallExpression' || parent.type === 'NewExpression') {
+									node_array = parent.arguments;
+									isArgument = true;
+								}
 							}
 
 							if (node_array && Array.isArray(node_array)) {

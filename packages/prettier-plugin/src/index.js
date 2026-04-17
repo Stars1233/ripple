@@ -3774,6 +3774,10 @@ function printTryStatement(node, path, options, print) {
 		if (node.handler.param) {
 			parts.push(' (');
 			parts.push(path.call(print, 'handler', 'param'));
+			if (node.handler.resetParam) {
+				parts.push(', ');
+				parts.push(path.call(print, 'handler', 'resetParam'));
+			}
 			parts.push(')');
 		}
 		parts.push(' ');

@@ -1,4 +1,4 @@
-import { track, flushSync } from 'ripple';
+import { flushSync, trackAsync, trackPending, track } from 'ripple';
 import { act, createContext, useContext, Suspense } from 'react';
 import { vi } from 'vitest';
 import { Ripple } from '@ripple-ts/compat-react';
@@ -412,8 +412,10 @@ describe('compat-react', () => {
 				}
 
 				component AsyncRippleChild() {
-					await sleep(1000);
-					<div class="async-content">{'Loaded!'}</div>
+					const result = trackAsync(() => sleep(1000));
+					if (!trackPending(result)) {
+						<div class="async-content">{'Loaded!'}</div>
+					}
 				}
 
 				function ReactChild() {
@@ -462,15 +464,17 @@ describe('compat-react', () => {
 				}
 
 				component AsyncRippleChild() {
-					await sleep(1000);
+					const result = trackAsync(() => sleep(1000));
 
 					let &[count] = track(0);
 
-					<div>
-						<div class="async-content">{'Loaded!'}</div>
-						<div class="count">{count}</div>
-						<button onClick={() => count++}>{'Increment'}</button>
-					</div>
+					if (!trackPending(result)) {
+						<div>
+							<div class="async-content">{'Loaded!'}</div>
+							<div class="count">{count}</div>
+							<button onClick={() => count++}>{'Increment'}</button>
+						</div>
+					}
 				}
 
 				function ReactChild() {
@@ -531,14 +535,15 @@ describe('compat-react', () => {
 				let setPage: (page: number) => void;
 
 				component AsyncRippleChild(&{ page }: { page: number }) {
-					// Using await track(() => ...) to create a reactive async operation
+					// Using trackAsync(() => ...) to create a reactive async operation
 					// that re-suspends when the tracked dependency (page) changes
-					await track(() => {
+					const result = trackAsync(() => {
 						page;
 						return sleep(1000);
 					});
-
-					<div class="content">{`Page ${page} loaded`}</div>
+					if (!trackPending(result)) {
+						<div class="content">{`Page ${page} loaded`}</div>
+					}
 				}
 
 				function ReactChild(props: { page: number }) {
@@ -585,8 +590,8 @@ describe('compat-react', () => {
 					flushSync();
 				});
 
-				// Should show loading again due to reactive async re-run
-				expect(container.querySelector('.loading')).toBeTruthy();
+				// Should not show loading again on subsequent reruns
+				expect(container.querySelector('.loading')).toBeFalsy();
 
 				// Advance timers to resolve the second async operation
 				await act(async () => {
@@ -614,9 +619,11 @@ describe('compat-react', () => {
 
 				component AsyncRippleChild(&{ page }: { page: number }) {
 					// Simple static await - no tracked dependencies
-					await sleep(1000);
+					const result = trackAsync(() => sleep(1000));
 
-					<div class="content">{`Page ${page} loaded`}</div>
+					if (!trackPending(result)) {
+						<div class="content">{`Page ${page} loaded`}</div>
+					}
 				}
 
 				function ReactChild(props: { page: number }) {
@@ -681,6 +688,82 @@ describe('compat-react', () => {
 				vi.useRealTimers();
 			}
 		});
+
+		it(
+			'should reject pending deferreds and clean up when async error occurs during Suspense',
+			async () => {
+				vi.useFakeTimers();
+
+				try {
+					let rejectFetch: (error: Error) => void;
+					let fetchBResolved = false;
+
+					function fetchA() {
+						return new Promise((_resolve, reject) => {
+							rejectFetch = reject;
+						});
+					}
+
+					function fetchB() {
+						return new Promise((resolve) => {
+							// This one never resolves on its own
+							setTimeout(() => {
+								fetchBResolved = true;
+								resolve('B done');
+							}, 5000);
+						});
+					}
+
+					component AsyncRippleChild() {
+						const resultA = trackAsync(() => fetchA());
+						const resultB = trackAsync(() => fetchB());
+						if (!trackPending(resultA) && !trackPending(resultB)) {
+							<div class="content">{'Both loaded!'}</div>
+						}
+					}
+
+					function ReactChild() {
+						return jsx(Ripple, { component: AsyncRippleChild });
+					}
+
+					component App() {
+						try {
+							<tsx:react>
+								<Suspense fallback={<div className="loading">Loading...</div>}>
+									<ReactChild />
+								</Suspense>
+							</tsx:react>
+						} catch (e) {
+							<div class="error">{'Caught error'}</div>
+						}
+					}
+
+					await act(async () => {
+						render(App);
+					});
+
+					// Initially shows loading state
+					expect(container.querySelector('.loading')).toBeTruthy();
+					expect(container.querySelector('.content')).toBeFalsy();
+
+					// Reject the first async operation — should route error to catch boundary
+					await act(async () => {
+						rejectFetch(new Error('Fetch A failed'));
+						await vi.advanceTimersByTimeAsync(0);
+					});
+
+					// Should show error caught by Ripple try/catch
+					expect(container.querySelector('.error')).toBeTruthy();
+					expect(container.querySelector('.error').textContent).toBe('Caught error');
+					expect(container.querySelector('.loading')).toBeFalsy();
+
+					// fetchB should NOT have resolved (it was cleaned up)
+					expect(fetchBResolved).toBe(false);
+				} finally {
+					vi.useRealTimers();
+				}
+			},
+		);
 	});
 
 	describe('Ripple in React app', () => {

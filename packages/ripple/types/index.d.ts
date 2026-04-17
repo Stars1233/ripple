@@ -141,18 +141,21 @@ declare global {
 
 export function createRefKey(): symbol;
 
+export const UNINITIALIZED: unique symbol;
+export const DERIVED_UPDATED: unique symbol;
+export const SUSPENSE_PENDING: unique symbol;
+export const SUSPENSE_REJECTED: unique symbol;
+
 // Base Tracked interface - all tracked values have a '#v' property containing the actual value
 interface TrackedBase<V> {
 	'#v': V;
 	value: V;
 }
-
 // Augment Tracked to be callable when V is a Component
 // This allows <@Something /> to work in JSX when Something is Tracked<Component>
 interface TrackedCallable<V> {
 	(props: V extends Component<infer P> ? P : never): V extends Component ? void : never;
 }
-
 // Supports indexed access: track(0)[0] → value, track(0)[1] → Tracked<V>
 // And destructuring `const [one, two] = track(0);`
 export type Tracked<V> = [V, Tracked<V>] & TrackedBase<V> & TrackedCallable<V>;
@@ -187,6 +190,14 @@ export function track<V>(
 ): Tracked<InferComponent<V>>;
 // Overload for non-function values
 export function track<V>(value?: V, get?: (v: V) => V, set?: (next: V, prev: V) => V): Tracked<V>;
+
+export function trackAsync<V>(
+	value: () => PromiseLike<V> | { promise: PromiseLike<V>; abortController: AbortController },
+): Tracked<V>;
+
+export function trackPending<V>(value: Tracked<V> | (() => any)): boolean;
+
+export function peek<V>(tracked: Tracked<V>): V;
 
 export interface AddEventOptions extends ExtendedEventOptions {
 	customName?: string;
@@ -531,24 +542,3 @@ export function bindFiles<V extends FileList>(
 	tracked: Tracked<V | null | undefined> | GetFunction<V | null | undefined>,
 	setter?: SetFunction<V>,
 ): (node: HTMLInputElement) => void;
-
-type ServerBlock = {};
-
-export interface RippleNamespace {
-	array: RippleArrayCallable;
-	object: RippleObjectCallable;
-	context: ContextCallable;
-	date: RippleDateCallable;
-	effect: typeof effect;
-	map: RippleMapCallable;
-	mediaQuery: MediaQueryCallable;
-	set: RippleSetCallable;
-	url: RippleURLCallable;
-	urlSearchParams: RippleURLSearchParamsCallable;
-	untrack: typeof untrack;
-	track: typeof track;
-	style: Record<string, string>;
-	server: ServerBlock;
-}
-
-export declare const ripple_namespace: RippleNamespace;

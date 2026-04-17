@@ -15,11 +15,9 @@ interface BaseNodeMetaData {
 	has_template?: boolean;
 	source_name?: string | '#server' | '#style';
 	is_capitalized?: boolean;
-	has_await?: boolean;
 	commentContainerId?: number;
 	parenthesized?: boolean;
 	elementLeadingComments?: AST.Comment[];
-	inside_component_top_level?: boolean;
 	returns?: AST.ReturnStatement[];
 	has_return?: boolean;
 	has_throw?: boolean;
@@ -57,6 +55,10 @@ interface FunctionLikeTS {
 
 // Ripple augmentation for ESTree function nodes
 declare module 'estree' {
+	interface Program {
+		innerComments?: Comment[] | undefined;
+	}
+
 	interface FunctionDeclaration extends FunctionLikeTS {
 		metadata: FunctionMetaData;
 	}
@@ -191,6 +193,10 @@ declare module 'estree' {
 
 	interface TryStatement {
 		pending?: AST.BlockStatement | null;
+	}
+
+	interface CatchClause {
+		resetParam?: AST.Pattern | null;
 	}
 
 	interface ForOfStatement {
@@ -1086,7 +1092,7 @@ export interface AnalysisResult {
 	ast: AST.Program;
 	scopes: Map<AST.Node, ScopeInterface>;
 	scope: ScopeInterface;
-	component_metadata: Array<{ id: string; async: boolean }>;
+	component_metadata: Array<{ id: string }>;
 	metadata: {
 		serverIdentifierPresent: boolean;
 	};
@@ -1255,7 +1261,6 @@ export interface ScopeInterface {
 
 interface BaseStateMetaData {
 	tracking?: boolean | null;
-	await?: boolean;
 }
 
 export interface BaseState {
@@ -1306,6 +1311,8 @@ export interface TransformServerState extends BaseState {
 	dev?: boolean;
 	return_flags?: Map<AST.ReturnStatement, { name: string; tracked: boolean }>;
 	template_child?: boolean;
+	skip_regular_blocks?: boolean;
+	in_regular_block?: boolean;
 }
 
 type UpdateList = Array<
@@ -1319,7 +1326,7 @@ type UpdateList = Array<
 		},
 		'initial' | 'identity' | 'expression'
 	>
-> & { async?: boolean };
+>;
 
 export interface TransformClientState extends BaseState {
 	events: Set<string>;

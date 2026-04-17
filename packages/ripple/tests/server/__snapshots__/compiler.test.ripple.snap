@@ -64,38 +64,6 @@ const ErrorMap = (Map);
 const errorMap = new ErrorMap();"
 `;
 
-exports[`compiler typescript tests > compiles imported component with conditional async in SSR 1`] = `
-"import * as _$_ from 'ripple/internal/server';
-
-import { ChildComponent } from './Child.ripple';
-
-export async function App(__output) {
-	return _$_.async(async () => {
-		_$_.push_component();
-		__output.push('<div');
-		__output.push('>');
-
-		{
-			{
-				const comp = ChildComponent;
-				const args = [__output, { message: "hello" }];
-
-				if (comp?.async) {
-					await comp(...args);
-				} else if (comp) {
-					comp(...args);
-				}
-			}
-		}
-
-		__output.push('</div>');
-		_$_.pop_component();
-	});
-}
-
-App.async = true;"
-`;
-
 exports[`compiler typescript tests > removes class TypeScript syntax from JS output 1`] = `
 "import * as _$_ from 'ripple/internal/server';
 

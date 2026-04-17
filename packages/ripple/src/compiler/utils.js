@@ -163,19 +163,22 @@ const DOM_PROPERTIES = [
 	'disableRemotePlayback',
 ];
 
-/** @type {Record<string, string>} */
+// Omits track, trackSplit and trackAsync are they're handled separately
+/** @type {Record<string, {name: string, requiresBlock?: boolean}>} */
 const RIPPLE_IMPORT_CALL_NAME = {
-	RippleURL: 'ripple_url',
-	RippleURLSearchParams: 'ripple_url_search_params',
-	RippleDate: 'ripple_date',
-	RippleMap: 'ripple_map',
-	RippleSet: 'ripple_set',
-	MediaQuery: 'media_query',
-	Context: 'context',
-	effect: 'effect',
-	untrack: 'untrack',
-	RippleArray: 'ripple_array',
-	RippleObject: 'ripple_object',
+	RippleArray: { name: 'ripple_array', requiresBlock: true },
+	RippleObject: { name: 'ripple_object', requiresBlock: true },
+	RippleURL: { name: 'ripple_url', requiresBlock: true },
+	RippleURLSearchParams: { name: 'ripple_url_search_params', requiresBlock: true },
+	RippleDate: { name: 'ripple_date', requiresBlock: true },
+	RippleMap: { name: 'ripple_map', requiresBlock: true },
+	RippleSet: { name: 'ripple_set', requiresBlock: true },
+	MediaQuery: { name: 'media_query', requiresBlock: true },
+	Context: { name: 'context' },
+	effect: { name: 'effect' },
+	untrack: { name: 'untrack' },
+	trackPending: { name: 'is_tracked_pending' },
+	peek: { name: 'peek_tracked' },
 };
 
 /**
@@ -205,31 +208,6 @@ export function is_delegated_event(event_name, handler, context) {
 			!is_declared_function_within_component(/** @type {AST.Identifier}*/ (handler), context))
 	) {
 		return false;
-	}
-	return true;
-}
-
-/**
- * Returns true if context is inside a top-level await: inside component or module
- * @param {CommonContext} context
- * @returns {boolean}
- */
-export function is_top_level_await(context) {
-	for (let i = context.path.length - 1; i >= 0; i -= 1) {
-		const context_node = context.path[i];
-		const type = context_node.type;
-
-		if (context_node.type === 'Component') {
-			return true;
-		}
-
-		if (
-			type === 'FunctionExpression' ||
-			type === 'ArrowFunctionExpression' ||
-			type === 'FunctionDeclaration'
-		) {
-			return false;
-		}
 	}
 	return true;
 }
@@ -292,25 +270,25 @@ export function is_component_level_function(context) {
  * Returns the matched Ripple tracking call name
  * @param {AST.Expression | AST.Super} callee
  * @param {CommonContext} context
- * @returns {'track' | null}
+ * @returns {'track' | 'trackAsync' | null}
  */
 export function is_ripple_track_call(callee, context) {
 	// Super expressions cannot be Ripple track calls
 	if (callee.type === 'Super') return null;
 
-	if (callee.type === 'Identifier' && callee.name === 'track') {
-		return is_ripple_import(callee, context) ? 'track' : null;
+	if (callee.type === 'Identifier' && (callee.name === 'track' || callee.name === 'trackAsync')) {
+		return is_ripple_import(callee, context) ? callee.name : null;
 	}
 
 	if (
 		callee.type === 'MemberExpression' &&
 		callee.object.type === 'Identifier' &&
 		callee.property.type === 'Identifier' &&
-		callee.property.name === 'track' &&
+		(callee.property.name === 'track' || callee.property.name === 'trackAsync') &&
 		!callee.computed &&
 		is_ripple_import(callee, context)
 	) {
-		return 'track';
+		return callee.property.name;
 	}
 
 	return null;
@@ -1076,7 +1054,7 @@ export function flatten_switch_consequent(consequent) {
  * @returns {string | null}
  */
 export function get_ripple_namespace_call_name(name) {
-	return name == null ? null : (RIPPLE_IMPORT_CALL_NAME[name] ?? null);
+	return name == null ? null : (RIPPLE_IMPORT_CALL_NAME[name]?.name ?? null);
 }
 
 /**
@@ -1085,7 +1063,24 @@ export function get_ripple_namespace_call_name(name) {
  * @returns {boolean}
  */
 export function ripple_import_requires_block(name) {
-	return name !== 'effect' && name !== 'untrack' && name !== 'Context';
+	return name == null ? false : (RIPPLE_IMPORT_CALL_NAME[name]?.requiresBlock ?? false);
+}
+
+/**
+ * @param {AST.ClassDeclaration | AST.ClassExpression} node
+ * @param {CommonContext} context
+ * @returns {void}
+ */
+export function strip_class_typescript_syntax(node, context) {
+	delete node.typeParameters;
+	delete node.superTypeParameters;
+	delete node.implements;
+
+	if (node.superClass?.type === 'TSInstantiationExpression') {
+		node.superClass = /** @type {AST.Expression} */ (context.visit(node.superClass.expression));
+	} else if (node.superClass && 'typeArguments' in node.superClass) {
+		delete node.superClass.typeArguments;
+	}
 }
 
 /**

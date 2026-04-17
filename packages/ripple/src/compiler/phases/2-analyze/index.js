@@ -312,6 +312,7 @@ function setup_lazy_array_transforms(pattern, source_id, state, writable) {
 
 		const actual = element.type === 'AssignmentPattern' ? element.left : element;
 		const has_fallback = element.type === 'AssignmentPattern';
+		/** @type {AST.Expression | null}	 */
 		const fallback_value = has_fallback
 			? /** @type {AST.AssignmentPattern} */ (element).right
 			: null;
@@ -1127,7 +1128,7 @@ const visitors = {
 					context.state.analysis.comments,
 				);
 			}
-			const metadata = { tracking: false, await: false };
+			const metadata = { tracking: false };
 
 			if (declarator.id.type === 'Identifier') {
 				const binding = state.scope.get(declarator.id.name);
@@ -1136,10 +1137,14 @@ const visitors = {
 					// Check if it's a call to `track` or `tracked`
 					if (
 						(callee.type === 'Identifier' &&
-							(callee.name === 'track' || callee.name === 'tracked')) ||
+							(callee.name === 'track' ||
+								callee.name === 'trackAsync' ||
+								callee.name === 'tracked')) ||
 						(callee.type === 'MemberExpression' &&
 							callee.property.type === 'Identifier' &&
-							(callee.property.name === 'track' || callee.property.name === 'tracked'))
+							(callee.property.name === 'track' ||
+								callee.property.name === 'trackAsync' ||
+								callee.property.name === 'tracked'))
 					) {
 						binding.metadata = { ...binding.metadata, is_ripple_object: true };
 					}
@@ -1153,9 +1158,10 @@ const visitors = {
 				) {
 					const lazy_id = b.id(state.scope.generate('lazy'));
 					const writable = node.kind !== 'const';
-					const init_is_track =
+					const call_name =
 						declarator.init?.type === 'CallExpression' &&
-						is_ripple_track_call(declarator.init.callee, context) === 'track';
+						is_ripple_track_call(declarator.init.callee, context);
+					const init_is_track = call_name === 'track' || call_name === 'trackAsync';
 					setup_lazy_transforms(declarator.id, lazy_id, state, writable, !!init_is_track);
 					// Store the generated identifier name on the pattern for the transform phase
 					declarator.id.metadata = { ...declarator.id.metadata, lazy_id: lazy_id.name };
@@ -1267,7 +1273,6 @@ const visitors = {
 
 		// Track metadata for this component
 		const metadata = {
-			await: false,
 			styleClasses: /** @type {StyleClasses} */ (new Map()),
 		};
 
@@ -1317,7 +1322,6 @@ const visitors = {
 		if (node.id) {
 			context.state.analysis.component_metadata.push({
 				id: node.id.name,
-				async: metadata.await,
 			});
 		}
 	},
@@ -1352,14 +1356,13 @@ const visitors = {
 			node.metadata = {
 				...node.metadata,
 				has_template: false,
-				has_await: false,
 			};
 
 			context.visit(switch_case, context.state);
 
-			if (!node.metadata.has_template && !node.metadata.has_await) {
+			if (!node.metadata.has_template) {
 				error(
-					'Component switch statements must contain a template or an await expression in each of their cases. Move the switch statement into an effect if it does not render anything.',
+					'Component switch statements must contain a template in each of their cases. Move the switch statement into an effect if it does not render anything.',
 					context.state.analysis.module.filename,
 					switch_case,
 					context.state.loose ? context.state.analysis.errors : undefined,
@@ -1427,13 +1430,12 @@ const visitors = {
 		node.metadata = {
 			...node.metadata,
 			has_template: false,
-			has_await: false,
 		};
 		context.next();
 
-		if (!node.metadata.has_template && !node.metadata.has_await) {
+		if (!node.metadata.has_template) {
 			error(
-				'Component for...of loops must contain a template or an await expression in their body. Move the for loop into an effect if it does not render anything.',
+				'Component for...of loops must contain a template in their body. Move the for loop into an effect if it does not render anything.',
 				context.state.analysis.module.filename,
 				node.body,
 				context.state.loose ? context.state.analysis.errors : undefined,
@@ -1567,7 +1569,6 @@ const visitors = {
 		node.metadata = {
 			...node.metadata,
 			has_template: false,
-			has_await: false,
 			has_throw: false,
 		};
 
@@ -1604,7 +1605,6 @@ const visitors = {
 			const saved_has_return = node.metadata.has_return;
 			const saved_returns = node.metadata.returns;
 			node.metadata.has_template = false;
-			node.metadata.has_await = false;
 			node.metadata.has_throw = false;
 			context.visit(node.alternate, context.state);
 
@@ -1711,11 +1711,6 @@ const visitors = {
 		}
 
 		if (node.pending) {
-			// Try/pending blocks indicate async operations
-			if (state.metadata?.await === false) {
-				state.metadata.await = true;
-			}
-
 			node.metadata = {
 				...node.metadata,
 				has_template: false,
@@ -1749,6 +1744,8 @@ const visitors = {
 					context.state.analysis.comments,
 				);
 			}
+		} else {
+			context.visit(node.block, state);
 		}
 
 		if (node.handler) {
@@ -2132,40 +2129,23 @@ const visitors = {
 		const parent_block = get_parent_block_node(context);
 
 		if (is_inside_component(context)) {
-			if (context.state.metadata?.await === false) {
-				context.state.metadata.await = true;
-			}
-
-			if (
-				parent_block !== null &&
-				parent_block?.type !== 'Component' &&
-				!context.state.ancestor_server_block &&
-				!(
-					parent_block.type === 'TryStatement' &&
-					parent_block.pending &&
-					is_inside_try_block(parent_block, context)
-				)
-			) {
-				// we want the error to live on the `await` keyword vs the whole expression
-				const adjusted_node /** @type {AST.AwaitExpression} */ = {
-					...node,
-					end: /** @type {AST.NodeWithLocation} */ (node).start + 'await'.length,
-				};
-				error(
-					'`await` is not allowed in client-side control-flow statements',
-					context.state.analysis.module.filename,
-					adjusted_node,
-					context.state.loose ? context.state.analysis.errors : undefined,
-					context.state.analysis.comments,
-				);
-			}
+			const adjusted_node /** @type {AST.AwaitExpression} */ = {
+				...node,
+				end: /** @type {AST.NodeWithLocation} */ (node).start + 'await'.length,
+			};
+			error(
+				'`await` is not allowed inside client components. Use `trackAsync(() => ...)` with an upstream `try { ... } pending { ... }` boundary instead.',
+				context.state.analysis.module.filename,
+				adjusted_node,
+				context.state.loose ? context.state.analysis.errors : undefined,
+				context.state.analysis.comments,
+			);
 		}
 
 		if (parent_block) {
 			if (!parent_block.metadata) {
 				parent_block.metadata = { path: [...context.path] };
 			}
-			parent_block.metadata.has_await = true;
 		}
 
 		context.next();

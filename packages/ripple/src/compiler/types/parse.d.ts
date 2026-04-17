@@ -1112,6 +1112,8 @@ export namespace Parse {
 
 		tsParseTypeArguments(): AST.Node;
 
+		tsTryParseTypeAnnotation(): AST.TSTypeAnnotation;
+
 		/**
 		 * Get property kind from name
 		 * @param prop Property node

@@ -830,17 +830,6 @@ const html = render(App, {
 });
 ```
 
-For streaming SSR:
-
-```typescript
-import { renderToStream } from 'ripple/server';
-import { App } from './App.tsrx';
-
-const stream = renderToStream(App, {
-  props: { title: 'Hello world!' }
-});
-```
-
 ### Effects
 ```ripple
 import { track, effect } from 'ripple';
