@@ -55,6 +55,11 @@ const protocol = require('@volar/language-server/protocol');
 const lsp = require('vscode-languageclient/node');
 const { activateAutoInsertion, createLabsInfo } = require('@volar/vscode');
 const RIPPLE_FILE_SELECTORS = ['**/*.tsrx'];
+const RIPPLE_FILE_EXCLUDE_GLOB = '**/{node_modules,dist,build,.git}/**';
+const TSGO_CONFIGURATION_SECTIONS = ['js/ts', 'typescript'];
+const TSGO_WARNING_STATE_KEY = 'ripple.hasWarnedLocalTsgoUnsupported';
+const TSGO_UNSUPPORTED_MESSAGE =
+	'TypeScript Native Preview (TS Go) is not supported for .tsrx modules. Disable it in local workspace settings to restore TSRX language features.';
 
 /**
  * @param {string} file_path
@@ -72,6 +77,17 @@ let client;
  */
 async function activate(context) {
 	console.log('Ripple extension starting...');
+
+	await warn_about_local_tsgo_usage(context);
+	context.subscriptions.push(
+		vscode.workspace.onDidChangeConfiguration(async (event) => {
+			if (!is_tsgo_configuration_change(event)) {
+				return;
+			}
+
+			await warn_about_local_tsgo_usage(context);
+		}),
+	);
 
 	const patchResult = await patchTypeScriptExtension();
 	if (!patchResult.success) {
@@ -232,6 +248,83 @@ async function activate(context) {
 		const message = error instanceof Error ? error.message : String(error);
 		vscode.window.showErrorMessage(`Failed to start Ripple language server: ${message}`);
 	}
+}
+
+/**
+ * @param {import('vscode').ExtensionContext} context
+ * @returns {Promise<void>}
+ */
+async function warn_about_local_tsgo_usage(context) {
+	if (!(await workspace_has_ripple_files())) {
+		await context.workspaceState.update(TSGO_WARNING_STATE_KEY, false);
+		return;
+	}
+
+	const local_tsgo_sections = get_local_tsgo_sections();
+
+	if (local_tsgo_sections.length === 0) {
+		await context.workspaceState.update(TSGO_WARNING_STATE_KEY, false);
+		return;
+	}
+
+	if (context.workspaceState.get(TSGO_WARNING_STATE_KEY, false)) {
+		return;
+	}
+
+	await context.workspaceState.update(TSGO_WARNING_STATE_KEY, true);
+
+	const open_settings_action = 'Open Settings';
+	const dismiss_action = 'Dismiss';
+	const selection = await vscode.window.showWarningMessage(
+		TSGO_UNSUPPORTED_MESSAGE,
+		open_settings_action,
+		dismiss_action,
+	);
+
+	if (selection === open_settings_action) {
+		await vscode.commands.executeCommand(
+			'workbench.action.openSettings',
+			'@id:js/ts.experimental.useTsgo @id:typescript.experimental.useTsgo',
+		);
+	}
+	void local_tsgo_sections;
+}
+
+/**
+ * @returns {Promise<boolean>}
+ */
+async function workspace_has_ripple_files() {
+	if (!vscode.workspace.workspaceFolders?.length) {
+		return false;
+	}
+
+	const ripple_files = await vscode.workspace.findFiles(
+		RIPPLE_FILE_SELECTORS[0],
+		RIPPLE_FILE_EXCLUDE_GLOB,
+		1,
+	);
+
+	return ripple_files.length > 0;
+}
+
+/**
+ * @returns {string[]}
+ */
+function get_local_tsgo_sections() {
+	return TSGO_CONFIGURATION_SECTIONS.filter((section) => {
+		const inspected = vscode.workspace.getConfiguration(section).inspect('experimental.useTsgo');
+		return inspected?.workspaceValue === true || inspected?.workspaceFolderValue === true;
+	});
+}
+
+/**
+ * @param {import('vscode').ConfigurationChangeEvent} event
+ * @returns {boolean}
+ */
+function is_tsgo_configuration_change(event) {
+	return TSGO_CONFIGURATION_SECTIONS.some((section) =>
+		event.affectsConfiguration(`${section}.experimental.useTsgo`),
+	);
 }
 
 /**
