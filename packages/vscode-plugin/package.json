@@ -110,7 +110,7 @@
       {
         "language": "ripple",
         "scopeName": "source.tsrx",
-        "path": "./syntaxes/ripple.tmLanguage.json",
+        "path": "./syntaxes/tsrx.tmLanguage.json",
         "embeddedLanguages": {
           "meta.jsx.children.js": "javascriptreact",
           "meta.tag.js": "jsx-tags",

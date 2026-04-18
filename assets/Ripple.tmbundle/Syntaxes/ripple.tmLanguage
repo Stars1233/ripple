@@ -13,7 +13,7 @@
 		<key>name</key>
 		<string>Ripple</string>
 		<key>scopeName</key>
-		<string>source.ripple</string>
+		<string>source.tsrx</string>
 		<key>patterns</key>
 		<array>
 			<dict>
