@@ -135,11 +135,17 @@ function component_to_function_declaration(component, transform_context) {
 		metadata: {
 			path: [],
 			is_component: true,
-			is_method: true,
 		},
 	});
 
 	fn.metadata.generated_helpers = helper_state.helpers;
+
+	if (fn.id) {
+		fn.id.metadata = /** @type {AST.Identifier['metadata']} */ ({
+			...fn.id.metadata,
+			is_component: true,
+		});
+	}
 
 	setLocation(fn, /** @type {any} */ (component), true);
 	return fn;
@@ -462,9 +468,15 @@ function create_helper_function_declaration(
 		metadata: {
 			path: [],
 			is_component: true,
-			is_method: true,
 		},
 	});
+
+	if (fn.id) {
+		fn.id.metadata = /** @type {AST.Identifier['metadata']} */ ({
+			...fn.id.metadata,
+			is_component: true,
+		});
+	}
 
 	return set_loc(fn, source_node);
 }

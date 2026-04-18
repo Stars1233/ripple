@@ -1,4 +1,5 @@
 /** @import * as AST from 'estree' */
+/** @import { CodeMapping, ParseOptions } from '@tsrx/core/types' */
 
 import { createVolarMappingsResult, parseModule } from '@tsrx/core';
 import { transform } from './transform.js';
@@ -7,10 +8,11 @@ import { transform } from './transform.js';
  * Parse tsrx-react source code to an ESTree AST.
  * @param {string} source
  * @param {string} [filename]
+ * @param {ParseOptions} [options]
  * @returns {AST.Program}
  */
-export function parse(source, filename) {
-	return parseModule(source, filename);
+export function parse(source, filename, options) {
+	return parseModule(source, filename, options);
 }
 
 /**
@@ -32,13 +34,13 @@ export function compile(source, filename) {
  *
  * @param {string} source
  * @param {string} [filename]
+ * @param {ParseOptions} [options]
  * @returns {import('@tsrx/core/types').VolarMappingsResult}
  */
-export function compile_to_volar_mappings(source, filename) {
-	const ast = parseModule(source, filename);
+export function compile_to_volar_mappings(source, filename, options) {
+	const ast = parseModule(source, filename, options);
 	const transformed = transform(ast, source, filename);
-
-	return createVolarMappingsResult({
+	const result = createVolarMappingsResult({
 		ast: transformed.ast,
 		ast_from_source: ast,
 		source,
@@ -46,4 +48,59 @@ export function compile_to_volar_mappings(source, filename) {
 		source_map: transformed.map,
 		errors: [],
 	});
+
+	return {
+		...result,
+		mappings: dedupe_mappings(result.mappings),
+	};
+}
+
+/**
+ * Remove byte-for-byte duplicate mappings. React helper extraction can emit
+ * identical mapping entries for the same source and generated span, which
+ * causes Volar to merge duplicate hover/navigation results.
+ *
+ * @param {CodeMapping[]} mappings
+ * @returns {CodeMapping[]}
+ */
+function dedupe_mappings(mappings) {
+	const deduped = [];
+	const seen = new Set();
+
+	for (const mapping of mappings) {
+		const key = JSON.stringify(serialize_mapping_value(mapping));
+
+		if (seen.has(key)) {
+			continue;
+		}
+
+		seen.add(key);
+		deduped.push(mapping);
+	}
+
+	return deduped;
+}
+
+/**
+ * @param {unknown} value
+ * @returns {unknown}
+ */
+function serialize_mapping_value(value) {
+	if (typeof value === 'function') {
+		return value.toString();
+	}
+
+	if (Array.isArray(value)) {
+		return value.map(serialize_mapping_value);
+	}
+
+	if (value && typeof value === 'object') {
+		return Object.fromEntries(
+			Object.entries(value)
+				.sort(([left], [right]) => left.localeCompare(right))
+				.map(([key, nested_value]) => [key, serialize_mapping_value(nested_value)]),
+		);
+	}
+
+	return value;
 }

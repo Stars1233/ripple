@@ -1,7 +1,7 @@
 import type { Program } from 'estree';
-import type { VolarMappingsResult } from '@tsrx/core/types';
+import type { ParseOptions, VolarMappingsResult } from '@tsrx/core/types';
 
-export function parse(source: string, filename?: string): Program;
+export function parse(source: string, filename?: string, options?: ParseOptions): Program;
 
 export function compile(
 	source: string,
@@ -12,4 +12,8 @@ export function compile(
 	css: { code: string; hash: string } | null;
 };
 
-export function compile_to_volar_mappings(source: string, filename?: string): VolarMappingsResult;
+export function compile_to_volar_mappings(
+	source: string,
+	filename?: string,
+	options?: ParseOptions,
+): VolarMappingsResult;

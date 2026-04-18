@@ -1,6 +1,33 @@
 import { describe, expect, it } from 'vitest';
 import { compile, compile_to_volar_mappings } from '../src/index.js';
 
+/**
+ * @param {Array<{
+ * 	sourceOffsets: number[],
+ * 	generatedOffsets: number[],
+ * 	lengths: number[],
+ * 	generatedLengths?: number[],
+ * 	data: unknown,
+ * }>} mappings
+ */
+function get_duplicate_mapping_keys(mappings) {
+	const counts = new Map();
+
+	for (const mapping of mappings) {
+		const key = JSON.stringify({
+			sourceOffsets: mapping.sourceOffsets,
+			generatedOffsets: mapping.generatedOffsets,
+			lengths: mapping.lengths,
+			generatedLengths: mapping.generatedLengths,
+			data: mapping.data,
+		});
+
+		counts.set(key, (counts.get(key) ?? 0) + 1);
+	}
+
+	return [...counts.entries()].filter(([, count]) => count > 1);
+}
+
 describe('@tsrx/react basic', () => {
 	it('keeps plain components local unless explicitly exported', () => {
 		const { code } = compile(
@@ -254,6 +281,96 @@ describe('@tsrx/react basic', () => {
 		expect(code).toContain('<App__Continue1 count={count} setCount={setCount} />');
 		expect(mappings.errors).toEqual([]);
 		expect(mappings.mappings.length).toBeGreaterThan(0);
+	});
+
+	it('does not emit duplicate Volar mappings for helper-extracted React output', () => {
+		const source = `import { useState, useEffect } from 'react';
+
+			component Child() {
+				<div>
+					const x = 1;
+
+					console.log(x);
+				</div>
+			}
+
+			export component App() {
+				const [count, setCount] = useState(0);
+				const items = [1, 2, 3];
+
+				<Child />
+
+				<h1>
+					{'Hello World'}
+					if (count > 1) {
+						return;
+					}
+				</h1>
+
+				if (count > 1) {
+					<div>
+						const [x] = useState(1);
+
+						{'Count is more than ' + x}
+					</div>
+				}
+
+				useEffect(() => {
+					console.log(count);
+				}, [count]);
+
+				<button onClick={() => setCount(count + 1)}>{count}</button>
+
+				if (count > 2) {
+					return;
+				}
+
+				for (const item of items; index i) {
+					<div key={i}>{item}</div>
+				}
+			}`;
+
+		const mappings = compile_to_volar_mappings(source, 'App.tsrx');
+
+		expect(mappings.errors).toEqual([]);
+		expect(get_duplicate_mapping_keys(mappings.mappings)).toEqual([]);
+	});
+
+	it('maps component declarations to both the component keyword and identifier', () => {
+		const source = `export component App() {
+			<div>{'Hello world'}</div>
+		}`;
+		const mappings = compile_to_volar_mappings(source, 'App.tsrx');
+		const component_offset = source.indexOf('component App');
+		const app_offset = source.indexOf('App', component_offset);
+
+		const component_keyword_mapping = mappings.mappings.find(
+			(mapping) =>
+				mapping.sourceOffsets[0] === component_offset && mapping.lengths[0] === 'component'.length,
+		);
+		const component_identifier_mapping = mappings.mappings.find(
+			(mapping) => mapping.sourceOffsets[0] === app_offset && mapping.lengths[0] === 'App'.length,
+		);
+
+		expect(mappings.errors).toEqual([]);
+		expect(component_keyword_mapping).toBeDefined();
+		expect(component_keyword_mapping?.data.customData.hover).toBeTypeOf('function');
+		expect(component_keyword_mapping?.generatedLengths[0]).toBe('function'.length);
+		expect(component_identifier_mapping).toBeDefined();
+		expect(component_identifier_mapping?.data.semantic).toBe(true);
+		expect(component_identifier_mapping?.data.navigation).toBe(true);
+		expect(component_identifier_mapping?.data.customData.hover).toBeTypeOf('function');
+	});
+
+	it('supports loose-mode Volar parsing for incomplete React source', () => {
+		const source = `export component App() {
+	<tsx:react>1
+}`;
+
+		expect(() => compile_to_volar_mappings(source, 'App.tsrx', { loose: true })).not.toThrow();
+
+		const result = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
+		expect(result.errors).toEqual([]);
 	});
 
 	it('renders component-body switch statements as React expressions', () => {

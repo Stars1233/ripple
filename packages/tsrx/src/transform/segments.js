@@ -785,37 +785,52 @@ export function convert_source_map_to_mappings(
 					let start = node_fn.start;
 					const async_keyword = 'async';
 
-					if (node_fn.async) {
-						// We explicitly mapped async and function in esrap
+					if (is_component && node_fn.id?.loc) {
+						const mapping = get_mapping_from_node(node_fn.id, src_to_gen_map, gen_line_offsets);
+						const generated_id_start = mapping.generatedOffsets[0];
+						const generated_keyword_start = find_component_keyword_offset(
+							generated_code,
+							generated_id_start,
+						);
+						mapping.sourceOffsets = [start];
+						mapping.lengths = [source_func_keyword.length];
+						mapping.generatedOffsets = [generated_keyword_start];
+						mapping.generatedLengths = ['function'.length];
+						mapping.data.customData.hover = replace_label_to_component;
+						mappings.push(mapping);
+					} else {
+						if (node_fn.async) {
+							// We explicitly mapped async and function in esrap
+							tokens.push({
+								source: async_keyword,
+								generated: async_keyword,
+								loc: {
+									start: { line: node_fn.loc.start.line, column: start_col },
+									end: {
+										line: node_fn.loc.start.line,
+										column: start_col + async_keyword.length,
+									},
+								},
+								metadata: {},
+							});
+
+							start_col += async_keyword.length + 1; // +1 for space
+							start += async_keyword.length + 1;
+						}
+
 						tokens.push({
-							source: async_keyword,
-							generated: async_keyword,
+							source: source_func_keyword,
+							generated: 'function',
 							loc: {
 								start: { line: node_fn.loc.start.line, column: start_col },
 								end: {
 									line: node_fn.loc.start.line,
-									column: start_col + async_keyword.length,
+									column: start_col + source_func_keyword.length,
 								},
 							},
-							metadata: {},
+							metadata: is_component ? { hover: replace_label_to_component } : {},
 						});
-
-						start_col += async_keyword.length + 1; // +1 for space
-						start += async_keyword.length + 1;
 					}
-
-					tokens.push({
-						source: source_func_keyword,
-						generated: 'function',
-						loc: {
-							start: { line: node_fn.loc.start.line, column: start_col },
-							end: {
-								line: node_fn.loc.start.line,
-								column: start_col + source_func_keyword.length,
-							},
-						},
-						metadata: is_component ? { hover: replace_label_to_component } : {},
-					});
 				}
 
 				// Visit in source order: id, params, body
@@ -2162,6 +2177,21 @@ export function convert_source_map_to_mappings(
 		mappings,
 		cssMappings,
 	};
+}
+
+/**
+ * @param {string} generated_code
+ * @param {number} generated_id_start
+ * @returns {number}
+ */
+function find_component_keyword_offset(generated_code, generated_id_start) {
+	const function_keyword_index = generated_code.lastIndexOf('function', generated_id_start);
+
+	if (function_keyword_index === -1) {
+		return generated_id_start;
+	}
+
+	return function_keyword_index;
 }
 
 /**
