@@ -496,7 +496,11 @@ describe('basic client > components & composition', () => {
 
 		component App() {
 			const extra = { id: '1', children: 'from spread' };
-			<Card children="explicit" {...extra} />
+			<Card
+				// @ts-expect-error children specified more than once
+				children="explicit"
+				{...extra}
+			/>
 		}
 
 		render(App);
