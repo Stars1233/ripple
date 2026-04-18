@@ -41,6 +41,7 @@ website/.vitepress/cache/
 tmp
 dist
 debug
+**/*.d.tsrx.ts
 
 # Temporary folders
 tmp/

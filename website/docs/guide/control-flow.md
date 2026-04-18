@@ -213,7 +213,8 @@ export component Numbers() {
 Clicking the `<button>` will create a new item.
 
 ::: info Note `for...of` loops inside components must contain either dom elements
-or components. Otherwise, the loop can be run inside an `effect` or function. :::
+or components. Otherwise, the loop can be run inside an `effect` or function.
+:::
 
 ## Try statements
 
@@ -326,4 +327,5 @@ export component CitySearch() {
 
 ::: info Note When `query` changes, everything above the `await track` line stays
 visible. Only the content below re-suspends and shows `{pending}` until the new
-fetch resolves. :::
+fetch resolves.
+:::

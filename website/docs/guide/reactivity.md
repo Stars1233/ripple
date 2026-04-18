@@ -75,7 +75,8 @@ console.log(countTracked.value);  // equivalent: read via .value on the tracked 
 `Tracked<V>` object directly, such as storing tracked values in arrays or objects,
 or passing them to functions and components that expect `Tracked<T>`. Use `&[...]`
 lazy destructuring for everyday reactive variables where you want clean, direct
-access. :::
+access.
+:::
 
 Tracked derived values are also `Tracked<T>` objects, except that you pass a
 function to `track` rather than a value:
@@ -123,7 +124,8 @@ effect(() => {
 ```
 
 ::: info Note You cannot create `Tracked` objects in module/global scope, they
-have to be created on access from an active component context. :::
+have to be created on access from an active component context.
+:::
 
 ### track with get / set
 
@@ -160,7 +162,8 @@ export component App() {
 
 ::: info Note If no value is returned from either `get` or `set`, `undefined` is
 either exposed (for get) or stored (for set). Also, if only supplying the `set`,
-the `get` parameter must be set to `undefined`. :::
+the `get` parameter must be set to `undefined`.
+:::
 
 #### Lazy Destructuring (`&{...}` / `&[...]`)
 
@@ -213,7 +216,8 @@ let &{ x, y } = mutableObject; // supports assignment: x = 5 writes back
 ::: info When to use lazy destructuring Use `&{...}` whenever you destructure
 reactive props or tracked objects and need the variables to remain reactive.
 Regular destructuring (`{ a, b } = obj`) eagerly copies values and loses
-reactivity. :::
+reactivity.
+:::
 
 ## Transporting Reactivity
 

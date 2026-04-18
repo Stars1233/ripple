@@ -9,7 +9,8 @@ with reactive state. Instead of manually handling events and updates, bindings
 create a two-way connection between your tracked variables and DOM elements.
 
 ::: info All binding functions require a `Tracked` object as their argument. If
-you pass a non-tracked value, they will throw a `TypeError`. :::
+you pass a non-tracked value, they will throw a `TypeError`.
+:::
 
 ## Form Bindings
 
@@ -158,7 +159,9 @@ export component App() {
 - `bindChecked` only supports individual checkbox boolean binding. For checkbox
   groups or radio buttons, use `bindGroup` instead.
 
-- For `radio` inputs, use `bindGroup` instead of `bindChecked`. :::
+- For `radio` inputs, use `bindGroup` instead of `bindChecked`.
+
+:::
 
 ### bindIndeterminate
 
@@ -214,7 +217,9 @@ export component App() {
   checked value.
 - You can combine `bindIndeterminate` with `bindChecked` on the same checkbox.
 - Common use case: "Select All" checkboxes when some (but not all) items are
-  selected. :::
+  selected.
+
+:::
 
 ### bindGroup
 
@@ -304,7 +309,9 @@ export component App() {
   values dynamically, you must manually update both the tracked value and the
   checkbox states.
 - **Per-binding instances**: Ripple's `bindGroup` doesn't require inputs to be in
-  the same component since it uses per-binding instance groups. :::
+  the same component since it uses per-binding instance groups.
+
+:::
 
 ### bindFiles
 
@@ -389,7 +396,9 @@ export component App() {
 - To clear files, set the value to `new DataTransfer().files` (setting to `null`
   or `undefined` will not work for clearing).
 - `DataTransfer` may not be available in server-side JS runtimes. Leave the
-  tracked value uninitialized to prevent errors during SSR. :::
+  tracked value uninitialized to prevent errors during SSR.
+
+:::
 
 ## Dimension Bindings
 

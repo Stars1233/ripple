@@ -6,6 +6,7 @@
 		"allowSyntheticDefaultImports": true,
 		"esModuleInterop": true,
 		"moduleResolution": "bundler",
+		"allowArbitraryExtensions": true,
 		"jsx": "preserve",
 		"jsxImportSource": "ripple",
 		"noEmit": true,

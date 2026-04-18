@@ -27,7 +27,8 @@ component MyComponent() {
 }
 ```
 
-::: info The `<style>` element must be top-level within a `component`. :::
+::: info The `<style>` element must be top-level within a `component`.
+:::
 
 ## Dynamic Classes
 
@@ -82,7 +83,8 @@ Both examples above will render the same inline styles, however, it's recommende
 to use the object notation as it's typically more performance optimized.
 
 ::: info When passing an object to the `style` attribute, you can use either
-camelCase or kebab-case for CSS property names. :::
+camelCase or kebab-case for CSS property names.
+:::
 
 ## Global Styles
 

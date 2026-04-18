@@ -22,6 +22,13 @@
 			}
 		},
 		{
+			"files": ["website/docs/**/*.md", "website-new/docs/**/*.md"],
+			"options": {
+				"proseWrap": "preserve",
+				"embeddedLanguageFormatting": "off"
+			}
+		},
+		{
 			"files": ["**/*.json"],
 			"options": {
 				"useTabs": false

@@ -26,7 +26,8 @@ component Hello() {
 ::: info Notice Anything Missing? The lack of a return statement, unlike a
 (functional-style) JSX component isn't erroneous. As explained above, templates
 are statements rather than expressions, unlike JSX. We'll explore what you can do
-with that later! :::
+with that later!
+:::
 
 ## Caveat: Templates Must be within Components
 
@@ -213,8 +214,8 @@ similar to block statements in regular JavaScript.
 ```ripple
 component TemplateScope() {
   <div>
-    const // Variable declarations inside templates
-    message = 'Hello from template scope';
+    // Variable declarations inside templates
+    const message = 'Hello from template scope';
     let count = 42;
 
     // Function calls and expressions
@@ -346,4 +347,5 @@ export component App() {
 
 ::: info `text` is a reserved keyword in Ripple expressions. You cannot use `text`
 as a variable name inside `{braces}`. If you need a variable called `text`, rename
-it or use a different name. :::
+it or use a different name.
+:::

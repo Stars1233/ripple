@@ -22,7 +22,8 @@ For `capture` phase events, just add `Capture` to the end of the prop name:
 - `onKeyDownCapture`
 
 ::: info Some events are automatically delegated by the compiler wherever
-possible, to improve runtime performance. :::
+possible, to improve runtime performance.
+:::
 
 <Code>
 
@@ -148,7 +149,8 @@ default.
 ```
 
 ::: warning Attempting to call `preventDefault()` in a passive listener will have
-no effect and may trigger a console warning in some browsers. :::
+no effect and may trigger a console warning in some browsers.
+:::
 
 ### `signal`
 

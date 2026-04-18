@@ -9,7 +9,9 @@ title: Components in Ripple
 ::: details Glossary
 
 - **Pure**: The idea that a function should produce no side-effects.
-- **Side-effect**: A permanent, externally observable state change. :::
+- **Side-effect**: A permanent, externally observable state change.
+
+:::
 
 Ripple's component lifecycle is akin to Vue/Svelte/Solid. The root scope of your
 component only runs once, akin to the "setup" scope in Vue/Svelte/Solid. However,
@@ -58,7 +60,8 @@ element — but you must pass it as a prop to the component that needs it.
 ::: warning Scoping Rule Components follow normal lexical scoping. A parent
 component **cannot** see components declared inside a child's scope. Components
 declared inside a composite component element are only visible to the children of
-that element, not to the element's component itself. :::
+that element, not to the element's component itself.
+:::
 
 ### Basic Example
 
