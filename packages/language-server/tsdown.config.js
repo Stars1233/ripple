@@ -5,10 +5,21 @@ import { fileURLToPath } from 'url';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = process.env.NODE_ENV !== 'production';
+const ROOT_EXTERNAL_PACKAGES = [
+	'@tsrx/react',
+	'@tsrx/ripple',
+	'@tsrx/core',
+	'typescript',
+	'vscode-uri',
+	// need this for monkey patching
+	'volar-service-typescript',
+	/* also definitely need it for monkey patching */
+	/^volar-service-typescript(?:\/.*)?$/,
+];
 
 export default defineConfig({
 	inlineOnly: false,
-	entry: ['src/index.js'],
+	entry: ['src/server.js', 'bin/language-server.js'],
 	format: ['cjs'],
 	outExtensions: () => ({ js: '.js' }),
 	platform: 'node',
@@ -17,9 +28,9 @@ export default defineConfig({
 	sourcemap: isDev,
 	outputOptions: {
 		legalComments: 'inline',
-		minify: true,
+		minify: false,
 	},
-	external: ['@tsrx/react', '@tsrx/ripple', '@tsrx/core', 'typescript'],
+	external: [...ROOT_EXTERNAL_PACKAGES],
 	clean: true,
 	noExternal: /.+/,
 	hooks: {
