@@ -1358,6 +1358,17 @@ function printRippleNode(node, path, options, print, args) {
 			nodeContent = path.call(print, 'expression');
 			break;
 
+		case 'ImportExpression': {
+			/** @type {Doc[]} */
+			const parts = ['import(', path.call(print, 'source')];
+			if (node.options) {
+				parts.push(', ', path.call(print, 'options'));
+			}
+			parts.push(')');
+			nodeContent = parts;
+			break;
+		}
+
 		case 'CallExpression': {
 			/** @type {Doc[]} */
 			const parts = [];
