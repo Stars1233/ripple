@@ -76,13 +76,13 @@ export component IndexPage() {
 
 			<section class="readable-section section-shell what-is-section" aria-label="What is TSRX">
 				<p class="section-body what-is-copy">
-					{'TSRX (TypeScript Ripple Extensions) provides a new approach to writing UI component code — resulting in code that is easier to read, easier to co-locate, and easier for LLMs to reason with. TSRX is fully backwards compatible with TypeScript.'}
+					{'TSRX (TypeScript Ripple Extensions) is a way to write UI component code that stays readable and co-located. Structure, styling, and control flow live together, and the result stays fully backwards compatible with TypeScript.'}
 				</p>
 				<pre class="code-block">
 					<code>{html SNIPPET_HTML}</code>
 				</pre>
 				<p class="section-body what-is-copy">
-					{'TSRX is framework-agnostic and interoperable — it compiles to React, Ripple, and other targets in the future. You can import '}
+					{'TSRX is framework-agnostic and interoperable. Today it compiles to React and Ripple, with room for more targets over time. You can import '}
 					<code class="inline-code">{'.tsrx'}</code>
 					{' modules from JS, TS, and TSX files and it just works.'}
 				</p>
@@ -93,13 +93,13 @@ export component IndexPage() {
 				<p class="eyebrow">{'Benefits of TSRX'}</p>
 				<h2 class="section-heading">{'Co-location helps engineers and AI systems alike.'}</h2>
 				<p class="section-body">
-					{'When structure, control flow, styling, and component shape live in the same file, the source reads closer to the interface it describes. That reduces the mental overhead of ternaries, map chains, and render helpers — and makes refactors, onboarding, and AI collaboration less brittle.'}
+					{'When structure, control flow, styling, and component shape live in the same file, the source reads closer to the interface it describes. That cuts down on ternaries, map chains, and render helpers. It also makes refactors and onboarding less brittle.'}
 				</p>
 				<pre class="code-block">
 					<code>{html COLOCATION_HTML}</code>
 				</pre>
 				<p class="section-body">
-					{'Code is increasingly written, reviewed, and transformed with machine assistance. A language that exposes UI structure more directly gives both humans and agents a better surface to reason about — without replacing the framework semantics underneath.'}
+					{'Code is increasingly written, reviewed, and transformed with machine assistance. When UI structure is more explicit, editors, compilers, and code generation tools have a better surface to work with without changing the framework semantics underneath.'}
 				</p>
 			</section>
 
@@ -107,7 +107,7 @@ export component IndexPage() {
 				<p class="eyebrow">{'Tooling and adoption'}</p>
 				<h2 class="section-heading">{'Rich integration with existing tooling.'}</h2>
 				<p class="section-body">
-					{'TSRX ships with a language server for editor diagnostics, navigation, and completion. Prettier and ESLint plugins keep formatting and linting consistent inside existing repositories — so the language can be adopted seriously, not just as a compiler experiment.'}
+					{'TSRX ships with a language server for editor diagnostics, navigation, and completion. Prettier and ESLint plugins keep formatting and linting consistent inside existing repositories, so the language can be adopted seriously instead of treated like a compiler experiment.'}
 				</p>
 				<p class="section-body">
 					{'It interoperates with existing TypeScript and TSX codebases rather than demanding a full rewrite. Teams can adopt it where ergonomics matter most while keeping the surrounding code familiar. '}
@@ -122,11 +122,11 @@ export component IndexPage() {
 				<p class="eyebrow">{'Smart compilation'}</p>
 				<h2 class="section-heading">{'TSRX compiles to multiple framework runtime outputs.'}</h2>
 				<p class="section-body">
-					{'The TSRX compiler parses component source into an AST and hands it off to framework-specific plugins for code generation. Each plugin — like '}
+					{'The TSRX compiler parses component source into an AST and hands it off to framework-specific plugins for code generation. Plugins such as '}
 					<code class="inline-code">{'@tsrx/react'}</code>
 					{' or '}
 					<code class="inline-code">{'@tsrx/ripple'}</code>
-					{' — transforms the same AST into idiomatic output for its target runtime, including scoped CSS. New targets can be added as standalone compiler plugins without changing the language itself.'}
+					{' transform the same AST into idiomatic output for their target runtimes, including scoped CSS. New targets can be added as standalone compiler plugins without changing the language itself.'}
 				</p>
 				<p class="section-body">
 					<a class="cta-link" href="/playground">{'Try it in the playground →'}</a>
