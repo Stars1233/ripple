@@ -2,10 +2,13 @@ import type { Tracked } from 'ripple';
 import { bindNode, bindValue, effect, track } from 'ripple';
 
 import { DEFAULT_DEMO_SOURCE } from '../lib/demo.ts';
+import { DEMO_SNIPPETS } from '../lib/demo-snippets.ts';
 
 const MAX_SOURCE_LENGTH = 12000;
 const DEBOUNCE_MS = 280;
 const HASH_DEBOUNCE_MS = 400;
+const CUSTOM_SNIPPET_VALUE = '__custom';
+const EMPTY_DEMO_SOURCE = '';
 const TARGET_OPTIONS = [
 	{ value: 'react', label: 'React' },
 	{ value: 'ripple', label: 'Ripple' },
@@ -16,6 +19,21 @@ const TARGET_LABELS: Record<string, string> = {
 };
 
 const VALID_TARGETS = new Set(TARGET_OPTIONS.map((o) => o.value));
+const SNIPPET_BY_VALUE = new Map(DEMO_SNIPPETS.map((snippet) => [snippet.value, snippet]));
+
+function is_snippet_available_for_target(snippet: { targets?: string[] }, target: string): boolean {
+	return !snippet.targets || snippet.targets.includes(target);
+}
+
+function get_snippet_value_for_source(source: string): string {
+	for (const snippet of DEMO_SNIPPETS) {
+		if (snippet.source === source) {
+			return snippet.value;
+		}
+	}
+
+	return CUSTOM_SNIPPET_VALUE;
+}
 
 function encode_hash(source: string, target: string): string {
 	const payload = JSON.stringify({ s: source, t: target });
@@ -54,15 +72,19 @@ export component CompilerDemo() {
 
 	const initial_hash =
 		typeof window !== 'undefined' ? decode_hash(window.location.hash.slice(1)) : null;
+	const initial_source = initial_hash?.source ?? DEFAULT_DEMO_SOURCE;
 
 	let selected_target: Tracked<string> = track(initial_hash?.target ?? 'react');
+	let selected_snippet: Tracked<string> = track(get_snippet_value_for_source(initial_source));
 
 	let &[status] = track('Hydrating compiler...');
 	let &[error_message] = track('');
 	let &[last_updated] = track('');
 	let &[editors_ready] = track(false);
-	let latest_source = initial_hash?.source ?? DEFAULT_DEMO_SOURCE;
+	let active_mobile_panel: Tracked<'input' | 'output'> = track('input');
+	let latest_source = initial_source;
 	let request_compile = () => {};
+	let load_source = (_next_source: string) => {};
 
 	effect(() => {
 		if (!source_ref.value || !output_ref.value) {
@@ -173,6 +195,13 @@ export component CompilerDemo() {
 			const compile_source = async (source: string) => {
 				latest_source = source;
 
+				if (source.trim().length === 0) {
+					error_message = '';
+					status = 'Waiting for input';
+					replace_doc(output_view, '// Start typing TSRX to see compiled output.');
+					return;
+				}
+
 				if (source.length > MAX_SOURCE_LENGTH) {
 					error_message = `Source is limited to ${MAX_SOURCE_LENGTH} characters for the live demo.`;
 					status = 'Source limit reached';
@@ -234,6 +263,16 @@ export component CompilerDemo() {
 				}
 			};
 
+			load_source = (next_source: string) => {
+				latest_source = next_source;
+
+				if (!source_view) {
+					return;
+				}
+
+				replace_doc(source_view, next_source);
+			};
+
 			source_view = new EditorView({
 				state: EditorState.create(
 					{
@@ -246,6 +285,7 @@ export component CompilerDemo() {
 								}
 
 								const next_source = update.state.doc.toString();
+
 								window.clearTimeout(debounce_id);
 								debounce_id = window.setTimeout(() => {
 									void compile_source(next_source);
@@ -275,6 +315,7 @@ export component CompilerDemo() {
 		return () => {
 			disposed = true;
 			request_compile = () => {};
+			load_source = (_next_source: string) => {};
 			window.clearTimeout(debounce_id);
 			window.clearTimeout(hash_debounce_id);
 			active_controller?.abort();
@@ -285,11 +326,39 @@ export component CompilerDemo() {
 
 	effect(() => {
 		selected_target.value;
+
+		const snippet = SNIPPET_BY_VALUE.get(selected_snippet.value);
+		if (snippet && !is_snippet_available_for_target(snippet, selected_target.value)) {
+			selected_snippet.value = CUSTOM_SNIPPET_VALUE;
+		}
+
 		request_compile();
 		const encoded = encode_hash(latest_source, selected_target.value);
 		if (encoded) {
 			history.replaceState(null, '', '#' + encoded);
 		}
+	});
+
+	effect(() => {
+		if (selected_snippet.value === CUSTOM_SNIPPET_VALUE) {
+			if (latest_source === EMPTY_DEMO_SOURCE) {
+				return;
+			}
+
+			load_source(EMPTY_DEMO_SOURCE);
+			return;
+		}
+
+		const snippet = SNIPPET_BY_VALUE.get(selected_snippet.value);
+		if (!snippet) {
+			return;
+		}
+
+		if (snippet.source === latest_source) {
+			return;
+		}
+
+		load_source(snippet.source);
 	});
 
 	<section class="demo-shell" id="demo">
@@ -298,6 +367,16 @@ export component CompilerDemo() {
 				<p class="demo-kicker">{'TSRX Playground'}</p>
 			</div>
 			<div class="demo-toolbar">
+				<label class="snippet-picker">
+					<select class="snippet-select" {ref bindValue(selected_snippet)}>
+						<option value={CUSTOM_SNIPPET_VALUE}>{'Custom Source'}</option>
+						for (const snippet of DEMO_SNIPPETS) {
+							if (is_snippet_available_for_target(snippet, selected_target.value)) {
+								<option value={snippet.value}>{snippet.label}</option>
+							}
+						}
+					</select>
+				</label>
 				<label class="target-picker">
 					<select class="target-select" {ref bindValue(selected_target)}>
 						for (const option of TARGET_OPTIONS) {
@@ -308,12 +387,8 @@ export component CompilerDemo() {
 			</div>
 		</div>
 
-		if (error_message) {
-			<div class="demo-error" role="alert">{error_message}</div>
-		}
-
 		<div class={`demo-grid${editors_ready ? ' ready' : ''}`}>
-			<div class="panel panel-source">
+			<div class={`panel panel-source${active_mobile_panel.value === 'input' ? ' is-active' : ''}`}>
 				<div class="panel-topline">
 					<span>{'TSRX input'}</span>
 					<span>{'.tsrx'}</span>
@@ -321,12 +396,40 @@ export component CompilerDemo() {
 				<div class="panel-body editor-host" {ref bindNode(source_ref)} />
 			</div>
 
-			<div class="panel">
+			<div
+				class={`panel panel-output${active_mobile_panel.value === 'output' ? ' is-active' : ''}`}
+			>
 				<div class="panel-topline">
 					<span>{TARGET_LABELS[selected_target.value]}</span>
 				</div>
-				<div class="panel-body editor-host" {ref bindNode(output_ref)} />
+				<div class="panel-body">
+					if (error_message) {
+						<div class="panel-error" role="alert">{error_message}</div>
+					}
+					<div class="editor-host" {ref bindNode(output_ref)} />
+				</div>
 			</div>
+		</div>
+
+		<div class="mobile-pane-toggle" aria-label="Switch visible panel">
+			<button
+				type="button"
+				class={`pane-button${active_mobile_panel.value === 'input' ? ' is-active' : ''}`}
+				onClick={() => {
+					active_mobile_panel.value = 'input';
+				}}
+			>
+				{'input'}
+			</button>
+			<button
+				type="button"
+				class={`pane-button${active_mobile_panel.value === 'output' ? ' is-active' : ''}`}
+				onClick={() => {
+					active_mobile_panel.value = 'output';
+				}}
+			>
+				{'output'}
+			</button>
 		</div>
 	</section>
 
@@ -345,8 +448,9 @@ export component CompilerDemo() {
 			justify-content: space-between;
 			gap: 1.25rem;
 			align-items: end;
-			margin: 0;
-			padding: 0 1rem 0.75rem;
+			width: min(1180px, calc(100vw - 2rem));
+			margin: 0 auto;
+			padding: 0 0 0.75rem;
 			flex-wrap: wrap;
 		}
 
@@ -374,24 +478,33 @@ export component CompilerDemo() {
 		}
 
 		.demo-toolbar {
-			display: grid;
-			gap: 0.85rem;
-			justify-items: end;
+			display: flex;
+			gap: 0.75rem;
+			align-items: center;
+			justify-content: flex-end;
+			flex-wrap: wrap;
 		}
 
+		.snippet-picker,
 		.target-picker {
 			display: grid;
-			gap: 0.45rem;
-			font-size: 0.84rem;
-			color: rgba(26, 22, 64, 0.74);
+			gap: 0;
 		}
 
+		.snippet-select,
 		.target-select {
-			min-width: 10rem;
-			padding: 0.7rem 0.85rem;
+			min-width: 11rem;
+			padding: 0.7rem 2.15rem 0.7rem 0.85rem;
 			border: none;
 			background: rgba(255, 255, 255, 0.92);
 			color: #1a1640;
+			appearance: none;
+			-webkit-appearance: none;
+			-moz-appearance: none;
+			background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M6 8l4 4 4-4' stroke='%231a1640' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+			background-repeat: no-repeat;
+			background-size: 0.95rem;
+			background-position: right 0.95rem center;
 		}
 
 		.demo-status-row {
@@ -412,19 +525,16 @@ export component CompilerDemo() {
 			background: rgba(111, 0, 255, 0.08);
 		}
 
-		.demo-error {
-			margin-bottom: 1rem;
-			padding: 0.9rem 1rem;
-			background: rgba(160, 54, 87, 0.18);
-			color: #6f1d34;
-		}
-
 		.demo-grid {
 			display: grid;
 			grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 			gap: 0;
 			flex: 1;
 			min-height: 0;
+		}
+
+		.mobile-pane-toggle {
+			display: none;
 		}
 
 		.panel {
@@ -451,10 +561,22 @@ export component CompilerDemo() {
 		.panel-body {
 			flex: 1;
 			min-height: 0;
+			display: flex;
+			flex-direction: column;
+		}
+
+		.panel-error {
+			padding: 0.8rem 1rem;
+			background: #e01174;
+			color: #fff;
+			font-size: 0.9rem;
+			line-height: 1.35;
 		}
 
 		.editor-host {
 			position: relative;
+			flex: 1;
+			min-height: 0;
 		}
 
 		:global(.editor-host .cm-scroller) {
@@ -493,8 +615,16 @@ export component CompilerDemo() {
 				grid-template-columns: 1fr;
 			}
 
+			.panel {
+				display: none;
+			}
+
+			.panel.is-active {
+				display: flex;
+			}
+
 			.demo-toolbar {
-				justify-items: start;
+				justify-content: flex-start;
 			}
 
 			.demo-status-row {
@@ -504,11 +634,38 @@ export component CompilerDemo() {
 			.panel-body {
 				min-height: 20rem;
 			}
+
+			.mobile-pane-toggle {
+				display: flex;
+				position: sticky;
+				bottom: 0;
+				z-index: 5;
+				justify-content: center;
+				align-items: center;
+				gap: 0.65rem;
+				padding: 0.65rem 0.75rem 0.8rem;
+				background: rgba(8, 14, 30, 0.96);
+				border-top: 1px solid rgba(255, 255, 255, 0.08);
+			}
+
+			.pane-button {
+				border: none;
+				background: transparent;
+				color: rgba(235, 240, 255, 0.65);
+				font-size: 0.96rem;
+				padding: 0.25rem 0.2rem;
+				text-transform: lowercase;
+			}
+
+			.pane-button.is-active {
+				color: #f2f5ff;
+				font-weight: 500;
+			}
 		}
 
 		@media (max-width: 720px) {
 			.demo-shell {
-				padding: 1rem;
+				padding: 0;
 			}
 		}
 	</style>
