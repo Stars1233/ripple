@@ -360,6 +360,40 @@ describe('@tsrx/solid basic', () => {
 			expect(code).toMatch(/<Match when=\{kind === 'b'\}>/);
 		});
 
+		it('element children mixing JSX and statements wrap in an IIFE', () => {
+			// Regression: plain statements (VariableDeclaration, ExpressionStatement,
+			// DebuggerStatement) interleaved with JSX children must execute as JS
+			// rather than print as literal text. The transform wraps the whole
+			// child list in an IIFE so the statements run and their locals stay
+			// scoped to the block — matching the React target's behaviour.
+			const { code } = compile(
+				`component FeatureCard({ items }: { items: string[] }) {
+					<ul>
+						const [state, setState] = createSignal();
+						for (const item of items; index i) {
+							<li>{item}</li>
+						}
+						<div>
+							console.log('logged');
+							debugger;
+						</div>
+					</ul>
+				}`,
+				'FeatureCard.tsrx',
+			);
+			// Outer <ul> wraps mixed statement + JSX children in an IIFE.
+			expect(code).toMatch(/<ul>\{\(\(\) =>\s*\{/);
+			expect(code).toContain('createSignal()');
+			// Inner <div> with only statements also wraps in an IIFE so they run
+			// as JS rather than render as children.
+			expect(code).toMatch(/<div>\{\(\(\) =>\s*\{/);
+			expect(code).toContain("console.log('logged')");
+			expect(code).toContain('debugger');
+			// Statements must not leak into the output as literal JSX text.
+			expect(code).not.toMatch(/<ul>const \[state/);
+			expect(code).not.toMatch(/<div>console\.log/);
+		});
+
 		it('early-return keeps non-JSX after statements in outer body', () => {
 			// Regression: non-JSX statements declared after `if (cond) return;`
 			// (e.g. createSignal calls) must run once at setup rather than

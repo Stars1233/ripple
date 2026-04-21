@@ -19,9 +19,7 @@ who has previously worked on React, Svelte, Lexical, and Inferno.
 
 The `.tsrx` syntax you'll learn here is also the source language of
 [TSRX](https://tsrx.dev) — a TypeScript language extension that compiles the
-same component file to React, Solid, or Ripple. If you prefer to keep an
-existing React or Solid runtime while adopting the authoring ergonomics,
-start from the [TSRX website](https://tsrx.dev) instead.
+same component file to React, Solid, or Ripple.
 
 :::
 

@@ -559,6 +559,31 @@ component FullyStaticApp() {
 	</div>
 }
 
+// ── Mid-template locals + interleaved statements inside element children ──
+// `.tsrx` lets you declare locals and run plain statements between JSX
+// children. The Solid transform wraps the block in an IIFE so the statements
+// execute as JS during render, their locals stay scoped to the enclosing
+// element, and no source code leaks through as literal text.
+
+const mid_template_log: string[] = [];
+
+component MidTemplateLocalsApp() {
+	<div class="mid-template-shell">
+		const [count, setCount] = createSignal(0);
+
+		for (const item of ['a', 'b']; index i) {
+			<span class="mid-template-item">{item}</span>
+		}
+
+		<p class="mid-template-count">{count()}</p>
+		<button class="mid-template-inc" onClick={() => setCount(count() + 1)}>{'inc'}</button>
+
+		<div class="mid-template-side">
+			mid_template_log.push('ran');
+		</div>
+	</div>
+}
+
 // ── Lazy destructuring: object in props ──
 
 component LazyPropsChild(&{ name, age }: { name: string; age: number }) {
@@ -1009,6 +1034,38 @@ describe('tsrx-solid runtime', () => {
 		await render(FullyStaticApp);
 		expect(text('.all-static h2')).toBe('Title');
 		expect(text('.all-static p')).toBe('Paragraph');
+	});
+
+	// ── Mid-template locals + interleaved statements ──
+
+	it('executes mid-template statements and keeps locals scoped to the element', async () => {
+		mid_template_log.length = 0;
+		await render(MidTemplateLocalsApp);
+
+		// The inner <div> body is a pure statement (`mid_template_log.push('ran')`).
+		// If the transform emitted it as a JSX text child the source code would
+		// render as literal text; the IIFE wrapping lets the side effect fire
+		// and leaves the element visually empty.
+		expect(mid_template_log).toEqual(['ran']);
+		expect(container.querySelector('.mid-template-side')!.textContent).toBe('');
+
+		// Siblings around the local declaration render normally.
+		const items = container.querySelectorAll('.mid-template-item');
+		expect(items.length).toBe(2);
+		expect(items[0].textContent).toBe('a');
+		expect(items[1].textContent).toBe('b');
+
+		// The locally-declared signal stays reactive across clicks — declared
+		// mid-template yet closed over by sibling JSX in the same IIFE scope.
+		expect(text('.mid-template-count')).toBe('0');
+		await click('.mid-template-inc');
+		expect(text('.mid-template-count')).toBe('1');
+		await click('.mid-template-inc');
+		expect(text('.mid-template-count')).toBe('2');
+
+		// Re-rendering shouldn't duplicate the side-effect — the IIFE runs
+		// once during setup, not on every reactive update.
+		expect(mid_template_log).toEqual(['ran']);
 	});
 
 	// ── Lazy destructuring ──
