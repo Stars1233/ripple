@@ -5,7 +5,7 @@ import { createVolarMappingsResult, dedupeMappings, parseModule } from '@tsrx/co
 import { transform } from './transform.js';
 
 /**
- * Parse tsrx-react source code to an ESTree AST.
+ * Parse tsrx-solid source code to an ESTree AST.
  * @param {string} source
  * @param {string} [filename]
  * @param {ParseOptions} [options]
@@ -16,8 +16,8 @@ export function parse(source, filename, options) {
 }
 
 /**
- * Compile tsrx-react source code to a TSX/JSX module suitable for use with
- * React's automatic jsx runtime (consumed by a downstream JSX transform).
+ * Compile tsrx-solid source code to a TSX module suitable for use with
+ * Solid's JSX transform (typically via `vite-plugin-solid`).
  *
  * @param {string} source
  * @param {string} [filename]
@@ -30,7 +30,7 @@ export function compile(source, filename) {
 }
 
 /**
- * Compile tsrx-react source to virtual TSX plus Volar mappings for editor tooling.
+ * Compile tsrx-solid source to virtual TSX plus Volar mappings for editor tooling.
  *
  * @param {string} source
  * @param {string} [filename]
