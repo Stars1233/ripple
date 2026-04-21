@@ -46,6 +46,7 @@ export component GettingStartedPage() {
 					<a href="/getting-started" aria-current="page">{'Getting Started'}</a>
 					<a href="/features">{'Features'}</a>
 					<a href="/playground">{'Playground'}</a>
+					<a href="/llms.txt" target="_blank" rel="noopener noreferrer">{'llms.txt'}</a>
 					<a
 						href="https://github.com/Ripple-TS/ripple/tree/main/packages/tsrx"
 						target="_blank"
@@ -99,27 +100,6 @@ export component GettingStartedPage() {
 				<pre class="code-block">
 					<code>{html SOLID_VITE_CONFIG_HTML}</code>
 				</pre>
-				<p class="section-body">
-					{'The '}
-					<code class="inline-code">{'@tsrx/solid'}</code>
-					{' compiler lowers '}
-					<code class="inline-code">{'if'}</code>
-					{', '}
-					<code class="inline-code">{'for'}</code>
-					{', '}
-					<code class="inline-code">{'switch'}</code>
-					{', and '}
-					<code class="inline-code">{'try'}</code>
-					{' statements to Solid\'s built-in '}
-					<code class="inline-code">{'<Show>'}</code>
-					{', '}
-					<code class="inline-code">{'<For>'}</code>
-					{', '}
-					<code class="inline-code">{'<Switch>/<Match>'}</code>
-					{', and '}
-					<code class="inline-code">{'<ErrorBoundary>/<Suspense>'}</code>
-					{' components so reactivity and scoped CSS work out of the box. Requires Solid 2.0.'}
-				</p>
 
 				<h3 class="subsection-heading">{'Rspack & Webpack'}</h3>
 				<p class="section-body muted">

@@ -18,6 +18,7 @@ export component PlaygroundPage() {
 				<a href="/getting-started">{'Getting Started'}</a>
 				<a href="/features">{'Features'}</a>
 				<a href="/playground" aria-current="page">{'Playground'}</a>
+				<a href="/llms.txt" target="_blank" rel="noopener noreferrer">{'llms.txt'}</a>
 				<a
 					href="https://github.com/Ripple-TS/ripple/tree/main/packages/tsrx"
 					target="_blank"
