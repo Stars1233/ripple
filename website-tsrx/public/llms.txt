@@ -1,4 +1,4 @@
-# TSRX — AI/LLM Documentation
+# TSRX - AI/LLM Documentation
 
 ## Overview
 
