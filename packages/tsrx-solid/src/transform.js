@@ -1103,7 +1103,22 @@ function to_jsx_element(node, transform_context) {
  */
 function create_element_children(children, transform_context) {
 	if (children.length === 0) return [];
-	// Solid doesn't need React's hook-safe IIFE wrapping; every child is inline.
+
+	// If any child is a plain statement (VariableDeclaration, ExpressionStatement,
+	// DebuggerStatement, etc.) interleaved with JSX, we can't emit it as a JSX
+	// child directly — Solid's JSX runtime would treat the node as an opaque
+	// value and the source code would print as literal text. Wrap the whole
+	// children list in an IIFE so the statements execute during render and
+	// their locals scope to the block, matching the authored intent of
+	// mid-template locals.
+	const has_non_jsx_child = children.some(
+		(/** @type {any} */ child) => child && !is_jsx_child(child),
+	);
+	if (has_non_jsx_child) {
+		const body_jsx = body_to_jsx_child(children, transform_context);
+		return [jsx_child_wrap(iife_if_arrow(body_jsx))];
+	}
+
 	return children.map((/** @type {any} */ child) => to_jsx_child(child, transform_context));
 }
 
