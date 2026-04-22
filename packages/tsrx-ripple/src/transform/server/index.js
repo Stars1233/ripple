@@ -488,12 +488,24 @@ const visitors = {
 		if (track_call_name) {
 			const track_method_name = track_call_name === 'trackAsync' ? 'track_async' : 'track';
 
+			/** @type {AST.BaseCallExpression['arguments']} */
+			const call_args = [];
+			if (node.arguments.length === 0) {
+				node.arguments.push(b.void0);
+			}
+
+			for (let i = 0; i < node.arguments.length; i++) {
+				const arg = node.arguments[i];
+				call_args.push(/** @type {(AST.Expression | AST.SpreadElement)} */ (context.visit(arg)));
+				if (i === 0) {
+					call_args.push(b.literal(node.metadata.hash));
+				}
+			}
+
 			return {
 				...node,
 				callee: b.member(b.id('_$_'), b.id(track_method_name)),
-				arguments: /** @type {(AST.Expression | AST.SpreadElement)[]} */ (
-					node.arguments.map((arg) => context.visit(arg))
-				),
+				arguments: call_args,
 			};
 		}
 

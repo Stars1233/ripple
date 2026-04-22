@@ -109,9 +109,9 @@ export function MixedControlFlowStatic() {
 export function MixedControlFlowReactive() {
 	_$_.push_component();
 
-	let lazy = _$_.track(true);
-	let lazy_1 = _$_.track('a');
-	let lazy_2 = _$_.track([{ id: 1, label: 'One' }, { id: 2, label: 'Two' }]);
+	let lazy = _$_.track(true, '5ae53d26');
+	let lazy_1 = _$_.track('a', '5b53eda2');
+	let lazy_2 = _$_.track([{ id: 1, label: 'One' }, { id: 2, label: 'Two' }], '7890dad6');
 
 	_$_.regular_block(() => {
 		_$_.output_push('<button');
@@ -327,7 +327,7 @@ export function MixedControlFlowAsyncPending() {
 function AsyncRow({ label }) {
 	_$_.push_component();
 
-	let lazy_3 = _$_.track_async(() => Promise.resolve(label));
+	let lazy_3 = _$_.track_async(() => Promise.resolve(label), '10cc79a0');
 
 	_$_.regular_block(() => {
 		_$_.output_push('<div');

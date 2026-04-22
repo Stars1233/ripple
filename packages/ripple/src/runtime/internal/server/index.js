@@ -1,5 +1,5 @@
 /**
- * @import { Component, Dependency, Derived, Tracked, Block, TryBlockWithCatch } from '#server';
+ * @import { Component, Dependency, Block, TryBlockWithCatch } from '#server';
  * @import { NestedArray } from '#helpers';
  * @import { Props } from '#public';
  * @import { RenderResult, BaseRenderOptions, RenderStreamResult, Stream, StreamSink } from 'ripple/server';
@@ -13,6 +13,10 @@
 /** @typedef {{ tag: string; parent: undefined | ElementContext; filename: undefined | string; line: number; column: number; }} ElementContext */
 /** @typedef {{ cancel: () => void }} RegisteredAsyncOperation */
 
+// Both
+/** @typedef {TrackedValue} Tracked */
+/** @typedef {DerivedValue} Derived */
+
 import {
 	DERIVED,
 	UNINITIALIZED,
@@ -22,8 +26,9 @@ import {
 	ASYNC_DERIVED_READ_THROWN,
 	DERIVED_UPDATED,
 } from '../client/constants.js';
+import { DEV } from 'esm-env';
 import { is_ripple_object, array_slice } from '../client/utils.js';
-import { escape } from '../../../utils/escaping.js';
+import { escape, escape_script } from '../../../utils/escaping.js';
 import { is_boolean_attribute } from '../../../utils/attributes.js';
 import { clsx } from 'clsx';
 import { normalize_css_property_name } from '../../../utils/normalize_css_property_name.js';
@@ -34,6 +39,8 @@ import {
 	is_tag_valid_with_ancestor,
 } from '../../../html-tree-validation.js';
 import { get_async_track_result } from '../../../utils/async.js';
+import { get_track_async_script_id } from '../../../utils/track-async-serialization.js';
+import * as devalue from 'devalue';
 import {
 	cancel_async_operations,
 	component_block,
@@ -49,6 +56,24 @@ export { context } from './context.js';
 export { try_block, component_block, regular_block } from './blocks.js';
 export { array_slice };
 export { tsrx_element, normalize_children };
+
+/** @extends Error */
+export class TrackAsyncRunError extends Error {
+	/** @type {Tracked} */
+	tracked;
+	/** @type {Error} */
+	cause;
+	/**
+	 * @param {string} message
+	 * @param {{tracked: Tracked, cause: Error}} options
+	 */
+	constructor(message, options) {
+		super(message);
+		this.name = 'TrackAsyncRunError';
+		this.tracked = options.tracked;
+		this.cause = options.cause;
+	}
+}
 
 export function noop() {}
 
@@ -400,9 +425,11 @@ export class Output {
 
 	/**
 	 * @param {string} str
+	 * @param {boolean} [is_root=false]
+	 * @param {boolean} [is_prepend=false]
 	 * @returns {void}
 	 */
-	push(str) {
+	#push(str, is_root = false, is_prepend = false) {
 		if (this.isStreamMode() && !this.isSyncRun()) {
 			// TODO - we need to wrap the resulting block output into something that
 			// the client-side can understand and append them appropriately,
@@ -413,12 +440,49 @@ export class Output {
 			return;
 		}
 
-		if (this.target === 'head') {
-			this.#head.push(str);
+		var instance = is_root ? this.#root : this;
+
+		// we never write to `head` in the root instance
+		if (instance !== this.#root && instance.target === 'head') {
+			if (is_prepend) {
+				instance.#head.unshift(str);
+			} else {
+				instance.#head.push(str);
+			}
 			return;
 		}
 
-		this.#body.push(str);
+		if (is_prepend) {
+			instance.#body.unshift(str);
+		} else {
+			instance.#body.push(str);
+		}
+	}
+
+	/**
+	 * @param {string} str
+	 * @returns {void}
+	 */
+	push(str) {
+		this.#push(str);
+	}
+
+	/**
+	 * @param {string} str
+	 * @returns {void}
+	 */
+	push_serialized_error(str) {
+		// prepend to the root block to avoid messing up the hydration markers
+		// writing to the root to avoid being cleared in the local instance when an error occurs
+		this.#push(str, true, true);
+	}
+
+	/**
+	 * @param {string} str
+	 * @returns {void}
+	 */
+	push_serialized_result(str) {
+		this.#push(str);
 	}
 
 	clear() {
@@ -672,6 +736,14 @@ export function pop_component() {
  */
 export function output_push(str) {
 	/** @type {Block} */ (active_block).o.push(str);
+}
+
+/**
+ * @param {string} str
+ * @returns {void}
+ */
+export function output_push_serialized_error(str) {
+	/** @type {Block} */ (active_block).o.push_serialized_error(str);
 }
 
 /**
@@ -958,31 +1030,43 @@ export function spread_attrs(attrs, css_hash) {
 
 var empty_get_set = { get: undefined, set: undefined };
 
-/** @type {Tracked} */
 class TrackedValue {
 	/**
 	 * @param {any} v
 	 * @param {{ get?: Function; set?: Function }} a
+	 * @param {string} hash
 	 */
-	constructor(v, a) {
+	constructor(v, a, hash) {
+		/** @type {{ get?: Function; set?: Function }} */
 		this.a = a;
 		/** @type {AbortController | null} */
 		this.aa = null;
 		/** @type {PromiseLike<any> | null} */
 		this.ap = null;
+		/** @type {Block} */
+		this.b = /** @type {Block} */ (active_block);
+		/** @type {number} */
 		this.c = 0;
+		/** @type {number} */
 		this.f = TRACKED;
+		/** @type {string} */
+		this.h = hash;
+		/** @type {any} */
 		this.v = v;
 	}
+	/** @returns {any} */
 	get [0]() {
 		return get(/** @type {Tracked} */ (this));
 	}
+	/** @param {any} v */
 	set [0](v) {
 		set(/** @type {Tracked} */ (this), v);
 	}
+	/** @returns {Tracked} */
 	get [1]() {
-		return this;
+		return /** @type {Tracked} */ (this);
 	}
+	/** @returns {any} */
 	get value() {
 		return get(/** @type {Tracked} */ (this));
 	}
@@ -994,40 +1078,53 @@ class TrackedValue {
 	get length() {
 		return 2;
 	}
+	/** @returns {Iterator<any | Tracked>} */
 	*[Symbol.iterator]() {
 		yield get(/** @type {Tracked} */ (this));
 		yield this;
 	}
 }
 
-/** @type {Derived} */
 class DerivedValue {
 	/**
 	 * @param {Function} fn
 	 * @param {{ get?: Function; set?: Function }} a
+	 * @param {string} hash
 	 */
-	constructor(fn, a) {
+	constructor(fn, a, hash) {
+		/** @type {{ get?: Function; set?: Function }} */
 		this.a = a;
 		// we always should have an active block
-		// even in async we rerun blocks so we can rely on this
+		/** @type {Block} */
 		this.b = /** @type {Block} */ (active_block);
+		/** @type {number} */
 		this.c = 0;
+		/** @type {Component | null} */
 		this.co = active_component;
 		/** @type {Dependency | null} */
 		this.d = null;
+		/** @type {number} */
 		this.f = DERIVED;
+		/** @type {Function} */
 		this.fn = fn;
+		/** @type {string} */
+		this.h = hash;
+		/** @type {any} */
 		this.v = UNINITIALIZED;
 	}
+	/** @returns {any} */
 	get [0]() {
 		return get(/** @type {Derived} */ (this));
 	}
+	/** @param {any} v */
 	set [0](v) {
 		set(/** @type {Derived} */ (this), v);
 	}
+	/** @returns {Derived} */
 	get [1]() {
-		return this;
+		return /** @type {Derived} */ (this);
 	}
+	/** @returns {any} */
 	get value() {
 		return get(/** @type {Derived} */ (this));
 	}
@@ -1039,6 +1136,7 @@ class DerivedValue {
 	get length() {
 		return 2;
 	}
+	/** @returns {Iterator<any | Derived>} */
 	*[Symbol.iterator]() {
 		yield get(/** @type {Derived} */ (this));
 		yield this;
@@ -1047,12 +1145,15 @@ class DerivedValue {
 
 /**
  * @param {any} v
+ * @param {string} hash
  * @param {(value: any) => any} [get]
  * @param {(next: any, prev: any) => any} [set]
  * @returns {Tracked}
  */
-function tracked(v, get, set) {
-	return /** @type {Tracked} */ (new TrackedValue(v, get || set ? { get, set } : empty_get_set));
+function tracked(v, hash, get, set) {
+	return /** @type {Tracked} */ (
+		new TrackedValue(v, get || set ? { get, set } : empty_get_set, hash)
+	);
 }
 
 /**
@@ -1075,21 +1176,25 @@ export function exclude_from_object(obj, exclude_keys) {
 
 /**
  * @param {any} v
+ * @param {string} hash
  * @param {(value: any) => any} [get]
  * @param {(next: any, prev: any) => any} [set]
  * @returns {Derived}
  */
-function derived(v, get, set) {
-	return /** @type {Derived} */ (new DerivedValue(v, get || set ? { get, set } : empty_get_set));
+function derived(v, hash, get, set) {
+	return /** @type {Derived} */ (
+		new DerivedValue(v, get || set ? { get, set } : empty_get_set, hash)
+	);
 }
 
 /**
  * @param {any} v
+ * @param {string} hash
  * @param {(value: any) => any} [get]
  * @param {(next: any, prev: any) => any} [set]
  * @returns {Tracked | Derived}
  */
-export function track(v, get, set) {
+export function track(v, hash, get, set) {
 	var is_tracked = is_ripple_object(v);
 
 	if (is_tracked) {
@@ -1097,10 +1202,118 @@ export function track(v, get, set) {
 	}
 
 	if (typeof v === 'function') {
-		return derived(v, get, set);
+		return derived(v, hash, get, set);
 	}
 
-	return tracked(v, get, set);
+	return tracked(v, hash, get, set);
+}
+
+/**
+ * Serializes a resolved trackAsync result as a script tag for hydration.
+ * @param {OutputInterface} output - The output push function captured at call time
+ * @param {string} hash - The unique hash for this trackAsync call
+ * @param {any} value - The resolved value
+ * @param {string[] | null} [deps] - Hashes of direct reactive dependencies read by fn()
+ * @returns {void}
+ */
+function serialize_track_async_result(output, hash, value, deps) {
+	/** @type {{ ok: true, payload: string, deps?: string[] }} */
+	var envelope = { ok: true, payload: devalue.stringify(value) };
+	if (deps && deps.length > 0) {
+		envelope.deps = deps;
+	}
+	push_script_for_hydration((str) => output.push_serialized_result(str), hash, envelope);
+}
+
+/**
+ * Serializes a rejected trackAsync error as a script tag for hydration.
+ * Must be called after route_error_to_catch_block so active_block is the catch block.
+ * @param {string} hash
+ * @param {any} error
+ * @returns {void}
+ */
+export function serialize_track_async_error(hash, error) {
+	var error_message = get_public_track_async_error_message(error);
+
+	// we can just use the output_push_serialized directly so it's added to the root block
+	// if we here then the try's block failed to render and the output was cleared
+	// so we're writing to the root otherwise it will be cleared in the local output
+	push_script_for_hydration(output_push_serialized_error, hash, {
+		ok: false,
+		error: { message: error_message },
+	});
+}
+
+/**
+ * @param {string} hash
+ * @param {any} error
+ * @returns {void}
+ */
+export function route_track_async_error_to_catch_block(hash, error) {
+	route_track_async_error_to_catch_block_with_boundary(
+		get_closest_catch_block(/** @type {Block} */ (active_block)),
+		hash,
+		error,
+	);
+}
+
+/**
+ * @param {any} error
+ * @returns {any}
+ */
+export function create_public_track_async_error(error) {
+	if (DEV) {
+		return error;
+	}
+
+	return new Error(get_public_track_async_error_message(error));
+}
+
+/**
+ * We avoid leaking arbitrary server errors in production while still keeping
+ * rich error messages in development and tests.
+ * @param {any} error
+ * @returns {string}
+ */
+function get_public_track_async_error_message(error) {
+	if (DEV) {
+		return error?.message ?? String(error);
+	}
+	return 'An error occurred during async rendering';
+}
+
+/**
+ * Routes trackAsync errors to a catch boundary and serializes the same
+ * public error for hydration, preventing SSR/hydration message mismatches.
+ * @param {TryBlockWithCatch} catch_block
+ * @param {string} hash
+ * @param {any} error
+ * @returns {void}
+ */
+function route_track_async_error_to_catch_block_with_boundary(catch_block, hash, error) {
+	var public_error = create_public_track_async_error(error);
+	route_error_to_catch_block(catch_block, public_error);
+	// has to run after routing as it sets the active_block to the catch block
+	serialize_track_async_error(hash, public_error);
+}
+
+/**
+ * @param {(str: string) => void} push_fn
+ * @param {string} hash
+ * @param {object} envelope - The envelope containing the serialized data
+ * @envelope {ok: boolean, payload?: any, error?: { message: string } }
+ * @returns {void}
+ */
+function push_script_for_hydration(push_fn, hash, envelope) {
+	var serialized_envelope = escape_script(JSON.stringify(envelope));
+
+	push_fn(
+		'<script id="' +
+			get_track_async_script_id(hash) +
+			'" type="application/json">' +
+			serialized_envelope +
+			'</script>',
+	);
 }
 
 /**
@@ -1123,16 +1336,22 @@ function run_track_async(t, fn, block, dr, dj) {
 	var result;
 	/** @type {Dependency | null} */
 	var caught_dep = null;
+	/** @type {Dependency | null} */
+	var direct_deps = null;
 	var caught = false;
 
 	try {
 		result = fn();
+		direct_deps = active_dependency;
 	} catch (error) {
 		caught_dep = active_dependency;
 		caught = true;
 
 		if (error !== ASYNC_DERIVED_READ_THROWN) {
-			throw error;
+			throw new TrackAsyncRunError('Error thrown during trackAsync execution', {
+				cause: /** @type {Error} */ (error),
+				tracked: t,
+			});
 		}
 	} finally {
 		tracking = previous_tracking;
@@ -1175,7 +1394,11 @@ function run_track_async(t, fn, block, dr, dj) {
 						if (dj) {
 							dj(error);
 						}
-						route_error_to_catch_block(get_closest_catch_block(block), error);
+						route_track_async_error_to_catch_block_with_boundary(
+							get_closest_catch_block(block),
+							t.h,
+							error,
+						);
 					},
 				);
 				return;
@@ -1185,12 +1408,15 @@ function run_track_async(t, fn, block, dr, dj) {
 		return;
 	}
 
+	var dep_hashes = collect_dep_hashes(direct_deps);
+
 	// Handle the result
 	var async_result = get_async_track_result(result);
 
 	if (async_result === null) {
 		// Sync result
 		update_tracked_value_clock(t, result);
+		serialize_track_async_result(t.b.o, t.h, result, dep_hashes);
 		if (dr) {
 			dr(result);
 		}
@@ -1207,6 +1433,7 @@ function run_track_async(t, fn, block, dr, dj) {
 	async_result.promise.then(
 		(resolved) => {
 			update_tracked_value_clock(t, resolved);
+			serialize_track_async_result(t.b.o, t.h, resolved, dep_hashes);
 			if (dr) {
 				dr(resolved);
 			}
@@ -1216,16 +1443,42 @@ function run_track_async(t, fn, block, dr, dj) {
 			if (dj) {
 				dj(error);
 			}
-			route_error_to_catch_block(get_closest_catch_block(block), error);
+			route_track_async_error_to_catch_block_with_boundary(
+				get_closest_catch_block(block),
+				t.h,
+				error,
+			);
 		},
 	);
 }
 
 /**
+ * Walks a dependency chain and collects the hashes of dependencies that have
+ * one (i.e. were created from a compile-time track/trackAsync call).
+ * @param {Dependency | null} head
+ * @returns {string[] | null}
+ */
+function collect_dep_hashes(head) {
+	/** @type {string[] | null} */
+	var hashes = null;
+	var dep = head;
+	while (dep !== null) {
+		var h = /** @type {{ h?: string }} */ (dep.t).h;
+		if (h !== undefined) {
+			if (hashes === null) hashes = [];
+			hashes.push(h);
+		}
+		dep = dep.n;
+	}
+	return hashes;
+}
+
+/**
  * @param {any} v
+ * @param {string} hash - Unique hash for SSR serialization/hydration
  * @returns {Tracked | void}
  */
-export function track_async(v) {
+export function track_async(v, hash) {
 	if (is_ripple_object(v)) {
 		return v;
 	}
@@ -1236,22 +1489,21 @@ export function track_async(v) {
 		);
 	}
 
-	var t = tracked(SUSPENSE_PENDING);
-	var block = /** @type {Block} */ (active_block);
-	run_track_async(t, v, block, null, null);
+	var t = tracked(SUSPENSE_PENDING, hash);
+	run_track_async(t, v, t.b, null, null);
 	return t;
 }
 
 /**
- * @param {(Derived | Tracked) | (() => any)} tracked
+ * @param {(Derived | Tracked) | (() => any)} t
  * @returns {boolean}
  */
-export function is_tracked_pending(tracked) {
+export function is_tracked_pending(t) {
 	try {
-		if (typeof tracked === 'function') {
-			tracked();
+		if (typeof t === 'function') {
+			t();
 		} else {
-			get(tracked);
+			get(t);
 		}
 		return false;
 	} catch (error) {
@@ -1332,14 +1584,27 @@ function register_block_rerun(block) {
 				run_block(block);
 				try_catch_block.o.resolveAsync(operation);
 			} catch (error) {
-				route_error_to_catch_block(try_catch_block, error);
+				if (error instanceof TrackAsyncRunError) {
+					var {
+						cause,
+						tracked: { h: hash },
+					} = /** @type {InstanceType<typeof TrackAsyncRunError>} */ (error);
+					error = cause;
+					route_track_async_error_to_catch_block_with_boundary(try_catch_block, hash, error);
+				} else {
+					route_error_to_catch_block(try_catch_block, error);
+				}
 			}
 		},
 		(error) => {
 			if (cancelled) {
 				return;
 			}
-			route_error_to_catch_block(try_catch_block, error);
+			route_track_async_error_to_catch_block_with_boundary(
+				try_catch_block,
+				/** @type {Tracked} */ (t).h,
+				error,
+			);
 		},
 	);
 	// clear all output buffers as we'll rerun the block rendering

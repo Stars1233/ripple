@@ -98,6 +98,12 @@ declare module 'estree' {
 		};
 	}
 
+	interface SimpleCallExpression {
+		metadata: BaseNodeMetaData & {
+			hash?: string;
+		};
+	}
+
 	type Accessibility = 'public' | 'protected' | 'private'; // missing in acorn-typescript types
 	interface MethodDefinition {
 		typeParameters?: TSTypeParameterDeclaration;
@@ -1335,6 +1341,11 @@ export interface AnalysisState extends BaseState {
 		styleClasses?: StyleClasses;
 	};
 	mode: CompileOptions['mode'];
+	// keep this as an object as we destructure
+	module: {
+		// Incremented counter for generating unique track/trackAsync hashes
+		track_id: number;
+	};
 }
 
 export interface TransformServerState extends BaseState {
