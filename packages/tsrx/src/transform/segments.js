@@ -1618,9 +1618,18 @@ export function convert_source_map_to_mappings(
 				node.type === 'TSTypeParameterDeclaration'
 			) {
 				if (node.loc) {
-					mappings.push(
-						get_mapping_from_node(node, src_to_gen_map, gen_line_offsets, mapping_data_verify_only),
+					// Generic spans can be emitted by downstream transforms with sparse source-map
+					// coverage around the angle-bracket delimiters. Skip missing whole-node mappings
+					// instead of crashing Volar, and rely on child type-node mappings instead.
+					const mapping = maybe_get_mapping_from_node(
+						node,
+						src_to_gen_map,
+						gen_line_offsets,
+						mapping_data_verify_only,
 					);
+					if (!(mapping instanceof Error)) {
+						mappings.push(mapping);
+					}
 				}
 				// Generic type parameters - visit to collect type variable names
 				if (node.params) {
