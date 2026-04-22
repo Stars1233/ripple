@@ -1,9 +1,9 @@
 {
-  "name": "@tsrx/rspack-plugin-react",
-  "description": "Rspack plugin for @tsrx/react",
+  "name": "@tsrx/turbopack-plugin-react",
+  "description": "Turbopack integration for @tsrx/react",
   "license": "MIT",
   "author": "Dominic Gannaway",
-  "version": "0.0.2",
+  "version": "0.0.1",
   "type": "module",
   "publishConfig": {
     "access": "public"
@@ -11,7 +11,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Ripple-TS/ripple.git",
-    "directory": "packages/rspack-plugin-react"
+    "directory": "packages/turbopack-plugin-react"
   },
   "exports": {
     ".": {
@@ -23,14 +23,14 @@
     "@tsrx/react": "workspace:*"
   },
   "peerDependencies": {
-    "@rspack/core": ">=1.0.0"
+    "next": ">=15.3.0"
+  },
+  "peerDependenciesMeta": {
+    "next": {
+      "optional": true
+    }
   },
   "devDependencies": {
-    "@rspack/core": "^1.6.0",
-    "@types/react": "catalog:default",
-    "@types/react-dom": "catalog:default",
-    "react": "catalog:default",
-    "react-dom": "catalog:default",
     "typescript": "catalog:default"
   },
   "files": [
