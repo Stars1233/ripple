@@ -12,7 +12,7 @@
 '@tsrx/prettier-plugin': patch
 'ripple': patch
 '@ripple-ts/rollup-plugin': patch
-'@ripple-ts/typescript-plugin': patch
+'@tsrx/typescript-plugin': patch
 '@ripple-ts/vite-plugin': patch
 ---
 
