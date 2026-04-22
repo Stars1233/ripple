@@ -1,6 +1,14 @@
 /** @import * as AST from 'estree' */
 /** @import * as ESTreeJSX from 'estree-jsx' */
 
+/**
+ * @typedef {{
+ *   suspenseSource?: string,
+ * }} CompileOptions
+ */
+
+export const DEFAULT_SUSPENSE_SOURCE = 'preact/compat';
+
 import { walk } from 'zimmerframe';
 import { print } from 'esrap';
 import tsx from 'esrap/languages/tsx';
@@ -37,7 +45,7 @@ import {
  */
 
 /**
- * Transform a parsed tsrx-react AST into a TSX/JSX module.
+ * Transform a parsed tsrx-preact AST into a TSX/JSX module.
  *
  * Replaces Ripple-specific `Component`/`Element`/`Text`/`TSRXExpression`
  * nodes with their standard JSX equivalents inside a `FunctionDeclaration`.
@@ -50,11 +58,14 @@ import {
  * @param {AST.Program} ast
  * @param {string} source
  * @param {string} [filename]
+ * @param {CompileOptions} [compile_options]
  * @returns {{ ast: AST.Program, code: string, map: any, css: { code: string, hash: string } | null }}
  */
-export function transform(ast, source, filename) {
+export function transform(ast, source, filename, compile_options) {
+	const suspense_source = compile_options?.suspenseSource ?? DEFAULT_SUSPENSE_SOURCE;
 	/** @type {any[]} */
 	const stylesheets = [];
+	const module_uses_server_directive = has_use_server_directive(ast);
 
 	/** @type {TransformContext} */
 	const transform_context = {
@@ -73,6 +84,13 @@ export function transform(ast, source, filename) {
 		Component(node, { next, state }) {
 			const as_any = /** @type {any} */ (node);
 			const await_expression = find_first_top_level_await_in_component_body(as_any.body || []);
+
+			if (await_expression && !module_uses_server_directive) {
+				throw create_compile_error(
+					await_expression,
+					'Preact components can only use `await` when the module has a top-level "use server" directive.',
+				);
+			}
 
 			if (await_expression) {
 				as_any.metadata = /** @type {any} */ ({
@@ -170,7 +188,7 @@ export function transform(ast, source, filename) {
 	});
 
 	const expanded = expand_component_helpers(/** @type {AST.Program} */ (transformed));
-	inject_try_imports(expanded, transform_context);
+	inject_try_imports(expanded, transform_context, suspense_source);
 
 	// Apply lazy destructuring transforms to module-level code (top-level function
 	// declarations, arrow functions, etc.). Component bodies have already been
@@ -450,7 +468,7 @@ function build_render_statements(body_nodes, return_null_when_empty, transform_c
 }
 
 /**
- * React-specific wrapper around the core `isInterleavedBody` helper that
+ * Preact-specific wrapper around the core `isInterleavedBody` helper that
  * ignores bare `return` / lone return-if statements. Those are rewriting
  * signals rather than user-visible side effects, so JSX children around
  * them don't need capturing.
@@ -572,6 +590,34 @@ function is_hook_callee(callee) {
 		callee.property?.type === 'Identifier'
 	) {
 		return /^use[A-Z0-9]/.test(callee.property.name);
+	}
+
+	return false;
+}
+
+/**
+ * @param {AST.Program} program
+ * @returns {boolean}
+ */
+function has_use_server_directive(program) {
+	for (const statement of program.body || []) {
+		const directive = /** @type {any} */ (statement).directive;
+
+		if (directive === 'use server') {
+			return true;
+		}
+
+		if (
+			statement.type === 'ExpressionStatement' &&
+			statement.expression?.type === 'Literal' &&
+			statement.expression.value === 'use server'
+		) {
+			return true;
+		}
+
+		if (directive == null) {
+			break;
+		}
 	}
 
 	return false;
@@ -898,7 +944,7 @@ function references_scope_bindings(node, scope_bindings) {
 /**
  * Hoist static JSX elements from render_nodes to module level.
  * A JSX element is static if it doesn't reference any component-scope bindings.
- * Hoisting prevents React from recreating the element on every render, allowing
+ * Hoisting prevents Preact from recreating the element on every render, allowing
  * the reconciler to skip diffing when it sees the same element identity.
  *
  * @param {any[]} render_nodes
@@ -1100,24 +1146,11 @@ function to_jsx_element(node, transform_context) {
 	if (node.type === 'JSXElement') return node;
 	if ((node.children || []).some((/** @type {any} */ c) => c && c.type === 'Html')) {
 		throw new Error(
-			'`{html ...}` is not supported on the React target. Use `dangerouslySetInnerHTML={{ __html: ... }}` as an element attribute instead.',
+			'`{html ...}` is not supported on the Preact target. Use `dangerouslySetInnerHTML={{ __html: ... }}` as an element attribute instead.',
 		);
 	}
 	if (is_dynamic_element_id(node.id)) {
 		return dynamic_element_to_jsx_child(node, transform_context);
-	}
-
-	if (!node.id) {
-		const children = create_element_children(node.children || [], transform_context);
-		return set_loc(
-			/** @type {any} */ ({
-				type: 'JSXFragment',
-				openingFragment: { type: 'JSXOpeningFragment' },
-				closingFragment: { type: 'JSXClosingFragment' },
-				children,
-			}),
-			node,
-		);
 	}
 
 	const name = identifier_to_jsx_name(node.id);
@@ -1502,7 +1535,7 @@ function to_jsx_child(node, transform_context) {
 			return to_jsx_expression_container(node.expression, node);
 		case 'Html':
 			throw new Error(
-				'`{html ...}` is not supported on the React target. Use `dangerouslySetInnerHTML={{ __html: ... }}` as an element attribute instead.',
+				'`{html ...}` is not supported on the Preact target. Use `dangerouslySetInnerHTML={{ __html: ... }}` as an element attribute instead.',
 			);
 		case 'IfStatement':
 			return if_statement_to_jsx_child(node, transform_context);
@@ -1599,14 +1632,14 @@ function for_of_statement_to_jsx_child(node, transform_context) {
 	if (node.await) {
 		throw create_compile_error(
 			node,
-			'React TSRX does not support `for await...of` in component templates.',
+			'Preact TSRX does not support `for await...of` in component templates.',
 		);
 	}
 
 	if (node.key) {
 		throw create_compile_error(
 			node.key,
-			'React TSRX does not support `key` in `for` control flow. Put the key on the rendered element instead, for example `<div key={i}>...</div>`.',
+			'Preact TSRX does not support `key` in `for` control flow. Put the key on the rendered element instead, for example `<div key={i}>...</div>`.',
 		);
 	}
 
@@ -1748,7 +1781,7 @@ function switch_statement_to_jsx_child(node, transform_context) {
 
 /**
  * Transform a `try { ... } pending { ... } catch (err, reset) { ... }` block
- * into React `<TsrxErrorBoundary>` and/or `<Suspense>` JSX elements.
+ * into Preact `<TsrxErrorBoundary>` and/or `<Suspense>` JSX elements.
  *
  * - `pending` → `<Suspense fallback={...}>`
  * - `catch` → `<TsrxErrorBoundary fallback={(err, reset) => ...}>`
@@ -1767,7 +1800,7 @@ function try_statement_to_jsx_child(node, transform_context) {
 	if (finalizer) {
 		throw create_compile_error(
 			finalizer,
-			'React TSRX does not support `finally` blocks in component templates. Move the try statement into a function if you need a finally block.',
+			'Preact TSRX does not support `finally` blocks in component templates. Move the try statement into a function if you need a finally block.',
 		);
 	}
 
@@ -1926,8 +1959,9 @@ function create_jsx_element(tag_name, attributes, children) {
  *
  * @param {AST.Program} program
  * @param {TransformContext} transform_context
+ * @param {string} suspense_source
  */
-function inject_try_imports(program, transform_context) {
+function inject_try_imports(program, transform_context, suspense_source) {
 	/** @type {any[]} */
 	const imports = [];
 
@@ -1942,7 +1976,11 @@ function inject_try_imports(program, transform_context) {
 					metadata: { path: [] },
 				},
 			],
-			source: { type: 'Literal', value: 'react', raw: "'react'" },
+			source: {
+				type: 'Literal',
+				value: suspense_source,
+				raw: `'${suspense_source}'`,
+			},
 			metadata: { path: [] },
 		});
 	}
@@ -1968,8 +2006,8 @@ function inject_try_imports(program, transform_context) {
 			],
 			source: {
 				type: 'Literal',
-				value: '@tsrx/react/error-boundary',
-				raw: "'@tsrx/react/error-boundary'",
+				value: '@tsrx/preact/error-boundary',
+				raw: "'@tsrx/preact/error-boundary'",
 			},
 			metadata: { path: [] },
 		});
@@ -2138,7 +2176,7 @@ function to_jsx_expression_container(expression, source_node = expression) {
 
 /**
  * Ripple's `{text expr}` always renders text, even for booleans and objects.
- * React's normal `{expr}` child semantics would drop booleans and render
+ * Preact's normal `{expr}` child semantics would drop booleans and render
  * elements as elements, so we coerce to a text value explicitly.
  * @param {AST.Expression} expression
  * @param {any} [source_node]
@@ -2214,17 +2252,9 @@ function to_jsx_attribute(attr) {
 		});
 	}
 
-	// Rewrite Ripple-style `class` → React's `className`.
-	let attr_name = attr.name;
-	if (attr_name && attr_name.type === 'Identifier' && attr_name.name === 'class') {
-		attr_name = set_loc(
-			/** @type {any} */ ({ type: 'Identifier', name: 'className', metadata: { path: [] } }),
-			attr.name,
-		);
-	}
-
+	// Preact accepts `class` natively, so no rewrite is needed.
 	const name =
-		attr_name && attr_name.type === 'Identifier' ? identifier_to_jsx_name(attr_name) : attr_name;
+		attr.name && attr.name.type === 'Identifier' ? identifier_to_jsx_name(attr.name) : attr.name;
 
 	let value = attr.value;
 	if (value) {
@@ -2563,10 +2593,10 @@ function create_compile_error(node, message) {
  * @returns {any}
  */
 function tsx_compat_node_to_jsx_expression(node) {
-	if (node.kind !== 'react') {
+	if (node.kind !== 'preact' && node.kind !== 'react') {
 		throw create_compile_error(
 			node,
-			`React TSRX does not support <tsx:${node.kind}> blocks. Use <tsx> or <tsx:react>.`,
+			`Preact TSRX does not support <tsx:${node.kind}> blocks. Use <tsx>, <tsx:preact>, or <tsx:react>.`,
 		);
 	}
 
