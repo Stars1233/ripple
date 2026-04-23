@@ -5,8 +5,16 @@ import type { Parse } from './parse.js';
 import type * as ESRap from 'esrap';
 import type { Position } from 'acorn';
 import type { RequireAllOrNone } from '../src/helpers.js';
+import type {
+	JsxPlatform,
+	JsxPlatformHooks,
+	JsxTransformOptions,
+	JsxTransformResult,
+	createJsxTransform,
+} from './jsx-platform';
 
-export type { Parse };
+export type { Parse, JsxPlatform, JsxPlatformHooks, JsxTransformOptions, JsxTransformResult };
+export { createJsxTransform };
 
 /**
  * Compile error interface
@@ -1046,7 +1054,13 @@ declare module 'estree' {
 	> {
 		params: TypeNode[];
 	}
-	interface TSTypePredicate extends AcornTSNode<TSESTree.TSTypePredicate> {}
+	interface TSTypePredicate extends Omit<
+		AcornTSNode<TSESTree.TSTypePredicate>,
+		'parameterName' | 'typeAnnotation'
+	> {
+		parameterName: AST.Identifier | AST.TSThisType;
+		typeAnnotation: AST.TSTypeAnnotation | null;
+	}
 	interface TSTypeQuery extends Omit<
 		AcornTSNode<TSESTree.TSTypeQuery>,
 		'exprName' | 'typeArguments'
