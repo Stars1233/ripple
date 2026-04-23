@@ -5950,6 +5950,31 @@ function printMemberExpressionSimple(node, options, computed = false) {
 }
 
 /**
+ * Check whether an attribute value can expand into multiline content.
+ * @param {AST.Expression | null | undefined} value - The attribute value node
+ * @param {boolean} [is_nested_in_object=false] - Whether this value is nested within an object literal
+ * @returns {boolean}
+ */
+function is_attribute_value_breakable(value, is_nested_in_object = false) {
+	if (!value) return false;
+
+	switch (value.type) {
+		case 'ConditionalExpression':
+			// Keep simple top-level ternary attributes inline when they fit.
+			// We only force-break when a conditional is nested in an object literal value.
+			return is_nested_in_object;
+		case 'ObjectExpression':
+			return value.properties.some(
+				(property) =>
+					property.type === 'Property' &&
+					is_attribute_value_breakable(/** @type {AST.Expression} */ (property.value), true),
+			);
+		default:
+			return false;
+	}
+}
+
+/**
  * Print a Ripple Element node
  * @param {AST.Element} element - The element node
  * @param {AstPath<AST.Element>} path - The AST path
@@ -6072,7 +6097,12 @@ function printElement(element, path, options, print) {
 				parts.push(attrLineBreak);
 				const attrDoc = print(attrPath);
 				parts.push(attrDoc);
-				if (!hasBreakingAttribute && willBreak(attrDoc)) {
+				const attr_node = /** @type {AST.Attribute | AST.SpreadAttribute} */ (attrPath.node);
+				if (
+					!hasBreakingAttribute &&
+					(willBreak(attrDoc) ||
+						(attr_node.type === 'Attribute' && is_attribute_value_breakable(attr_node.value)))
+				) {
 					hasBreakingAttribute = true;
 				}
 				return parts;

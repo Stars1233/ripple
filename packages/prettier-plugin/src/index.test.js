@@ -926,7 +926,7 @@ export component Test({ a, b }: Props) {}`;
 			expect(result).toBeWithNewline(expected);
 		});
 
-		it('should prefer breaking attributes over breaking expression values (multiline object)', async () => {
+		it('should prefer breaking attributes over inline breakable object values', async () => {
 			const input = `component App() {
   <div class={styles.item} data-active={state.active ? "true" : "false"} style={{ gridTemplateColumns: Icon ? "16px minmax(0, 1fr) auto" : "minmax(0, 1fr) auto" }}>
     {'content'}
@@ -936,21 +936,17 @@ export component Test({ a, b }: Props) {}`;
   <div
     class={styles.item}
     data-active={state.active ? 'true' : 'false'}
-    style={{
-      gridTemplateColumns: Icon
-        ? '16px minmax(0, 1fr) auto'
-        : 'minmax(0, 1fr) auto',
-    }}
+    style={{ gridTemplateColumns: Icon ? '16px minmax(0, 1fr) auto' : 'minmax(0, 1fr) auto' }}
   >
     {'content'}
   </div>
 }`;
 
-			const result = await format(input, { singleQuote: true, printWidth: 80 });
+			const result = await format(input, { singleQuote: true, printWidth: 200 });
 			expect(result).toBeWithNewline(expected);
 		});
 
-		it('should prefer breaking attributes over breaking expression values (multiline object, bracketSameLine)', async () => {
+		it('should prefer breaking attributes over inline breakable object values (bracketSameLine)', async () => {
 			const input = `component App() {
   <div class={styles.item} data-active={state.active ? "true" : "false"} style={{ gridTemplateColumns: Icon ? "16px minmax(0, 1fr) auto" : "minmax(0, 1fr) auto" }}>
     {'content'}
@@ -960,18 +956,14 @@ export component Test({ a, b }: Props) {}`;
   <div
     class={styles.item}
     data-active={state.active ? 'true' : 'false'}
-    style={{
-      gridTemplateColumns: Icon
-        ? '16px minmax(0, 1fr) auto'
-        : 'minmax(0, 1fr) auto',
-    }}>
+    style={{ gridTemplateColumns: Icon ? '16px minmax(0, 1fr) auto' : 'minmax(0, 1fr) auto' }}>
     {'content'}
   </div>
 }`;
 
 			const result = await format(input, {
 				singleQuote: true,
-				printWidth: 80,
+				printWidth: 200,
 				bracketSameLine: true,
 			});
 			expect(result).toBeWithNewline(expected);
@@ -988,6 +980,18 @@ export component Test({ a, b }: Props) {}`;
 }`;
 
 			const result = await format(input, { singleQuote: true, printWidth: 80 });
+			expect(result).toBeWithNewline(expected);
+		});
+
+		it('should keep short top-level ternary attributes inline when they fit', async () => {
+			const input = `component App() {
+  <div class={selected === 0 ? "selected" : ""}>{\`div 1\`}</div>
+}`;
+			const expected = `component App() {
+  <div class={selected === 0 ? 'selected' : ''}>{\`div 1\`}</div>
+}`;
+
+			const result = await format(input, { singleQuote: true, printWidth: 100 });
 			expect(result).toBeWithNewline(expected);
 		});
 
