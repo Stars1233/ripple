@@ -805,8 +805,8 @@ function create_helper_props_pattern(bindings) {
  * @returns {AST.Property}
  */
 function create_helper_props_property(binding) {
-	const key = clone_identifier(binding);
-	const value = clone_identifier(binding);
+	const key = create_generated_identifier(binding.name);
+	const value = create_generated_identifier(binding.name);
 
 	return /** @type {any} */ ({
 		type: 'Property',
@@ -824,38 +824,36 @@ function create_helper_props_property(binding) {
  * @param {AST.Identifier} helper_id
  * @param {AST.Identifier[]} bindings
  * @param {any} source_node
+ * @param {boolean} [map_wrapper]
  * @returns {ESTreeJSX.JSXElement}
  */
-function create_helper_component_element(helper_id, bindings, source_node) {
+function create_helper_component_element(helper_id, bindings, source_node, map_wrapper = true) {
 	const attributes = bindings.map(
 		(binding) =>
 			/** @type {any} */ ({
 				type: 'JSXAttribute',
-				name: identifier_to_jsx_name(clone_identifier(binding)),
+				name: identifier_to_jsx_name(create_generated_identifier(binding.name)),
 				value: to_jsx_expression_container(clone_identifier(binding), binding),
 				metadata: { path: [] },
 			}),
 	);
 
-	return set_loc(
-		/** @type {any} */ ({
-			type: 'JSXElement',
-			openingElement: set_loc(
-				{
-					type: 'JSXOpeningElement',
-					name: identifier_to_jsx_name(clone_identifier(helper_id)),
-					attributes,
-					selfClosing: true,
-					metadata: { path: [] },
-				},
-				source_node,
-			),
-			closingElement: null,
-			children: [],
-			metadata: { path: [] },
-		}),
-		source_node,
-	);
+	const openingElement = {
+		type: 'JSXOpeningElement',
+		name: identifier_to_jsx_name(clone_identifier(helper_id)),
+		attributes,
+		selfClosing: true,
+		metadata: { path: [] },
+	};
+	const element = /** @type {any} */ ({
+		type: 'JSXElement',
+		openingElement: map_wrapper ? set_loc(openingElement, source_node) : openingElement,
+		closingElement: null,
+		children: [],
+		metadata: { path: [] },
+	});
+
+	return map_wrapper ? set_loc(element, source_node) : element;
 }
 
 /**
@@ -1349,9 +1347,8 @@ function statement_body_to_jsx_child(body_nodes, transform_context) {
  */
 function hook_safe_statement_body_to_jsx_child(body_nodes, transform_context) {
 	const source_node = get_body_source_node(body_nodes);
-	const helper_id = set_loc(
-		create_generated_identifier(create_local_statement_component_name(transform_context)),
-		source_node,
+	const helper_id = create_generated_identifier(
+		create_local_statement_component_name(transform_context),
 	);
 	const helper_bindings = Array.from(transform_context.available_bindings.values());
 
@@ -1359,26 +1356,23 @@ function hook_safe_statement_body_to_jsx_child(body_nodes, transform_context) {
 	const saved_bindings = transform_context.available_bindings;
 	transform_context.available_bindings = new Map(saved_bindings);
 
-	const helper_fn = set_loc(
-		/** @type {any} */ ({
-			type: 'FunctionDeclaration',
-			id: helper_id,
-			params: helper_bindings.length > 0 ? [create_helper_props_pattern(helper_bindings)] : [],
-			body: {
-				type: 'BlockStatement',
-				body: build_render_statements(body_nodes, true, transform_context),
-				metadata: { path: [] },
-			},
-			async: false,
-			generator: false,
-			metadata: {
-				path: [],
-				is_component: true,
-				is_method: false,
-			},
-		}),
-		source_node,
-	);
+	const helper_fn = /** @type {any} */ ({
+		type: 'FunctionDeclaration',
+		id: helper_id,
+		params: helper_bindings.length > 0 ? [create_helper_props_pattern(helper_bindings)] : [],
+		body: {
+			type: 'BlockStatement',
+			body: build_render_statements(body_nodes, true, transform_context),
+			metadata: { path: [] },
+		},
+		async: false,
+		generator: false,
+		metadata: {
+			path: [],
+			is_component: true,
+			is_method: false,
+		},
+	});
 
 	// Restore bindings
 	transform_context.available_bindings = saved_bindings;
@@ -1388,7 +1382,9 @@ function hook_safe_statement_body_to_jsx_child(body_nodes, transform_context) {
 		transform_context.helper_state.helpers.push(helper_fn);
 
 		return to_jsx_expression_container(
-			/** @type {any} */ (create_helper_component_element(helper_id, helper_bindings, source_node)),
+			/** @type {any} */ (
+				create_helper_component_element(helper_id, helper_bindings, source_node, false)
+			),
 			source_node,
 		);
 	}
@@ -1405,7 +1401,12 @@ function hook_safe_statement_body_to_jsx_child(body_nodes, transform_context) {
 						helper_fn,
 						{
 							type: 'ReturnStatement',
-							argument: create_helper_component_element(helper_id, helper_bindings, source_node),
+							argument: create_helper_component_element(
+								helper_id,
+								helper_bindings,
+								source_node,
+								false,
+							),
 							metadata: { path: [] },
 						},
 					],
@@ -1448,9 +1449,8 @@ function create_local_statement_component_name(transform_context) {
  */
 function hook_safe_render_statements(body_nodes, key_expression, transform_context) {
 	const source_node = get_body_source_node(body_nodes);
-	const helper_id = set_loc(
-		create_generated_identifier(create_local_statement_component_name(transform_context)),
-		source_node,
+	const helper_id = create_generated_identifier(
+		create_local_statement_component_name(transform_context),
 	);
 	const helper_bindings = Array.from(transform_context.available_bindings.values());
 
@@ -1458,26 +1458,23 @@ function hook_safe_render_statements(body_nodes, key_expression, transform_conte
 	const saved_bindings = transform_context.available_bindings;
 	transform_context.available_bindings = new Map(saved_bindings);
 
-	const helper_fn = set_loc(
-		/** @type {any} */ ({
-			type: 'FunctionDeclaration',
-			id: helper_id,
-			params: helper_bindings.length > 0 ? [create_helper_props_pattern(helper_bindings)] : [],
-			body: {
-				type: 'BlockStatement',
-				body: build_render_statements(body_nodes, true, transform_context),
-				metadata: { path: [] },
-			},
-			async: false,
-			generator: false,
-			metadata: {
-				path: [],
-				is_component: true,
-				is_method: false,
-			},
-		}),
-		source_node,
-	);
+	const helper_fn = /** @type {any} */ ({
+		type: 'FunctionDeclaration',
+		id: helper_id,
+		params: helper_bindings.length > 0 ? [create_helper_props_pattern(helper_bindings)] : [],
+		body: {
+			type: 'BlockStatement',
+			body: build_render_statements(body_nodes, true, transform_context),
+			metadata: { path: [] },
+		},
+		async: false,
+		generator: false,
+		metadata: {
+			path: [],
+			is_component: true,
+			is_method: false,
+		},
+	});
 
 	// Restore bindings
 	transform_context.available_bindings = saved_bindings;
@@ -1491,6 +1488,7 @@ function hook_safe_render_statements(body_nodes, key_expression, transform_conte
 		helper_id,
 		helper_bindings,
 		source_node,
+		false,
 	);
 
 	if (key_expression) {
