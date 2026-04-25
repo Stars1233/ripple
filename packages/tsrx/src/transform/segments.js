@@ -2251,21 +2251,25 @@ export function create_volar_mappings_result({
  * @returns {CodeMapping[]}
  */
 export function dedupe_mappings(mappings) {
-	const deduped = [];
-	const seen = new Set();
+	// keep for now more for testing and maybe logging later.
+	// We should not use deduping and instead should be
+	// fixing source map generation or mapping generation
+	return mappings;
+	// const deduped = [];
+	// const seen = new Set();
 
-	for (const mapping of mappings) {
-		const key = JSON.stringify(serialize_mapping_value(mapping));
+	// for (const mapping of mappings) {
+	// 	const key = JSON.stringify(serialize_mapping_value(mapping));
 
-		if (seen.has(key)) {
-			continue;
-		}
+	// 	if (seen.has(key)) {
+	// 		continue;
+	// 	}
 
-		seen.add(key);
-		deduped.push(mapping);
-	}
+	// 	seen.add(key);
+	// 	deduped.push(mapping);
+	// }
 
-	return deduped;
+	// return deduped;
 }
 
 /**

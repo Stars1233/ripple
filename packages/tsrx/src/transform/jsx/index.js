@@ -824,16 +824,26 @@ function create_helper_props_property(binding) {
  * @param {AST.Identifier} helper_id
  * @param {AST.Identifier[]} bindings
  * @param {any} source_node
- * @param {boolean} [map_wrapper]
+ * @param {{
+ * 	mapWrapper?: boolean,
+ * 	mapBindingNames?: boolean,
+ * 	mapBindingValues?: boolean,
+ * }} [mapping]
  * @returns {ESTreeJSX.JSXElement}
  */
-function create_helper_component_element(helper_id, bindings, source_node, map_wrapper = true) {
+function create_helper_component_element(helper_id, bindings, source_node, mapping = {}) {
+	const { mapWrapper = true, mapBindingNames = true, mapBindingValues = true } = mapping;
 	const attributes = bindings.map(
 		(binding) =>
 			/** @type {any} */ ({
 				type: 'JSXAttribute',
-				name: identifier_to_jsx_name(create_generated_identifier(binding.name)),
-				value: to_jsx_expression_container(clone_identifier(binding), binding),
+				name: identifier_to_jsx_name(
+					mapBindingNames ? clone_identifier(binding) : create_generated_identifier(binding.name),
+				),
+				value: to_jsx_expression_container(
+					mapBindingValues ? clone_identifier(binding) : create_generated_identifier(binding.name),
+					binding,
+				),
 				metadata: { path: [] },
 			}),
 	);
@@ -847,13 +857,13 @@ function create_helper_component_element(helper_id, bindings, source_node, map_w
 	};
 	const element = /** @type {any} */ ({
 		type: 'JSXElement',
-		openingElement: map_wrapper ? set_loc(openingElement, source_node) : openingElement,
+		openingElement: mapWrapper ? set_loc(openingElement, source_node) : openingElement,
 		closingElement: null,
 		children: [],
 		metadata: { path: [] },
 	});
 
-	return map_wrapper ? set_loc(element, source_node) : element;
+	return mapWrapper ? set_loc(element, source_node) : element;
 }
 
 /**
@@ -1115,12 +1125,23 @@ function is_lone_return_if_statement(node) {
 /**
  * @param {any[]} render_nodes
  * @param {any} source_node
+ * @param {boolean} [map_render_node_locations]
  * @returns {any}
  */
-function create_component_return_statement(render_nodes, source_node) {
+function create_component_return_statement(
+	render_nodes,
+	source_node,
+	map_render_node_locations = true,
+) {
 	return /** @type {any} */ ({
 		type: 'ReturnStatement',
-		argument: build_return_expression(render_nodes.slice()) || {
+		argument: build_return_expression(
+			render_nodes.map((node) =>
+				map_render_node_locations
+					? clone_expression_node(node)
+					: clone_expression_node_without_locations(node),
+			),
+		) || {
 			type: 'Literal',
 			value: null,
 			raw: 'null',
@@ -1146,7 +1167,7 @@ function create_component_lone_return_if_statement(node, render_nodes) {
 			consequent: set_loc(
 				/** @type {any} */ ({
 					type: 'BlockStatement',
-					body: [create_component_return_statement(render_nodes, consequent_body[0])],
+					body: [create_component_return_statement(render_nodes, consequent_body[0], false)],
 					metadata: { path: [] },
 				}),
 				node.consequent,
@@ -1156,6 +1177,30 @@ function create_component_lone_return_if_statement(node, render_nodes) {
 		}),
 		node,
 	);
+}
+
+/**
+ * @param {any} node
+ * @returns {any}
+ */
+function clone_expression_node_without_locations(node) {
+	if (!node || typeof node !== 'object') return node;
+	if (Array.isArray(node)) return node.map(clone_expression_node_without_locations);
+
+	const clone = { ...node };
+	delete clone.loc;
+	delete clone.start;
+	delete clone.end;
+
+	for (const key of Object.keys(clone)) {
+		if (key === 'metadata') {
+			clone.metadata = clone.metadata ? { ...clone.metadata } : { path: [] };
+			continue;
+		}
+		clone[key] = clone_expression_node_without_locations(clone[key]);
+	}
+
+	return clone;
 }
 
 const TEMPLATE_FRAGMENT_ERROR =
@@ -1383,7 +1428,11 @@ function hook_safe_statement_body_to_jsx_child(body_nodes, transform_context) {
 
 		return to_jsx_expression_container(
 			/** @type {any} */ (
-				create_helper_component_element(helper_id, helper_bindings, source_node, false)
+				create_helper_component_element(helper_id, helper_bindings, source_node, {
+					mapWrapper: false,
+					mapBindingNames: false,
+					mapBindingValues: false,
+				})
 			),
 			source_node,
 		);
@@ -1401,12 +1450,11 @@ function hook_safe_statement_body_to_jsx_child(body_nodes, transform_context) {
 						helper_fn,
 						{
 							type: 'ReturnStatement',
-							argument: create_helper_component_element(
-								helper_id,
-								helper_bindings,
-								source_node,
-								false,
-							),
+							argument: create_helper_component_element(helper_id, helper_bindings, source_node, {
+								mapWrapper: false,
+								mapBindingNames: false,
+								mapBindingValues: false,
+							}),
 							metadata: { path: [] },
 						},
 					],
@@ -1488,7 +1536,11 @@ function hook_safe_render_statements(body_nodes, key_expression, transform_conte
 		helper_id,
 		helper_bindings,
 		source_node,
-		false,
+		{
+			mapWrapper: false,
+			mapBindingNames: false,
+			mapBindingValues: false,
+		},
 	);
 
 	if (key_expression) {
