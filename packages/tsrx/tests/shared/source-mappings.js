@@ -420,7 +420,7 @@ export function runSharedSourceMappingTests({
 			},
 		);
 
-		it.runIf(['react', 'preact'].includes[name])(
+		it.runIf(['react', 'preact'].includes(name))(
 			'maps captured hook-helper bindings only once at their source declarations',
 			() => {
 				const source = `import { useState } from 'react';
