@@ -37,6 +37,11 @@ export interface CompileOptions {
 	dev?: boolean;
 	hmr?: boolean;
 	compat_kinds?: string[];
+	/**
+	 * When true, non-fatal errors are collected on the result's `errors`
+	 * array instead of being thrown. Defaults to false (strict mode: throws).
+	 */
+	loose?: boolean;
 }
 
 export type NameSpace = 'html' | 'svg' | 'mathml';
@@ -1565,6 +1570,11 @@ export interface CompileResult {
 	};
 	/** The generated CSS */
 	css: string;
+	/**
+	 * Non-fatal errors collected during compilation. Populated only when the
+	 * caller passes `loose: true`; empty otherwise.
+	 */
+	errors: CompileError[];
 }
 
 /**

@@ -1,5 +1,5 @@
 /** @import * as AST from 'estree' */
-/** @import { ParseOptions } from '@tsrx/core/types' */
+/** @import { CompileError, ParseOptions } from '@tsrx/core/types' */
 
 import { createVolarMappingsResult, dedupeMappings, parseModule } from '@tsrx/core';
 import { transform } from './transform.js';
@@ -21,12 +21,15 @@ export function parse(source, filename, options) {
  *
  * @param {string} source
  * @param {string} [filename]
- * @returns {{ code: string, map: any, css: { code: string, hash: string } | null }}
+ * @param {{ loose?: boolean }} [options]
+ * @returns {{ code: string, map: any, css: { code: string, hash: string } | null, errors: CompileError[] }}
  */
-export function compile(source, filename) {
-	const ast = parseModule(source, filename);
+export function compile(source, filename, options) {
+	const errors = /** @type {CompileError[]} */ ([]);
+	const collect = !!options?.loose;
+	const ast = parseModule(source, filename, collect ? { loose: true, errors } : undefined);
 	const { ast: _ast, ...result } = transform(ast, source, filename);
-	return result;
+	return { ...result, errors };
 }
 
 /**
