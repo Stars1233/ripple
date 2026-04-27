@@ -45,6 +45,7 @@ interface BaseNodeMetaData {
 	path: AST.Node[];
 	has_template?: boolean;
 	source_name?: string | '#server' | '#style';
+	source_length?: number;
 	is_capitalized?: boolean;
 	commentContainerId?: number;
 	parenthesized?: boolean;
@@ -56,6 +57,12 @@ interface BaseNodeMetaData {
 	lone_return?: boolean;
 	forceMapping?: boolean;
 	lazy_id?: string;
+	disable_verification?: boolean;
+	lazy_param_is_component?: boolean;
+	lazy_param_binding_mappings?: Array<{
+		source: AST.Identifier;
+		generated: AST.Identifier | AST.Literal;
+	}>;
 }
 
 interface FunctionMetaData extends BaseNodeMetaData {

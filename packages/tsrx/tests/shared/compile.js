@@ -408,6 +408,79 @@ export function optionalFn(bar: string, baz?: string) {
 		// component scope, but locals with the same name must shadow — the
 		// shared `applyLazyTransforms` helper in @tsrx/core handles this.
 
+		it('gives untyped lazy object params an object-shaped generated type', () => {
+			const { code } = compile(
+				`export component App(&{ name, age }) {
+					<div>{name}{age}</div>
+				}`,
+				'App.tsrx',
+			);
+
+			expect(code).toContain('function App(__lazy0: { name: any; age: any })');
+			expect(code).toContain('__lazy0.name');
+			expect(code).toContain('__lazy0.age');
+		});
+
+		it('uses the source property name for aliased lazy object params', () => {
+			const { code } = compile(
+				`export component App(&{ name: displayName }) {
+					<div>{displayName}</div>
+				}`,
+				'App.tsrx',
+			);
+
+			expect(code).toContain('function App(__lazy0: { name: any })');
+			expect(code).toContain('__lazy0.name');
+			expect(code).not.toContain('__lazy0.displayName');
+		});
+
+		it('preserves provided types for aliased lazy object params', () => {
+			const { code } = compile(
+				`export component App(&{ a: c, b }: { a: string, b: string }) {
+					<div>{c}{b}</div>
+				}`,
+				'App.tsrx',
+			);
+
+			expect(code).toContain('function App(__lazy0: { a: string; b: string })');
+			expect(code).toContain('__lazy0.a');
+			expect(code).toContain('__lazy0.b');
+		});
+
+		it('rejects repeated local names inside lazy object params on plain functions', () => {
+			expect(() =>
+				compile(
+					`export function greet(&{ a: b, b }: { a: string, b: string }) {
+						return b;
+					}`,
+					'App.tsrx',
+				),
+			).toThrow(/Argument name clash/);
+		});
+
+		it('rejects repeated local names inside lazy object params on components', () => {
+			expect(() =>
+				compile(
+					`export component App(&{ a: b, b }: { a: string, b: string }) {
+						<div>{b}</div>
+					}`,
+					'App.tsrx',
+				),
+			).toThrow(/Argument name clash/);
+		});
+
+		it('allows distinct local names inside lazy object params on plain functions', () => {
+			const { code } = compile(
+				`export function greet(&{ a: c, b }: { a: string, b: string }) {
+					return c + b;
+				}`,
+				'App.tsrx',
+			);
+
+			expect(code).toContain('function greet(__lazy0: { a: string; b: string })');
+			expect(code).toContain('return __lazy0.a + __lazy0.b');
+		});
+
 		it('does not rewrite switch-case variables that shadow lazy bindings', () => {
 			const { code } = compile(
 				`export component App(&{ name }: { name: string }) {
