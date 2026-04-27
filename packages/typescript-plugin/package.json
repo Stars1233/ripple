@@ -13,7 +13,8 @@
     "directory": "packages/typescript-plugin"
   },
   "scripts": {
-    "build": "tsdown"
+    "build": "tsdown",
+    "prepare": "tsdown"
   },
   "bugs": {
     "url": "https://github.com/Ripple-TS/ripple/issues"
