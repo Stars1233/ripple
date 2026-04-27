@@ -5,6 +5,9 @@
   "author": "Dominic Gannaway",
   "version": "0.3.33",
   "main": "dist/index.js",
+  "files": [
+    "dist"
+  ],
   "type": "module",
   "homepage": "https://ripple-ts.com",
   "repository": {
