@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { tsrxReact } from '../src/index.js';
+import { tsrxVue } from '../src/index.js';
 
 /**
  * @typedef {{
@@ -59,13 +59,13 @@ function install_transpiler_stub() {
 }
 
 /**
- * @param {import('../types/index.js').TsrxReactBunPluginOptions} [options]
+ * @param {import('../types/index.js').TsrxVueBunPluginOptions} [options]
  * @param {{ target?: import('bun').Target, root?: string }} [config]
  */
 function setup_plugin(options, config = {}) {
 	/** @type {Hooks} */
 	const hooks = { onResolve: [], onLoad: [] };
-	const plugin = tsrxReact(options);
+	const plugin = tsrxVue(options);
 	const build = {
 		config: {
 			entrypoints: [],
@@ -117,10 +117,10 @@ function load_css(hooks, id) {
 	return load_hook.callback({ path: resolved.path, namespace: resolved.namespace });
 }
 
-describe('@tsrx/bun-plugin-react', () => {
-	it('compiles .tsrx files, transforms TSX, and serves emitted CSS', async () => {
+describe('@tsrx/bun-plugin-vue', () => {
+	it('compiles .tsrx files, runs the Vue vapor transform, and serves emitted CSS', async () => {
 		const transpiler = install_transpiler_stub();
-		const dir = await mkdtemp(path.join(os.tmpdir(), 'tsrx-bun-plugin-react-'));
+		const dir = await mkdtemp(path.join(os.tmpdir(), 'tsrx-bun-plugin-vue-'));
 		try {
 			const file_path = path.join(dir, 'App.tsrx');
 			await writeFile(
@@ -144,21 +144,17 @@ describe('@tsrx/bun-plugin-react', () => {
 			expect(transformed).toBeDefined();
 			expect(transformed?.loader).toBe('js');
 			expect(transformed?.contents).toContain('// transformed');
+			expect(transformed?.contents).toContain('defineVaporComponent');
+			expect(transformed?.contents).toContain('template as _template');
 			expect(transformed?.contents).toContain(css_id);
+			expect(transformed?.contents).not.toContain('return <div>');
 			expect(css.loader).toBe('css');
 			expect(css.contents).toContain('.div.');
 			expect(css.contents).toContain('color: red;');
 			expect(transpiler.options).toEqual([
 				expect.objectContaining({
-					loader: 'tsx',
+					loader: 'ts',
 					target: 'browser',
-					autoImportJSX: true,
-					tsconfig: {
-						compilerOptions: {
-							jsx: 'react-jsx',
-							jsxImportSource: 'react',
-						},
-					},
 				}),
 			]);
 		} finally {
@@ -166,24 +162,39 @@ describe('@tsrx/bun-plugin-react', () => {
 		}
 	});
 
-	it('uses a custom jsx import source', () => {
-		const transpiler = install_transpiler_stub();
-		setup_plugin({ jsxImportSource: 'react-custom' }, { target: 'browser' });
+	it('passes custom vapor options through', async () => {
+		install_transpiler_stub();
+		const dir = await mkdtemp(path.join(os.tmpdir(), 'tsrx-bun-plugin-vue-'));
+		try {
+			const file_path = path.join(dir, 'App.tsrx');
+			await writeFile(
+				file_path,
+				`export component App({ name }: { name: string }) {
+					<div>{name}</div>
+				}`,
+			);
 
-		expect(transpiler.options).toEqual([
-			expect.objectContaining({
-				tsconfig: {
-					compilerOptions: {
-						jsx: 'react-jsx',
-						jsxImportSource: 'react-custom',
+			const hooks = setup_plugin(
+				{
+					vapor: {
+						compiler: {
+							runtimeModuleName: 'custom-runtime',
+						},
 					},
 				},
-			}),
-		]);
+				{ target: 'browser', root: dir },
+			);
+			const transformed = await load_tsrx(hooks, file_path);
+
+			expect(transformed).toBeDefined();
+			expect(transformed?.contents).toContain('custom-runtime');
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
 	});
 
-	it('falls back to TSX output when Bun.Transpiler is unavailable', async () => {
-		const dir = await mkdtemp(path.join(os.tmpdir(), 'tsrx-bun-plugin-react-'));
+	it('falls back to TypeScript output when Bun.Transpiler is unavailable', async () => {
+		const dir = await mkdtemp(path.join(os.tmpdir(), 'tsrx-bun-plugin-vue-'));
 		try {
 			const file_path = path.join(dir, 'App.tsrx');
 			await writeFile(
@@ -197,7 +208,8 @@ describe('@tsrx/bun-plugin-react', () => {
 			const transformed = await load_tsrx(hooks, file_path);
 
 			expect(transformed).toBeDefined();
-			expect(transformed?.loader).toBe('tsx');
+			expect(transformed?.loader).toBe('ts');
+			expect(transformed?.contents).toContain('defineVaporComponent');
 			expect(transformed?.contents).not.toContain('?tsrx-css&lang.css');
 		} finally {
 			await rm(dir, { recursive: true, force: true });
