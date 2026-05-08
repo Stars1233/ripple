@@ -11,8 +11,8 @@
   - @tsrx/preact@0.1.0
   - @tsrx/solid@0.1.0
   - @tsrx/vue@0.1.0
-  - @tsrx/prettier-plugin@1.0.0
-  - @ripple-ts/adapter-node@1.0.0
+  - @tsrx/prettier-plugin@0.3.50
+  - @ripple-ts/adapter-node@0.3.50
 
 ## 0.1.32
 

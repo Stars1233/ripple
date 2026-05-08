@@ -1,15 +1,15 @@
 # @tsrx/prettier-plugin
 
-## 1.0.0
+## 0.3.50
 
-### Minor Changes
+### Patch Changes
+
+- Remove the obsolete `ripple` peer dependency.
 
 - [#1088](https://github.com/Ripple-TS/ripple/pull/1088)
   [`2a85e9b`](https://github.com/Ripple-TS/ripple/commit/2a85e9bb73f4d82f2bd2273c33735b4dc7b82d5f)
   Thanks [@trueadm](https://github.com/trueadm)! - Add `<tsrx>...</tsrx>`
   expression fragments for inline native TSRX template values.
-
-### Patch Changes
 
 - Updated dependencies
   [[`2a85e9b`](https://github.com/Ripple-TS/ripple/commit/2a85e9bb73f4d82f2bd2273c33735b4dc7b82d5f)]:
