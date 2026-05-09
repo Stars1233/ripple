@@ -329,22 +329,119 @@ export function TSRXPlugin(config) {
 				}
 			}
 
-			#popTokenContextsAfterTemplateExpressionElement() {
-				const context_index = this.context.length - 1;
-				if (
-					this.context[context_index] === b_stat &&
-					this.context[context_index - 1] === tstc.tc_expr
-				) {
-					this.context.length = context_index - 1;
+			/**
+			 * @param {number} index
+			 * @returns {number}
+			 */
+			#skipWhitespaceAndComments(index) {
+				while (index < this.input.length) {
+					const ch = this.input.charCodeAt(index);
+					if (ch === 32 || ch === 9 || ch === 10 || ch === 13) {
+						index++;
+					} else if (ch === 47 && this.input.charCodeAt(index + 1) === 42) {
+						const end = this.input.indexOf('*/', index + 2);
+						index = end === -1 ? this.input.length : end + 2;
+					} else if (ch === 47 && this.input.charCodeAt(index + 1) === 47) {
+						index += 2;
+						while (index < this.input.length) {
+							const comment_ch = this.input.charCodeAt(index);
+							if (comment_ch === 10 || comment_ch === 13) break;
+							index++;
+						}
+					} else {
+						break;
+					}
+				}
+				return index;
+			}
+
+			/** @returns {number} */
+			#countFollowingRightBraces() {
+				let index = this.end;
+				let count = 0;
+				while (index < this.input.length) {
+					index = this.#skipWhitespaceAndComments(index);
+					if (this.input.charCodeAt(index) !== 125) break;
+					count++;
+					index++;
+				}
+				return count;
+			}
+
+			/**
+			 * @param {AST.Tsx | AST.Tsrx | AST.TsxCompat} node
+			 * @returns {boolean}
+			 */
+			#hasDirectStatementChild(node) {
+				return node.children?.some(
+					(child) => child.type.endsWith('Statement') || child.type === 'VariableDeclaration',
+				);
+			}
+
+			/**
+			 * @param {AST.Tsx | AST.Tsrx | AST.TsxCompat} node
+			 */
+			#popTokenContextsAfterTemplateExpressionElement(node) {
+				const ctx = this.context;
+				const ci = ctx.length - 1;
+				const top = ctx[ci];
+				const second = ctx[ci - 1];
+
+				// Expression-bodied templates (no statement child) followed by `,`
+				// in an object/array literal need surgical fixups; statement-bodied
+				// templates fall through to the JSX-expression-container strip.
+				const has_stmt_child = this.#hasDirectStatementChild(node);
+				if (this.type === tt.comma && !has_stmt_child) {
+					// Tail `..., (b_expr)+, tc_expr, b_stat`: the JSX expression
+					// container leaks an extra `tc_expr, b_stat`. Pop them, and if
+					// the JSX container also closes immediately (`}}` ahead), drop
+					// one of the doubled-up `b_expr` contexts too.
+					if (top === b_stat && second === tstc.tc_expr) {
+						let expr_count = 0;
+						for (let i = ci - 2; ctx[i] === b_expr; i--) expr_count++;
+						const following_braces = this.#countFollowingRightBraces();
+						if (expr_count === 2 || following_braces > 1) {
+							if (following_braces > 1 && expr_count > 1) {
+								ctx.splice(ci - 2, expr_count - 1);
+							}
+							ctx.pop();
+							this.exprAllowed = false;
+							return;
+						}
+					}
+					// Tail `..., b_expr, b_expr` for fragments inside an array or
+					// object literal: re-arm expression mode so the next item
+					// parses as an expression value, not a JSX child. If the
+					// surrounding b_expr chain has already been consumed, push
+					// one back so the subsequent item still has a literal context.
+					if (top === b_expr && second === b_expr) {
+						if (ctx[ci - 2] !== b_expr) {
+							ctx.push(b_expr);
+						}
+						this.exprAllowed = false;
+						return;
+					}
+				}
+
+				// Inside `{<tsrx>...</tsrx>}` JSX expression container — strip
+				// both the leaked `b_stat` and the container's `tc_expr`.
+				if (top === b_stat && second === tstc.tc_expr) {
+					ctx.length = ci - 1;
 					return;
 				}
 
+				// Closing token after the template at expression position. For `}`
+				// only pop if it actually closes this `b_expr` — otherwise the
+				// brace targets an inner callback/object body that should pop it
+				// naturally on the next token step.
 				if (
-					(this.type === tt.braceR && this.context[context_index] === b_expr) ||
-					(this.type === tt.parenR && this.context[context_index]?.token === '(') ||
-					(this.type === tt.bracketR && this.context[context_index]?.token === '[')
+					(this.type === tt.braceR &&
+						top === b_expr &&
+						(this.#countFollowingRightBraces() === 0 || second === b_expr)) ||
+					(this.type === tt.parenR && top?.token === '(') ||
+					(this.type === tt.bracketR && top?.token === '[')
 				) {
-					this.context.pop();
+					ctx.pop();
 					this.exprAllowed = false;
 				}
 			}
@@ -1962,7 +2059,9 @@ export function TSRXPlugin(config) {
 					const parsed = /** @type {import('estree-jsx').JSXElement} */ (
 						/** @type {unknown} */ (this.parseElement())
 					);
-					this.#popTokenContextsAfterTemplateExpressionElement();
+					this.#popTokenContextsAfterTemplateExpressionElement(
+						/** @type {AST.Tsx | AST.Tsrx | AST.TsxCompat} */ (/** @type {unknown} */ (parsed)),
+					);
 					return parsed;
 				}
 
