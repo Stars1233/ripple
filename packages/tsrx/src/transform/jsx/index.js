@@ -57,6 +57,79 @@ import {
 } from '../jsx-interleave.js';
 import { is_hoist_safe_jsx_node } from '../jsx-hoist.js';
 
+const HOOK_OUTER_ASSIGNMENT_ERROR =
+	'Hook calls inside conditional or repeated TSRX scopes must keep their results local to the generated hook component.';
+const HOOK_CALLBACK_OUTER_MUTATION_ERROR =
+	'Hook callbacks inside conditional or repeated TSRX scopes must not mutate bindings declared outside the generated hook component.';
+const TEMPLATE_FRAGMENT_ERROR =
+	'JSX fragment syntax is not needed in TSRX templates. TSRX renders in immediate mode, so everything is already a fragment. Use `<>...</>` only within <tsx>...</tsx>.';
+
+/**
+ * @param {AST.Node} node
+ * @param {TransformContext} transform_context
+ */
+function report_html_template_unsupported_error(node, transform_context) {
+	// this should be a fatal error so we don't pass the errors collection,
+	// since we don't have a transform for the Html node
+	error(
+		`\`{html ...}\` is not supported on the ${transform_context.platform.name} target. Use \`dangerouslySetInnerHTML={{ __html: ... }}\` as an element attribute instead.`,
+		transform_context.filename,
+		node,
+	);
+}
+
+/**
+ * @param {AST.Node} node
+ * @param {TransformContext} transform_context
+ */
+function report_jsx_fragment_in_tsrx_error(node, transform_context) {
+	error(
+		TEMPLATE_FRAGMENT_ERROR,
+		transform_context.filename,
+		node,
+		transform_context.errors,
+		transform_context.comments,
+	);
+}
+
+/**
+ * @param {AST.Node} node
+ * @param {string[]} names
+ * @param {string} hook_name
+ * @param {TransformContext} transform_context
+ * @returns {void}
+ */
+function report_hook_outer_assignment_error(node, names, hook_name, transform_context) {
+	const target =
+		names.length === 1 ? `\`${names[0]}\`` : names.map((name) => `\`${name}\``).join(', ');
+	error(
+		`${HOOK_OUTER_ASSIGNMENT_ERROR} The ${hook_name} result is assigned to ${target}, which is declared outside that generated component. Declare the hook result inside the TSRX branch, or move the hook into an explicit child component and pass values with props.`,
+		transform_context.filename,
+		node,
+		transform_context.errors,
+		transform_context.comments,
+	);
+}
+
+/**
+ * @param {AST.Node} node
+ * @param {string[]} names
+ * @param {string} hook_name
+ * @param {TransformContext} transform_context
+ * @returns {void}
+ */
+function report_hook_callback_outer_mutation_error(node, names, hook_name, transform_context) {
+	const target =
+		names.length === 1 ? `\`${names[0]}\`` : names.map((name) => `\`${name}\``).join(', ');
+	error(
+		`${HOOK_CALLBACK_OUTER_MUTATION_ERROR} The ${hook_name} callback mutates ${target}. Read outer values through props or dependencies, and move mutable state into an explicit child component when it needs to change over time.`,
+		transform_context.filename,
+		node,
+		transform_context.errors,
+		transform_context.comments,
+	);
+}
+
 /**
  * Local alias for the shared `JsxTransformContext`. Kept as a typedef so the
  * rest of this file's `@param {TransformContext}` annotations don't all have
@@ -449,9 +522,12 @@ export function createJsxTransform(platform) {
 			// (e.g. segments.js reading node.value.metadata.is_component on class
 			// methods) don't trip on an undefined metadata object. Ripple's analyze
 			// phase does this via visit_function; tsrx-react has no analyze phase.
-			FunctionDeclaration: ensure_function_metadata,
-			FunctionExpression: ensure_function_metadata,
-			ArrowFunctionExpression: ensure_function_metadata,
+			// If a plain JS function contains a hook-bearing <tsrx> expression,
+			// give it a temporary helper scope so extracted hook components can
+			// be emitted with stable identities just like component-body helpers.
+			FunctionDeclaration: transform_function_with_hook_helpers,
+			FunctionExpression: transform_function_with_hook_helpers,
+			ArrowFunctionExpression: transform_function_with_hook_helpers,
 
 			RefExpression(node) {
 				return create_ref_prop_call(node, transform_context);
@@ -1248,6 +1324,156 @@ function create_helper_state(base_name) {
 		helpers: [],
 		statics: [],
 	};
+}
+
+/**
+ * @param {any} node
+ * @param {{ next: () => any, state: TransformContext }} context
+ * @returns {any}
+ */
+function transform_function_with_hook_helpers(node, { next, state }) {
+	if (state.helper_state || !function_contains_hook_bearing_tsrx(node, state)) {
+		return ensure_function_metadata(node, { next });
+	}
+
+	const helper_state = create_helper_state(get_function_helper_base_name(node));
+	const saved_helper_state = state.helper_state;
+	const saved_bindings = state.available_bindings;
+
+	state.helper_state = helper_state;
+	state.available_bindings = collect_function_scope_bindings(node);
+
+	const inner = /** @type {any} */ (next() ?? node);
+
+	state.helper_state = saved_helper_state;
+	state.available_bindings = saved_bindings;
+
+	ensure_function_metadata(inner, { next: () => inner });
+	if (helper_state.helpers.length || helper_state.statics.length) {
+		inner.metadata = {
+			...(inner.metadata || {}),
+			generated_helpers: helper_state.helpers,
+			generated_statics: helper_state.statics,
+		};
+	}
+
+	return inner;
+}
+
+/**
+ * @param {any} node
+ * @returns {string}
+ */
+function get_function_helper_base_name(node) {
+	if (node.id?.type === 'Identifier') {
+		return node.id.name;
+	}
+	return 'Tsrx';
+}
+
+/**
+ * @param {any} node
+ * @returns {Map<string, AST.Identifier>}
+ */
+function collect_function_scope_bindings(node) {
+	const bindings = collect_param_bindings(node.params || []);
+	collect_descendant_declaration_bindings(node.body, bindings);
+	return bindings;
+}
+
+/**
+ * @param {any} node
+ * @param {Map<string, AST.Identifier>} bindings
+ * @returns {void}
+ */
+function collect_descendant_declaration_bindings(node, bindings) {
+	if (!node || typeof node !== 'object') {
+		return;
+	}
+
+	if (node.type === 'VariableDeclaration') {
+		for (const declaration of node.declarations || []) {
+			collect_pattern_bindings(declaration.id, bindings);
+		}
+	}
+
+	if (
+		(node.type === 'FunctionDeclaration' || node.type === 'ClassDeclaration') &&
+		node.id?.type === 'Identifier'
+	) {
+		bindings.set(node.id.name, node.id);
+	}
+
+	if (
+		node.type === 'FunctionDeclaration' ||
+		node.type === 'FunctionExpression' ||
+		node.type === 'ArrowFunctionExpression' ||
+		node.type === 'Component'
+	) {
+		return;
+	}
+
+	if (Array.isArray(node)) {
+		for (const child of node) {
+			collect_descendant_declaration_bindings(child, bindings);
+		}
+		return;
+	}
+
+	for (const key of Object.keys(node)) {
+		if (key === 'loc' || key === 'start' || key === 'end' || key === 'metadata') {
+			continue;
+		}
+		collect_descendant_declaration_bindings(node[key], bindings);
+	}
+}
+
+/**
+ * @param {any} node
+ * @param {TransformContext} transform_context
+ * @returns {boolean}
+ */
+function function_contains_hook_bearing_tsrx(node, transform_context) {
+	return node_contains_hook_bearing_tsrx(node.body, transform_context);
+}
+
+/**
+ * @param {any} node
+ * @param {TransformContext} transform_context
+ * @returns {boolean}
+ */
+function node_contains_hook_bearing_tsrx(node, transform_context) {
+	if (!node || typeof node !== 'object') {
+		return false;
+	}
+
+	if (Array.isArray(node)) {
+		return node.some((child) => node_contains_hook_bearing_tsrx(child, transform_context));
+	}
+
+	if (node.type === 'Tsrx') {
+		return body_contains_top_level_hook_call(node.children || [], transform_context, true);
+	}
+
+	if (
+		node.type === 'FunctionDeclaration' ||
+		node.type === 'FunctionExpression' ||
+		node.type === 'ArrowFunctionExpression' ||
+		node.type === 'Component'
+	) {
+		return false;
+	}
+
+	for (const key of Object.keys(node)) {
+		if (key === 'loc' || key === 'start' || key === 'end' || key === 'metadata') {
+			continue;
+		}
+		if (node_contains_hook_bearing_tsrx(node[key], transform_context)) {
+			return true;
+		}
+	}
+
+	return false;
 }
 
 /**
@@ -2231,15 +2457,20 @@ function build_hoisted_for_of_with_hooks(node, continuation_body, transform_cont
 
 	const saved_bindings = transform_context.available_bindings;
 	transform_context.available_bindings = new Map(saved_bindings);
+	const loop_scoped_names = new Set(loop_params.map((/** @type {any} */ p) => p.name));
 	for (const param of loop_params) {
 		collect_pattern_bindings(param, transform_context.available_bindings);
 	}
+	validate_hook_safe_body_does_not_assign_hook_results_to_outer_bindings(
+		original_loop_body,
+		transform_context,
+		loop_scoped_names,
+	);
 
 	const all_helper_bindings = get_referenced_helper_bindings(
 		loop_body,
 		transform_context.available_bindings,
 	);
-	const loop_scoped_names = new Set(loop_params.map((/** @type {any} */ p) => p.name));
 	const outer_bindings = all_helper_bindings.filter((b) => !loop_scoped_names.has(b.name));
 	const loop_bindings = all_helper_bindings.filter((b) => loop_scoped_names.has(b.name));
 
@@ -2632,9 +2863,6 @@ function is_null_literal(node) {
 	return node?.type === 'Literal' && node.value == null;
 }
 
-const TEMPLATE_FRAGMENT_ERROR =
-	'JSX fragment syntax is not needed in TSRX templates. TSRX renders in immediate mode, so everything is already a fragment. Use `<>...</>` only within <tsx>...</tsx>.';
-
 /**
  * @param {any} node
  * @param {TransformContext} transform_context
@@ -2643,13 +2871,7 @@ const TEMPLATE_FRAGMENT_ERROR =
 function to_jsx_element(node, transform_context, raw_children = node.children || []) {
 	if (node.type === 'JSXElement') return node;
 	if (!node.id) {
-		error(
-			TEMPLATE_FRAGMENT_ERROR,
-			transform_context.filename,
-			node,
-			transform_context.errors,
-			transform_context.comments,
-		);
+		report_jsx_fragment_in_tsrx_error(node, transform_context);
 		return set_loc(
 			/** @type {any} */ ({
 				type: 'JSXFragment',
@@ -2688,9 +2910,7 @@ function to_jsx_element(node, transform_context, raw_children = node.children ||
 		}
 	} else {
 		if (walked_children.some((/** @type {any} */ c) => c && c.type === 'Html')) {
-			throw new Error(
-				`\`{html ...}\` is not supported on the ${transform_context.platform.name} target. Use \`dangerouslySetInnerHTML={{ __html: ... }}\` as an element attribute instead.`,
-			);
+			return report_html_template_unsupported_error(node, transform_context);
 		}
 		children = create_element_children(walked_children, transform_context);
 	}
@@ -2922,6 +3142,676 @@ function get_referenced_helper_bindings(body_nodes, available_bindings) {
 
 /**
  * @param {any[]} body_nodes
+ * @param {TransformContext} transform_context
+ * @param {Set<string>} [local_binding_names]
+ * @returns {void}
+ */
+function validate_hook_safe_body_does_not_assign_hook_results_to_outer_bindings(
+	body_nodes,
+	transform_context,
+	local_binding_names,
+) {
+	if (!is_react_like_hook_platform(transform_context)) {
+		return;
+	}
+	if (!body_contains_top_level_hook_call(body_nodes, transform_context, true)) {
+		return;
+	}
+	if (!transform_context.available_bindings || transform_context.available_bindings.size === 0) {
+		return;
+	}
+
+	const shadowed_names = collect_block_binding_names(body_nodes);
+	for (const name of local_binding_names || []) {
+		shadowed_names.add(name);
+	}
+	validate_hook_outer_assignments_in_node(body_nodes, shadowed_names, transform_context, new Set());
+}
+
+/**
+ * @param {TransformContext} transform_context
+ * @returns {boolean}
+ */
+function is_react_like_hook_platform(transform_context) {
+	return (
+		transform_context.platform.name === 'React' || transform_context.platform.name === 'Preact'
+	);
+}
+
+/**
+ * @param {any[]} statements
+ * @returns {Set<string>}
+ */
+function collect_block_binding_names(statements) {
+	const names = new Set();
+	for (const statement of statements || []) {
+		collect_block_binding_names_from_statement(statement, names);
+	}
+	return names;
+}
+
+/**
+ * @param {any} statement
+ * @param {Set<string>} names
+ * @returns {void}
+ */
+function collect_block_binding_names_from_statement(statement, names) {
+	if (!statement || typeof statement !== 'object') {
+		return;
+	}
+
+	if (statement.type === 'VariableDeclaration') {
+		for (const declaration of statement.declarations || []) {
+			collect_pattern_names(declaration.id, names);
+		}
+		return;
+	}
+
+	if (
+		(statement.type === 'FunctionDeclaration' || statement.type === 'ClassDeclaration') &&
+		statement.id?.type === 'Identifier'
+	) {
+		names.add(statement.id.name);
+		return;
+	}
+
+	if (statement.type === 'ForOfStatement' || statement.type === 'ForInStatement') {
+		if (statement.left?.type === 'VariableDeclaration' && statement.left.kind === 'var') {
+			for (const declaration of statement.left.declarations || []) {
+				collect_pattern_names(declaration.id, names);
+			}
+		}
+		return;
+	}
+
+	if (
+		statement.type === 'ForStatement' &&
+		statement.init?.type === 'VariableDeclaration' &&
+		statement.init.kind === 'var'
+	) {
+		for (const declaration of statement.init.declarations || []) {
+			collect_pattern_names(declaration.id, names);
+		}
+	}
+}
+
+/**
+ * @param {any} pattern
+ * @param {Set<string>} names
+ * @returns {void}
+ */
+function collect_pattern_names(pattern, names) {
+	if (!pattern || typeof pattern !== 'object') {
+		return;
+	}
+
+	if (pattern.type === 'Identifier') {
+		names.add(pattern.name);
+		return;
+	}
+
+	if (pattern.type === 'RestElement') {
+		collect_pattern_names(pattern.argument, names);
+		return;
+	}
+
+	if (pattern.type === 'AssignmentPattern') {
+		collect_pattern_names(pattern.left, names);
+		return;
+	}
+
+	if (pattern.type === 'ArrayPattern') {
+		for (const element of pattern.elements || []) {
+			collect_pattern_names(element, names);
+		}
+		return;
+	}
+
+	if (pattern.type === 'ObjectPattern') {
+		for (const property of pattern.properties || []) {
+			if (property.type === 'RestElement') {
+				collect_pattern_names(property.argument, names);
+			} else {
+				collect_pattern_names(property.value, names);
+			}
+		}
+	}
+}
+
+/**
+ * @param {any} node
+ * @param {Set<string>} shadowed_names
+ * @param {TransformContext} transform_context
+ * @param {Set<string>} hook_result_names
+ * @returns {void}
+ */
+function validate_hook_outer_assignments_in_node(
+	node,
+	shadowed_names,
+	transform_context,
+	hook_result_names,
+) {
+	if (!node || typeof node !== 'object') {
+		return;
+	}
+
+	if (Array.isArray(node)) {
+		for (const child of node) {
+			validate_hook_outer_assignments_in_node(
+				child,
+				shadowed_names,
+				transform_context,
+				hook_result_names,
+			);
+		}
+		return;
+	}
+
+	if (is_function_like_node(node)) {
+		return;
+	}
+
+	if (node.type === 'CallExpression' && is_hook_callee(node.callee)) {
+		validate_hook_callback_outer_mutations(node, shadowed_names, transform_context);
+	}
+
+	if (node.type === 'BlockStatement') {
+		const next_shadowed = new Set(shadowed_names);
+		const next_hook_result_names = new Set(hook_result_names);
+		for (const name of collect_block_binding_names(node.body || [])) {
+			next_shadowed.add(name);
+		}
+		for (const child of node.body || []) {
+			validate_hook_outer_assignments_in_node(
+				child,
+				next_shadowed,
+				transform_context,
+				next_hook_result_names,
+			);
+		}
+		return;
+	}
+
+	if (node.type === 'VariableDeclaration') {
+		for (const declaration of node.declarations || []) {
+			if (
+				declaration.init &&
+				expression_contains_hook_derived_value(
+					declaration.init,
+					transform_context,
+					hook_result_names,
+				)
+			) {
+				collect_pattern_names(declaration.id, hook_result_names);
+			}
+			validate_hook_outer_assignments_in_node(
+				declaration.init,
+				shadowed_names,
+				transform_context,
+				hook_result_names,
+			);
+		}
+		return;
+	}
+
+	if (
+		node.type === 'AssignmentExpression' &&
+		expression_contains_hook_derived_value(node.right, transform_context, hook_result_names)
+	) {
+		const outer_names = get_referenced_outer_binding_names(
+			node.left,
+			transform_context.available_bindings,
+			shadowed_names,
+		);
+		if (outer_names.length > 0) {
+			report_hook_outer_assignment_error(
+				node,
+				outer_names,
+				find_first_hook_call_name(node.right) || 'hook',
+				transform_context,
+			);
+		}
+		for (const name of get_referenced_local_binding_names(node.left, shadowed_names)) {
+			hook_result_names.add(name);
+		}
+	}
+
+	if (node.type === 'ForOfStatement') {
+		if (
+			node.left &&
+			node.left.type !== 'VariableDeclaration' &&
+			expression_contains_hook_derived_value(node.right, transform_context, hook_result_names)
+		) {
+			const outer_names = get_referenced_outer_binding_names(
+				node.left,
+				transform_context.available_bindings,
+				shadowed_names,
+			);
+			if (outer_names.length > 0) {
+				report_hook_outer_assignment_error(
+					node,
+					outer_names,
+					find_first_hook_call_name(node.right) || 'hook',
+					transform_context,
+				);
+			}
+			for (const name of get_referenced_local_binding_names(node.left, shadowed_names)) {
+				hook_result_names.add(name);
+			}
+		}
+
+		validate_hook_outer_assignments_in_node(
+			node.right,
+			shadowed_names,
+			transform_context,
+			hook_result_names,
+		);
+
+		// Loop-declared bindings (`for (const x of …)`, `for (let x of …)`) live
+		// only in the body. They are deliberately NOT in the enclosing block's
+		// shadowed set (see collect_block_binding_names_from_statement), so add
+		// them just for the body recursion to keep references to the loop var
+		// from being flagged as outer-binding mutations.
+		const body_shadowed = new Set(shadowed_names);
+		if (node.left && node.left.type === 'VariableDeclaration') {
+			for (const declaration of node.left.declarations || []) {
+				collect_pattern_names(declaration.id, body_shadowed);
+			}
+		}
+		validate_hook_outer_assignments_in_node(
+			node.body,
+			body_shadowed,
+			transform_context,
+			hook_result_names,
+		);
+		return;
+	}
+
+	for (const key of Object.keys(node)) {
+		if (key === 'loc' || key === 'start' || key === 'end' || key === 'metadata') {
+			continue;
+		}
+		validate_hook_outer_assignments_in_node(
+			node[key],
+			shadowed_names,
+			transform_context,
+			hook_result_names,
+		);
+	}
+}
+
+/**
+ * @param {any} call_node
+ * @param {Set<string>} shadowed_names
+ * @param {TransformContext} transform_context
+ * @returns {void}
+ */
+function validate_hook_callback_outer_mutations(call_node, shadowed_names, transform_context) {
+	const hook_name = get_hook_callee_name(call_node.callee);
+	for (const argument of call_node.arguments || []) {
+		if (!is_function_like_node(argument)) {
+			continue;
+		}
+		const callback_shadowed_names = create_function_like_shadowed_names(argument, shadowed_names);
+		validate_hook_callback_outer_mutations_in_node(
+			argument.body,
+			callback_shadowed_names,
+			transform_context,
+			hook_name,
+		);
+	}
+}
+
+/**
+ * @param {any} node
+ * @returns {boolean}
+ */
+function is_function_like_node(node) {
+	return (
+		node.type === 'FunctionDeclaration' ||
+		node.type === 'FunctionExpression' ||
+		node.type === 'ArrowFunctionExpression' ||
+		// this is just in case but we should already
+		// have a component replaced with a function node
+		node.type === 'Component'
+	);
+}
+
+/**
+ * @param {any} node
+ * @param {Set<string>} shadowed_names
+ * @returns {Set<string>}
+ */
+function create_function_like_shadowed_names(node, shadowed_names) {
+	const next_shadowed_names = new Set(shadowed_names);
+	for (const param of node.params || []) {
+		collect_pattern_names(param, next_shadowed_names);
+	}
+	if (node.body?.type === 'BlockStatement') {
+		for (const name of collect_block_binding_names(node.body.body || [])) {
+			next_shadowed_names.add(name);
+		}
+	}
+	return next_shadowed_names;
+}
+
+/**
+ * @param {any} node
+ * @param {Set<string>} shadowed_names
+ * @param {TransformContext} transform_context
+ * @param {string} hook_name
+ * @returns {void}
+ */
+function validate_hook_callback_outer_mutations_in_node(
+	node,
+	shadowed_names,
+	transform_context,
+	hook_name,
+) {
+	if (!node || typeof node !== 'object') {
+		return;
+	}
+
+	if (Array.isArray(node)) {
+		for (const child of node) {
+			validate_hook_callback_outer_mutations_in_node(
+				child,
+				shadowed_names,
+				transform_context,
+				hook_name,
+			);
+		}
+		return;
+	}
+
+	if (is_function_like_node(node)) {
+		validate_hook_callback_outer_mutations_in_node(
+			node.body,
+			create_function_like_shadowed_names(node, shadowed_names),
+			transform_context,
+			hook_name,
+		);
+		return;
+	}
+
+	if (node.type === 'BlockStatement') {
+		const next_shadowed_names = new Set(shadowed_names);
+		for (const name of collect_block_binding_names(node.body || [])) {
+			next_shadowed_names.add(name);
+		}
+		for (const child of node.body || []) {
+			validate_hook_callback_outer_mutations_in_node(
+				child,
+				next_shadowed_names,
+				transform_context,
+				hook_name,
+			);
+		}
+		return;
+	}
+
+	if (node.type === 'AssignmentExpression') {
+		const outer_names = get_referenced_outer_binding_names(
+			node.left,
+			transform_context.available_bindings,
+			shadowed_names,
+		);
+		if (outer_names.length > 0) {
+			report_hook_callback_outer_mutation_error(node, outer_names, hook_name, transform_context);
+		}
+	}
+
+	if (node.type === 'UpdateExpression') {
+		const outer_names = get_referenced_outer_binding_names(
+			node.argument,
+			transform_context.available_bindings,
+			shadowed_names,
+		);
+		if (outer_names.length > 0) {
+			report_hook_callback_outer_mutation_error(node, outer_names, hook_name, transform_context);
+		}
+	}
+
+	for (const key of Object.keys(node)) {
+		if (key === 'loc' || key === 'start' || key === 'end' || key === 'metadata') {
+			continue;
+		}
+		if (key === 'left' && node.type === 'AssignmentExpression') {
+			continue;
+		}
+		if (key === 'argument' && node.type === 'UpdateExpression') {
+			continue;
+		}
+		validate_hook_callback_outer_mutations_in_node(
+			node[key],
+			shadowed_names,
+			transform_context,
+			hook_name,
+		);
+	}
+}
+
+/**
+ * @param {any} node
+ * @param {TransformContext} transform_context
+ * @param {Set<string>} hook_result_names
+ * @returns {boolean}
+ */
+function expression_contains_hook_derived_value(node, transform_context, hook_result_names) {
+	return (
+		node_contains_top_level_hook_call(node, false, transform_context, true) ||
+		references_name_in_set(node, hook_result_names)
+	);
+}
+
+/**
+ * @param {any} node
+ * @param {Set<string>} names
+ * @returns {boolean}
+ */
+function references_name_in_set(node, names) {
+	if (!node || typeof node !== 'object' || names.size === 0) {
+		return false;
+	}
+
+	if (node.type === 'Identifier') {
+		return names.has(node.name);
+	}
+
+	if (
+		node.type === 'FunctionDeclaration' ||
+		node.type === 'FunctionExpression' ||
+		node.type === 'ArrowFunctionExpression' ||
+		node.type === 'Component'
+	) {
+		return false;
+	}
+
+	if (Array.isArray(node)) {
+		return node.some((child) => references_name_in_set(child, names));
+	}
+
+	for (const key of Object.keys(node)) {
+		if (key === 'loc' || key === 'start' || key === 'end' || key === 'metadata') {
+			continue;
+		}
+		if (key === 'property' && node.type === 'MemberExpression' && !node.computed) {
+			continue;
+		}
+		if (key === 'key' && node.type === 'Property' && !node.computed && !node.shorthand) {
+			continue;
+		}
+		if (references_name_in_set(node[key], names)) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+/**
+ * @param {any} node
+ * @param {Set<string>} shadowed_names
+ * @returns {string[]}
+ */
+function get_referenced_local_binding_names(node, shadowed_names) {
+	const names = new Set();
+	collect_referenced_local_binding_names(node, shadowed_names, names);
+	return [...names];
+}
+
+/**
+ * @param {any} node
+ * @param {Set<string>} shadowed_names
+ * @param {Set<string>} names
+ * @returns {void}
+ */
+function collect_referenced_local_binding_names(node, shadowed_names, names) {
+	if (!node || typeof node !== 'object') {
+		return;
+	}
+
+	if (node.type === 'Identifier') {
+		if (shadowed_names.has(node.name)) {
+			names.add(node.name);
+		}
+		return;
+	}
+
+	if (Array.isArray(node)) {
+		for (const child of node) {
+			collect_referenced_local_binding_names(child, shadowed_names, names);
+		}
+		return;
+	}
+
+	for (const key of Object.keys(node)) {
+		if (key === 'loc' || key === 'start' || key === 'end' || key === 'metadata') {
+			continue;
+		}
+		if (key === 'property' && node.type === 'MemberExpression' && !node.computed) {
+			continue;
+		}
+		if (key === 'key' && node.type === 'Property' && !node.computed && !node.shorthand) {
+			continue;
+		}
+		collect_referenced_local_binding_names(node[key], shadowed_names, names);
+	}
+}
+
+/**
+ * @param {any} node
+ * @param {Map<string, AST.Identifier>} available_bindings
+ * @param {Set<string>} shadowed_names
+ * @returns {string[]}
+ */
+function get_referenced_outer_binding_names(node, available_bindings, shadowed_names) {
+	const names = new Set();
+	collect_referenced_outer_binding_names(node, available_bindings, shadowed_names, names);
+	return [...names];
+}
+
+/**
+ * @param {any} node
+ * @param {Map<string, AST.Identifier>} available_bindings
+ * @param {Set<string>} shadowed_names
+ * @param {Set<string>} names
+ * @returns {void}
+ */
+function collect_referenced_outer_binding_names(node, available_bindings, shadowed_names, names) {
+	if (!node || typeof node !== 'object') {
+		return;
+	}
+
+	if (node.type === 'Identifier') {
+		if (available_bindings.has(node.name) && !shadowed_names.has(node.name)) {
+			names.add(node.name);
+		}
+		return;
+	}
+
+	if (Array.isArray(node)) {
+		for (const child of node) {
+			collect_referenced_outer_binding_names(child, available_bindings, shadowed_names, names);
+		}
+		return;
+	}
+
+	for (const key of Object.keys(node)) {
+		if (key === 'loc' || key === 'start' || key === 'end' || key === 'metadata') {
+			continue;
+		}
+		if (key === 'property' && node.type === 'MemberExpression' && !node.computed) {
+			continue;
+		}
+		if (key === 'key' && node.type === 'Property' && !node.computed && !node.shorthand) {
+			continue;
+		}
+		collect_referenced_outer_binding_names(node[key], available_bindings, shadowed_names, names);
+	}
+}
+
+/**
+ * @param {any} node
+ * @returns {string | null}
+ */
+function find_first_hook_call_name(node) {
+	if (!node || typeof node !== 'object') {
+		return null;
+	}
+
+	if (node.type === 'CallExpression' && is_hook_callee(node.callee)) {
+		return get_hook_callee_name(node.callee);
+	}
+
+	if (
+		node.type === 'FunctionDeclaration' ||
+		node.type === 'FunctionExpression' ||
+		node.type === 'ArrowFunctionExpression' ||
+		node.type === 'Component'
+	) {
+		return null;
+	}
+
+	if (Array.isArray(node)) {
+		for (const child of node) {
+			const name = find_first_hook_call_name(child);
+			if (name) return name;
+		}
+		return null;
+	}
+
+	for (const key of Object.keys(node)) {
+		if (key === 'loc' || key === 'start' || key === 'end' || key === 'metadata') {
+			continue;
+		}
+		const name = find_first_hook_call_name(node[key]);
+		if (name) return name;
+	}
+
+	return null;
+}
+
+/**
+ * @param {any} callee
+ * @returns {string}
+ */
+function get_hook_callee_name(callee) {
+	if (callee?.type === 'Identifier') {
+		return callee.name;
+	}
+	if (
+		callee?.type === 'MemberExpression' &&
+		!callee.computed &&
+		callee.property?.type === 'Identifier'
+	) {
+		return callee.property.name;
+	}
+	return 'hook';
+}
+
+/**
+ * @param {any[]} body_nodes
  * @param {any} key_expression
  * @param {any} source_node
  * @param {TransformContext} transform_context
@@ -2938,6 +3828,11 @@ function create_hook_safe_helper(
 	transform_context,
 	preallocated_helper_id,
 ) {
+	validate_hook_safe_body_does_not_assign_hook_results_to_outer_bindings(
+		body_nodes,
+		transform_context,
+	);
+
 	const helper_id =
 		preallocated_helper_id ??
 		create_generated_identifier(create_local_statement_component_name(transform_context));
@@ -3410,9 +4305,7 @@ function to_jsx_child(node, transform_context) {
 		case 'TSRXExpression':
 			return to_jsx_expression_container(node.expression, node);
 		case 'Html':
-			throw new Error(
-				`\`{html ...}\` is not supported on the ${transform_context.platform.name} target. Use \`dangerouslySetInnerHTML={{ __html: ... }}\` as an element attribute instead.`,
-			);
+			return report_html_template_unsupported_error(node, transform_context);
 		case 'IfStatement':
 			return (
 				transform_context.platform.hooks?.controlFlow?.ifStatement ?? if_statement_to_jsx_child
@@ -4227,9 +5120,16 @@ function try_statement_to_jsx_child(node, transform_context) {
 		// correctly identifies references to err/reset as non-static
 		const saved_catch_bindings = transform_context.available_bindings;
 		transform_context.available_bindings = new Map(saved_catch_bindings);
+		const catch_scoped_names = new Set();
 		for (const param of catch_params) {
 			collect_pattern_bindings(param, transform_context.available_bindings);
+			collect_pattern_names(param, catch_scoped_names);
 		}
+		validate_hook_safe_body_does_not_assign_hook_results_to_outer_bindings(
+			catch_body_nodes,
+			transform_context,
+			catch_scoped_names,
+		);
 
 		const fallback_fn = {
 			type: 'ArrowFunctionExpression',
