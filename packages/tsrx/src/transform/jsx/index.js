@@ -3365,7 +3365,7 @@ function validate_hook_outer_assignments_in_node(
 		);
 		if (outer_names.length > 0) {
 			report_hook_outer_assignment_error(
-				node,
+				node.left,
 				outer_names,
 				find_first_hook_call_name(node.right) || 'hook',
 				transform_context,
@@ -3389,7 +3389,7 @@ function validate_hook_outer_assignments_in_node(
 			);
 			if (outer_names.length > 0) {
 				report_hook_outer_assignment_error(
-					node,
+					node.left,
 					outer_names,
 					find_first_hook_call_name(node.right) || 'hook',
 					transform_context,
@@ -3557,7 +3557,12 @@ function validate_hook_callback_outer_mutations_in_node(
 			shadowed_names,
 		);
 		if (outer_names.length > 0) {
-			report_hook_callback_outer_mutation_error(node, outer_names, hook_name, transform_context);
+			report_hook_callback_outer_mutation_error(
+				node.left,
+				outer_names,
+				hook_name,
+				transform_context,
+			);
 		}
 	}
 
@@ -3568,7 +3573,12 @@ function validate_hook_callback_outer_mutations_in_node(
 			shadowed_names,
 		);
 		if (outer_names.length > 0) {
-			report_hook_callback_outer_mutation_error(node, outer_names, hook_name, transform_context);
+			report_hook_callback_outer_mutation_error(
+				node.argument,
+				outer_names,
+				hook_name,
+				transform_context,
+			);
 		}
 	}
 
