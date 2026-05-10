@@ -86,5 +86,6 @@ export component App() {
 ## Run
 
 ```bash
+pnpm install
 pnpm run dev
 ```
