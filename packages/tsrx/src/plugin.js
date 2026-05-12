@@ -652,6 +652,18 @@ export function TSRXPlugin(config) {
 					ctx.length = ci - 1;
 					return;
 				}
+				// Statement-bodied `<tsrx>` attributes can leave the attribute's
+				// expression contexts above the still-open JSX tag context. Strip
+				// those so a following `/>` stays in JSX opening-tag mode.
+				if (
+					this.type === tt.braceR &&
+					top === tstc.tc_expr &&
+					second === b_expr &&
+					ctx[ci - 2] === tstc.tc_oTag
+				) {
+					ctx.length = ci - 1;
+					return;
+				}
 				// Closing token after the template at expression position. For `}`
 				// only pop if it actually closes this `b_expr` — otherwise the
 				// brace targets an inner callback/object body that should pop it

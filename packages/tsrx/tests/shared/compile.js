@@ -1969,6 +1969,27 @@ export function optionalFn(bar: string, baz?: string) {
 			expect(code).not.toContain('<tsrx>');
 		});
 
+		it('lowers statement-bodied native TSRX templates in self-closing component attributes', () => {
+			const { code } = compile(
+				`component App() {
+					<Card
+						content={<tsrx>
+							if (foo) {
+								<div>
+									if (foo > 1) {}
+								</div>
+							}
+						</tsrx>}
+					/>
+				}`,
+				'App.tsrx',
+			);
+
+			expect(code).toContain('foo');
+			expect(code).toContain('<Card');
+			expect(code).not.toContain('<tsrx>');
+		});
+
 		it('lowers native TSRX template fragments in JSX attribute values', () => {
 			const { code } = compile(
 				`class Foo { bar() { return <Card content={<tsrx><span>"Title"</span></tsrx>} />; } }`,
