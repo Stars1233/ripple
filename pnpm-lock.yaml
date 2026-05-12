@@ -223,9 +223,6 @@ catalogs:
     eslint:
       specifier: '>=9.0.0'
       version: 10.2.1
-    ripple:
-      specifier: '*'
-      version: 0.3.17
     tailwindcss:
       specifier: ^4.1.12
       version: 4.2.1
@@ -523,15 +520,12 @@ importers:
 
   packages/eslint-parser:
     dependencies:
-      '@tsrx/ripple':
+      '@tsrx/core':
         specifier: workspace:*
-        version: link:../tsrx-ripple
+        version: link:../tsrx
       eslint:
         specifier: catalog:peer
         version: 10.2.1(jiti@2.6.1)
-      ripple:
-        specifier: catalog:peer
-        version: 0.3.17
     devDependencies:
       '@types/eslint':
         specifier: catalog:default
@@ -6124,9 +6118,6 @@ packages:
   reusify@1.1.0:
     resolution: {integrity: sha512-g6QUff04oZpHs0eG5p83rFLhHeV00ug/Yf9nZM6fLeUrPguBTkTQOdpAWWspMh55TZfVQDPaN3NQJfbVRAxdIw==}
     engines: {iojs: '>=1.0.0', node: '>=0.10.0'}
-
-  ripple@0.3.17:
-    resolution: {integrity: sha512-bZhfajvLpu0usaSK3d7FBU5fxFboLbHenw0Q19LPHfFnbsxf6WG7wOjgdpA6pYjSj2InhvsipVnbSncnGp5cgg==}
 
   rolldown-plugin-dts@0.25.0:
     resolution: {integrity: sha512-GE3uDZgUuA9l6g+1u928TRmadd5IVhaWiwpWast2kCyLv9tYJJCC6E5HHkV0HGmwC5ZL73xh12/PRZI+KZ2vdQ==}
@@ -12034,14 +12025,6 @@ snapshots:
       signal-exit: 4.1.0
 
   reusify@1.1.0: {}
-
-  ripple@0.3.17:
-    dependencies:
-      '@types/estree': 1.0.8
-      '@types/estree-jsx': 1.0.5
-      clsx: 2.1.1
-      devalue: 5.7.1
-      esm-env: 1.2.2
 
   rolldown-plugin-dts@0.25.0(@typescript/native-preview@7.0.0-dev.20260512.1)(rolldown@1.0.0)(typescript@5.9.3):
     dependencies:

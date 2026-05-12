@@ -36,11 +36,10 @@
     "prepack": "pnpm build"
   },
   "peerDependencies": {
-    "eslint": "catalog:peer",
-    "ripple": "catalog:peer"
+    "eslint": "catalog:peer"
   },
   "dependencies": {
-    "@tsrx/ripple": "workspace:*"
+    "@tsrx/core": "workspace:*"
   },
   "devDependencies": {
     "@types/eslint": "catalog:default",
