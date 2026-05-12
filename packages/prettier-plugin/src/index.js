@@ -406,7 +406,10 @@ const skipEverythingButNewLine = createSkip(/[^\n\r\u2028\u2029]/u);
  */
 function isCharNewLine(character) {
 	return (
-		character === '\n' || character === '\r' || character === '\u2028' || character === '\u2029'
+		character === '\n' ||
+		character === '\r' ||
+		character === '\u2028' ||
+		character === '\u2029'
 	);
 }
 
@@ -498,7 +501,11 @@ function skipTrailingComment(text, startIndex) {
  * @returns {boolean}
  */
 function isRegExpLiteral(node) {
-	return node && node.type === 'Literal' && !!(/** @type {AST.RegExpLiteral} */ (node).regex);
+	return (
+		node &&
+		node.type === 'Literal' &&
+		!!(/** @type {AST.RegExpLiteral} */ (node).regex)
+	);
 }
 
 /**
@@ -536,7 +543,11 @@ function isCommentFollowedBySameLineParen(comment, options) {
  * @returns {boolean}
  */
 function hasNewline(text, startIndex, options) {
-	const idx = skipSpaces(text, options && options.backwards ? startIndex - 1 : startIndex, options);
+	const idx = skipSpaces(
+		text,
+		options && options.backwards ? startIndex - 1 : startIndex,
+		options,
+	);
 	const idx2 = skipNewline(text, idx, options);
 	return idx !== idx2;
 }
@@ -717,7 +728,8 @@ function printRippleNode(node, path, options, print, args) {
 
 	const isInlineContext = args && args.isInlineContext;
 	const suppressLeadingComments = args && args.suppressLeadingComments;
-	const suppressExpressionLeadingComments = args && args.suppressExpressionLeadingComments;
+	const suppressExpressionLeadingComments =
+		args && args.suppressExpressionLeadingComments;
 
 	// For TSRXExpression, Text, and Html nodes, don't add leading comments here - they should be handled
 	// as separate children within the element, not as part of the expression
@@ -725,7 +737,11 @@ function printRippleNode(node, path, options, print, args) {
 		node.type === 'TSRXExpression' || node.type === 'Text' || node.type === 'Html';
 
 	// Handle leading comments
-	if (node.leadingComments && !shouldSkipLeadingComments && !suppressLeadingComments) {
+	if (
+		node.leadingComments &&
+		!shouldSkipLeadingComments &&
+		!suppressLeadingComments
+	) {
 		for (let i = 0; i < node.leadingComments.length; i++) {
 			const comment = node.leadingComments[i];
 			const nextComment = node.leadingComments[i + 1];
@@ -755,7 +771,10 @@ function printRippleNode(node, path, options, print, args) {
 				const isCommentInlineWithParen =
 					isLastComment && isCommentFollowedBySameLineParen(comment, options);
 				const isCommentOnSameLine =
-					isLastComment && comment.loc && node.loc && comment.loc.end.line === node.loc.start.line;
+					isLastComment &&
+					comment.loc &&
+					node.loc &&
+					comment.loc.end.line === node.loc.start.line;
 				const shouldKeepOnSameLine = isCommentOnSameLine || isCommentInlineWithParen;
 
 				if (!isInlineContext && !shouldKeepOnSameLine) {
@@ -763,7 +782,10 @@ function printRippleNode(node, path, options, print, args) {
 
 					// Check if there should be blank lines between this comment and the next
 					if (nextComment) {
-						const blankLinesBetween = getBlankLinesBetweenNodes(comment, nextComment);
+						const blankLinesBetween = getBlankLinesBetweenNodes(
+							comment,
+							nextComment,
+						);
 						if (blankLinesBetween > 0) {
 							parts.push(hardline);
 						}
@@ -783,7 +805,8 @@ function printRippleNode(node, path, options, print, args) {
 
 	// Handle inner comments (for nodes with no children to attach to)
 	const innerCommentParts = [];
-	const innerComments = /** @type {AST.NodeWithMaybeComments} */ (node).innerComments;
+	const innerComments = /** @type {AST.NodeWithMaybeComments} */ (node)
+		.innerComments;
 	if (innerComments) {
 		for (const comment of innerComments) {
 			if (comment.type === 'Line') {
@@ -839,7 +862,14 @@ function printRippleNode(node, path, options, print, args) {
 			break;
 
 		case 'Component':
-			nodeContent = printComponent(node, path, options, print, innerCommentParts, args);
+			nodeContent = printComponent(
+				node,
+				path,
+				options,
+				print,
+				innerCommentParts,
+				args,
+			);
 			break;
 
 		case 'ExportNamedDeclaration':
@@ -911,7 +941,9 @@ function printRippleNode(node, path, options, print, args) {
 			// Check if this array is inside an attribute
 			const isInAttribute = args && args.isInAttribute;
 			const suppressLeadingCommentIndices = new Set();
-			const inlineCommentsBetween = new Array(Math.max(node.elements.length - 1, 0)).fill(null);
+			const inlineCommentsBetween = new Array(
+				Math.max(node.elements.length - 1, 0),
+			).fill(null);
 
 			for (let index = 0; index < node.elements.length - 1; index++) {
 				const currentElement = /** @type {AST.Expression | AST.SpreadElement} */ (
@@ -928,14 +960,20 @@ function printRippleNode(node, path, options, print, args) {
 
 				const canTransferAllLeadingComments = nextElement.leadingComments.every(
 					(/** @type {AST.Comment} */ comment) =>
-						canAttachLeadingCommentToPreviousElement(comment, currentElement, nextElement),
+						canAttachLeadingCommentToPreviousElement(
+							comment,
+							currentElement,
+							nextElement,
+						),
 				);
 
 				if (!canTransferAllLeadingComments) {
 					continue;
 				}
 
-				const inlineCommentDoc = buildInlineArrayCommentDoc(nextElement.leadingComments);
+				const inlineCommentDoc = buildInlineArrayCommentDoc(
+					nextElement.leadingComments,
+				);
 				if (inlineCommentDoc) {
 					inlineCommentsBetween[index] = inlineCommentDoc;
 					suppressLeadingCommentIndices.add(index + 1);
@@ -944,7 +982,9 @@ function printRippleNode(node, path, options, print, args) {
 
 			// Check if all elements are objects with multiple properties
 			// In that case, each object should be on its own line
-			const objectElements = node.elements.filter((el) => el && el.type === 'ObjectExpression');
+			const objectElements = node.elements.filter(
+				(el) => el && el.type === 'ObjectExpression',
+			);
 			const allElementsAreObjects =
 				node.elements.length > 0 &&
 				node.elements.every((el) => el && el.type === 'ObjectExpression');
@@ -1009,7 +1049,9 @@ function printRippleNode(node, path, options, print, args) {
 						childArgs.isInArray = true;
 					}
 
-					return Object.keys(childArgs).length > 0 ? print(elPath, childArgs) : print(elPath);
+					return Object.keys(childArgs).length > 0
+						? print(elPath, childArgs)
+						: print(elPath);
 				},
 				'elements',
 			);
@@ -1077,8 +1119,14 @@ function printRippleNode(node, path, options, print, args) {
 					const firstComment = leadingComments[0];
 					const lastComment = leadingComments[leadingComments.length - 1];
 
-					const linesBeforeComment = getBlankLinesBetweenNodes(prevElement, firstComment);
-					const linesAfterComment = getBlankLinesBetweenNodes(lastComment, currentElement);
+					const linesBeforeComment = getBlankLinesBetweenNodes(
+						prevElement,
+						firstComment,
+					);
+					const linesAfterComment = getBlankLinesBetweenNodes(
+						lastComment,
+						currentElement,
+					);
 
 					if (linesBeforeComment > 0 || linesAfterComment > 0) {
 						elementsWithBlankLineAbove.push(i);
@@ -1102,9 +1150,15 @@ function printRippleNode(node, path, options, print, args) {
 				return el.type === 'ConditionalExpression';
 			});
 
-			if (!hasAnyBlankLines && !allObjectsHaveMultipleProperties && !hasHardBreakingElements) {
+			if (
+				!hasAnyBlankLines &&
+				!allObjectsHaveMultipleProperties &&
+				!hasHardBreakingElements
+			) {
 				// Check if array has inline comments between elements
-				const hasInlineComments = inlineCommentsBetween.some((comment) => comment !== null);
+				const hasInlineComments = inlineCommentsBetween.some(
+					(comment) => comment !== null,
+				);
 
 				// For arrays originally formatted with one element per line (no blank lines between),
 				// preserve that formatting using join() with hardline - BUT only if no inline comments
@@ -1178,7 +1232,12 @@ function printRippleNode(node, path, options, print, args) {
 				}
 
 				const trailingDoc = shouldUseTrailingComma ? ifBreak(',', '') : '';
-				nodeContent = group(['[', indent([softline, fill(fillParts), trailingDoc]), softline, ']']);
+				nodeContent = group([
+					'[',
+					indent([softline, fill(fillParts), trailingDoc]),
+					softline,
+					']',
+				]);
 				break;
 			}
 
@@ -1406,7 +1465,8 @@ function printRippleNode(node, path, options, print, args) {
 			// Preserve parentheses for type-annotated call expressions
 			// When parenthesized with leading comments, use grouping to allow breaking
 			if (node.metadata?.parenthesized) {
-				const hasLeadingComments = node.leadingComments && node.leadingComments.length > 0;
+				const hasLeadingComments =
+					node.leadingComments && node.leadingComments.length > 0;
 				if (hasLeadingComments) {
 					// Group with softline to allow breaking after opening paren
 					callContent = /** @type {Doc[]} */ ([
@@ -1453,7 +1513,11 @@ function printRippleNode(node, path, options, print, args) {
 			break;
 
 		case 'TSAsExpression': {
-			nodeContent = [path.call(print, 'expression'), ' as ', path.call(print, 'typeAnnotation')];
+			nodeContent = [
+				path.call(print, 'expression'),
+				' as ',
+				path.call(print, 'typeAnnotation'),
+			];
 			break;
 		}
 
@@ -1464,7 +1528,10 @@ function printRippleNode(node, path, options, print, args) {
 
 		case 'TSInstantiationExpression': {
 			// Explicit type instantiation: foo<Type>, identity<string>
-			nodeContent = [path.call(print, 'expression'), path.call(print, 'typeArguments')];
+			nodeContent = [
+				path.call(print, 'expression'),
+				path.call(print, 'typeArguments'),
+			];
 			break;
 		}
 
@@ -1597,7 +1664,8 @@ function printRippleNode(node, path, options, print, args) {
 			// Wrap argument in parens if it's a low-precedence logical expression (e.g., nullish coalescing)
 			// that needs them for correct parsing
 			const needsParens =
-				node.argument.type === 'LogicalExpression' && node.argument.operator === '??';
+				node.argument.type === 'LogicalExpression' &&
+				node.argument.operator === '??';
 			if (needsParens) {
 				nodeContent = ['...(', argumentDoc, ')'];
 			} else {
@@ -1679,7 +1747,8 @@ function printRippleNode(node, path, options, print, args) {
 			const node_typed = /** @type {AST.RegExpLiteral} */ (node);
 			if (node_typed.regex) {
 				// Regex literal: use the raw representation
-				nodeContent = node_typed.raw || `/${node_typed.regex.pattern}/${node_typed.regex.flags}`;
+				nodeContent =
+					node_typed.raw || `/${node_typed.regex.pattern}/${node_typed.regex.flags}`;
 			} else {
 				// String, number, boolean, or null literal
 				nodeContent = formatStringLiteral(node.value, options);
@@ -1745,7 +1814,12 @@ function printRippleNode(node, path, options, print, args) {
 							contentParts.push(doc);
 						}
 
-						nodeContent = group(['{', indent([hardline, contentParts]), hardline, '}']);
+						nodeContent = group([
+							'{',
+							indent([hardline, contentParts]),
+							hardline,
+							'}',
+						]);
 						break;
 					} else {
 						// Fallback to simple join
@@ -1841,10 +1915,19 @@ function printRippleNode(node, path, options, print, args) {
 			// Don't add indent if we're in a conditional test context
 			if (args?.isConditionalTest) {
 				result = group([
-					path.call((childPath) => print(childPath, { isConditionalTest: true }), 'left'),
+					path.call(
+						(childPath) => print(childPath, { isConditionalTest: true }),
+						'left',
+					),
 					' ',
 					node.operator,
-					[line, path.call((childPath) => print(childPath, { isConditionalTest: true }), 'right')],
+					[
+						line,
+						path.call(
+							(childPath) => print(childPath, { isConditionalTest: true }),
+							'right',
+						),
+					],
 				]);
 			} else if (shouldNotIndent) {
 				// In assignment context, don't add indent - parent will handle it
@@ -1877,10 +1960,19 @@ function printRippleNode(node, path, options, print, args) {
 			// Don't add indent if we're in a conditional test context
 			if (args?.isConditionalTest) {
 				logicalResult = group([
-					path.call((childPath) => print(childPath, { isConditionalTest: true }), 'left'),
+					path.call(
+						(childPath) => print(childPath, { isConditionalTest: true }),
+						'left',
+					),
 					' ',
 					node.operator,
-					[line, path.call((childPath) => print(childPath, { isConditionalTest: true }), 'right')],
+					[
+						line,
+						path.call(
+							(childPath) => print(childPath, { isConditionalTest: true }),
+							'right',
+						),
+					],
 				]);
 			} else {
 				logicalResult = group([
@@ -1905,9 +1997,13 @@ function printRippleNode(node, path, options, print, args) {
 			// For the test expression, if it's a LogicalExpression or BinaryExpression,
 			// tell it not to add its own indentation since we're in a conditional context
 			const testNeedsContext =
-				node.test.type === 'LogicalExpression' || node.test.type === 'BinaryExpression';
+				node.test.type === 'LogicalExpression' ||
+				node.test.type === 'BinaryExpression';
 			const testDoc = testNeedsContext
-				? path.call((childPath) => print(childPath, { isConditionalTest: true }), 'test')
+				? path.call(
+						(childPath) => print(childPath, { isConditionalTest: true }),
+						'test',
+					)
 				: path.call(print, 'test');
 
 			// Check if we have nested ternaries (but not if they're parenthesized, which keeps them inline)
@@ -1922,13 +2018,19 @@ function printRippleNode(node, path, options, print, args) {
 				hasUnparenthesizedNestedConditional &&
 				node.consequent.type === 'ConditionalExpression' &&
 				!node.consequent.metadata?.parenthesized
-					? path.call((childPath) => print(childPath, { isNestedConditional: true }), 'consequent')
+					? path.call(
+							(childPath) => print(childPath, { isNestedConditional: true }),
+							'consequent',
+						)
 					: path.call(print, 'consequent');
 			const alternateDoc =
 				hasUnparenthesizedNestedConditional &&
 				node.alternate.type === 'ConditionalExpression' &&
 				!node.alternate.metadata?.parenthesized
-					? path.call((childPath) => print(childPath, { isNestedConditional: true }), 'alternate')
+					? path.call(
+							(childPath) => print(childPath, { isNestedConditional: true }),
+							'alternate',
+						)
 					: path.call(print, 'alternate');
 
 			// Check if the consequent or alternate will break
@@ -1959,8 +2061,16 @@ function printRippleNode(node, path, options, print, args) {
 
 				result = [
 					testDoc,
-					indent([line, '? ', shouldIndentConsequent ? indent(consequentDoc) : consequentDoc]),
-					indent([line, ': ', shouldIndentAlternate ? indent(alternateDoc) : alternateDoc]),
+					indent([
+						line,
+						'? ',
+						shouldIndentConsequent ? indent(consequentDoc) : consequentDoc,
+					]),
+					indent([
+						line,
+						': ',
+						shouldIndentAlternate ? indent(alternateDoc) : alternateDoc,
+					]),
 				];
 			} else {
 				// Otherwise try inline first, then multiline if it doesn't fit
@@ -1977,8 +2087,16 @@ function printRippleNode(node, path, options, print, args) {
 					// If inline doesn't fit, use multiline
 					[
 						testDoc,
-						indent([line, '? ', shouldIndentConsequent ? indent(consequentDoc) : consequentDoc]),
-						indent([line, ': ', shouldIndentAlternate ? indent(alternateDoc) : alternateDoc]),
+						indent([
+							line,
+							'? ',
+							shouldIndentConsequent ? indent(consequentDoc) : consequentDoc,
+						]),
+						indent([
+							line,
+							': ',
+							shouldIndentAlternate ? indent(alternateDoc) : alternateDoc,
+						]),
 					],
 				]);
 			}
@@ -2228,7 +2346,10 @@ function printRippleNode(node, path, options, print, args) {
 
 		case 'TSRXExpression': {
 			const expressionDoc = suppressExpressionLeadingComments
-				? path.call((exprPath) => print(exprPath, { suppressLeadingComments: true }), 'expression')
+				? path.call(
+						(exprPath) => print(exprPath, { suppressLeadingComments: true }),
+						'expression',
+					)
 				: path.call(print, 'expression');
 			nodeContent = ['{', expressionDoc, '}'];
 			break;
@@ -2241,7 +2362,10 @@ function printRippleNode(node, path, options, print, args) {
 			}
 
 			const expressionDoc = suppressExpressionLeadingComments
-				? path.call((exprPath) => print(exprPath, { suppressLeadingComments: true }), 'expression')
+				? path.call(
+						(exprPath) => print(exprPath, { suppressLeadingComments: true }),
+						'expression',
+					)
 				: path.call(print, 'expression');
 			nodeContent = ['{text ', expressionDoc, '}'];
 			break;
@@ -2249,7 +2373,10 @@ function printRippleNode(node, path, options, print, args) {
 
 		case 'Html': {
 			const expressionDoc = suppressExpressionLeadingComments
-				? path.call((exprPath) => print(exprPath, { suppressLeadingComments: true }), 'expression')
+				? path.call(
+						(exprPath) => print(exprPath, { suppressLeadingComments: true }),
+						'expression',
+					)
 				: path.call(print, 'expression');
 			nodeContent = ['{html ', expressionDoc, '}'];
 			break;
@@ -2380,7 +2507,10 @@ function printImportDeclaration(node, path, options, _print) {
 			const namedImportsDocs = namedImports.map((name) => name);
 			const namedImportsGroup = group([
 				'{',
-				indent([options.bracketSpacing ? line : softline, join([',', line], namedImportsDocs)]),
+				indent([
+					options.bracketSpacing ? line : softline,
+					join([',', line], namedImportsDocs),
+				]),
 				ifBreak(shouldPrintComma(options) ? ',' : ''),
 				options.bracketSpacing ? line : softline,
 				'}',
@@ -2392,12 +2522,16 @@ function printImportDeclaration(node, path, options, _print) {
 		if (importClauseParts.length === 1 && typeof importClauseParts[0] === 'object') {
 			parts.push(importClauseParts[0]);
 		} else {
-			parts.push(/** @type {Doc} */ (join(', ', /** @type {string[]} */ (importClauseParts))));
+			parts.push(
+				/** @type {Doc} */ (join(', ', /** @type {string[]} */ (importClauseParts))),
+			);
 		}
 		parts.push(' from');
 	}
 
-	const source = /** @type {AST.Literal | AST.Identifier} */ (/** @type {unknown} */ (node.source));
+	const source = /** @type {AST.Literal | AST.Identifier} */ (
+		/** @type {unknown} */ (node.source)
+	);
 	const sourceDoc =
 		source.type === 'Identifier'
 			? source.name
@@ -2527,7 +2661,8 @@ function printComponent(
 		contentParts.push(statements);
 	}
 
-	const isArrowComponent = node.metadata?.arrow === true && !node.id && !args.skipComponentLabel;
+	const isArrowComponent =
+		node.metadata?.arrow === true && !node.id && !args.skipComponentLabel;
 
 	// Use Prettier's standard block statement pattern
 	/** @type {Doc[]} */
@@ -2550,7 +2685,9 @@ function printComponent(
 		const joinedContent = contentParts.length > 0 ? contentParts : '';
 
 		// Apply component-level indentation
-		const indentedContent = joinedContent ? indent([hardline, joinedContent]) : indent([hardline]);
+		const indentedContent = joinedContent
+			? indent([hardline, joinedContent])
+			: indent([hardline]);
 
 		// Add the body and closing brace
 		parts.push(indentedContent, hardline, '}');
@@ -2644,7 +2781,9 @@ function printVariableDeclaration(node, path, options, print) {
 	const parentNode = /** @type {AST.Node | null} */ (path.getParentNode());
 	const isForLoopInit =
 		(parentNode && parentNode.type === 'ForStatement' && parentNode.init === node) ||
-		(parentNode && parentNode.type === 'ForOfStatement' && parentNode.left === node) ||
+		(parentNode &&
+			parentNode.type === 'ForOfStatement' &&
+			parentNode.left === node) ||
 		(parentNode && parentNode.type === 'ForInStatement' && parentNode.left === node);
 
 	const declarations = path.map(print, 'declarations');
@@ -2901,7 +3040,9 @@ function printFunctionParameters(path, options, print) {
 	return [
 		'(',
 		indent([softline, ...printed]),
-		ifBreak(shouldPrintComma(options, 'all') && !hasRestParameter(functionNode) ? ',' : ''),
+		ifBreak(
+			shouldPrintComma(options, 'all') && !hasRestParameter(functionNode) ? ',' : '',
+		),
 		softline,
 		')',
 	];
@@ -3037,15 +3178,20 @@ function printCallArguments(path, options, print) {
 	path.each((argumentPath, index) => {
 		const isLast = index === args.length - 1;
 		const argumentNode = args[index];
-		const printOptions = isBlockLikeFunction(argumentNode) ? undefined : { isInlineContext: true };
+		const printOptions = isBlockLikeFunction(argumentNode)
+			? undefined
+			: { isInlineContext: true };
 
 		// Print normally (not with expandLastArg yet - we'll do that later if needed)
-		const argumentDoc = printOptions ? print(argumentPath, printOptions) : print(argumentPath);
+		const argumentDoc = printOptions
+			? print(argumentPath, printOptions)
+			: print(argumentPath);
 
 		argumentDocs.push(argumentDoc);
 		// Arrow functions with block bodies have internal breaks but shouldn't
 		// cause the call arguments to break - they stay inline with the call
-		const shouldTreatAsBreaking = willBreak(argumentDoc) && !isBlockLikeFunction(argumentNode);
+		const shouldTreatAsBreaking =
+			willBreak(argumentDoc) && !isBlockLikeFunction(argumentNode);
 		argumentBreakFlags.push(shouldTreatAsBreaking);
 
 		if (!isLast) {
@@ -3061,11 +3207,14 @@ function printCallArguments(path, options, print) {
 	}, 'arguments');
 	const trailingComma = shouldPrintComma(options, 'all') ? ',' : '';
 
-	// Special case: single array argument should keep opening bracket inline
-	const isSingleArrayArgument = args.length === 1 && args[0] && args[0].type === 'ArrayExpression';
+	// Special case: single array/object argument should keep opening delimiter inline
+	const isSingleArrayArgument =
+		args.length === 1 && args[0] && args[0].type === 'ArrayExpression';
+	const isSingleObjectArgument =
+		args.length === 1 && args[0] && args[0].type === 'ObjectExpression';
 
-	if (isSingleArrayArgument) {
-		// Don't use group() - just concat to allow array to control its own breaking
+	if (isSingleArrayArgument || isSingleObjectArgument) {
+		// Don't use group() - just concat to allow the argument to control its own breaking
 		// For single argument, no trailing comma needed
 		return ['(', argumentDocs[0], ')'];
 	} // Check if we should hug arrow functions (keep params inline even when body breaks)
@@ -3100,7 +3249,9 @@ function printCallArguments(path, options, print) {
 	];
 
 	const shouldForceBreak = anyArgumentHasEmptyLine;
-	const shouldBreakForContent = argumentDocs.some((docPart) => docPart && willBreak(docPart));
+	const shouldBreakForContent = argumentDocs.some(
+		(docPart) => docPart && willBreak(docPart),
+	);
 
 	const groupedContents = group(contents, {
 		shouldBreak: shouldForceBreak || shouldBreakForContent,
@@ -3117,11 +3268,15 @@ function printCallArguments(path, options, print) {
 	const previousArgsBreak =
 		lastIndex > 0 ? argumentBreakFlags.slice(0, lastIndex).some(Boolean) : false;
 	const isExpandableLastArgType =
-		lastArg && (lastArg.type === 'ObjectExpression' || lastArg.type === 'ArrayExpression');
+		lastArg &&
+		(lastArg.type === 'ObjectExpression' || lastArg.type === 'ArrayExpression');
 
 	// Check if we should expand the last argument (like Prettier's shouldExpandLastArg)
 	const shouldExpandLast =
-		args.length > 1 && couldExpandLastArg && !previousArgsBreak && !anyArgumentHasEmptyLine;
+		args.length > 1 &&
+		couldExpandLastArg &&
+		!previousArgsBreak &&
+		!anyArgumentHasEmptyLine;
 
 	if (shouldExpandLast) {
 		const headArgs = argumentDocs.slice(0, -1);
@@ -3375,7 +3530,10 @@ function printIfStatement(node, path, options, print) {
 	const testNode = node.test;
 
 	// Print test without its leading comments (they'll be printed before 'if')
-	const test = path.call((testPath) => print(testPath, { suppressLeadingComments: true }), 'test');
+	const test = path.call(
+		(testPath) => print(testPath, { suppressLeadingComments: true }),
+		'test',
+	);
 	const consequent = path.call(print, 'consequent');
 
 	// Use group to allow breaking the test when it doesn't fit
@@ -3527,7 +3685,10 @@ function printWhileStatement(node, path, options, print) {
 	const testNode = node.test;
 
 	// Print test without its leading comments (they'll be printed before 'while')
-	const test = path.call((testPath) => print(testPath, { suppressLeadingComments: true }), 'test');
+	const test = path.call(
+		(testPath) => print(testPath, { suppressLeadingComments: true }),
+		'test',
+	);
 
 	/** @type {Doc[]} */
 	const parts = [];
@@ -3556,7 +3717,10 @@ function printDoWhileStatement(node, path, options, print) {
 	const testNode = node.test;
 
 	// Print test without its leading comments (they'll be printed before 'while')
-	const test = path.call((testPath) => print(testPath, { suppressLeadingComments: true }), 'test');
+	const test = path.call(
+		(testPath) => print(testPath, { suppressLeadingComments: true }),
+		'test',
+	);
 
 	/** @type {Doc[]} */
 	const parts = [];
@@ -3651,7 +3815,8 @@ function printObjectExpression(node, path, options, print, args) {
 
 	// Use AST builders and respect trailing commas
 	const properties = path.map(print, 'properties');
-	const shouldUseTrailingComma = options.trailingComma !== 'none' && properties.length > 0;
+	const shouldUseTrailingComma =
+		options.trailingComma !== 'none' && properties.length > 0;
 
 	// For arrays: very simple (1-prop) objects can be inline, 2-prop objects always multiline
 	// For attributes: force inline for simple objects
@@ -3671,7 +3836,12 @@ function printObjectExpression(node, path, options, print, args) {
 		const spacing = options.bracketSpacing === false ? softline : line;
 		const trailingDoc = shouldUseTrailingComma ? ifBreak(',', '') : '';
 
-		return group([open_brace, indent([spacing, propertyDoc, trailingDoc]), spacing, close_brace]);
+		return group([
+			open_brace,
+			indent([spacing, propertyDoc, trailingDoc]),
+			spacing,
+			close_brace,
+		]);
 	}
 
 	// For objects that were originally inline (single-line) and don't have blank lines,
@@ -3684,7 +3854,12 @@ function printObjectExpression(node, path, options, print, args) {
 		const spacing = options.bracketSpacing === false ? softline : line;
 		const trailingDoc = shouldUseTrailingComma ? ifBreak(',', '') : '';
 
-		return group([open_brace, indent([spacing, propertyDoc, trailingDoc]), spacing, close_brace]);
+		return group([
+			open_brace,
+			indent([spacing, propertyDoc, trailingDoc]),
+			spacing,
+			close_brace,
+		]);
 	}
 
 	/** @type {Doc[]} */
@@ -3706,18 +3881,31 @@ function printObjectExpression(node, path, options, print, args) {
 				// Determine the source node (end of previous property or its trailing comments)
 				/** @type {AST.Property | AST.SpreadElement | AST.Comment} */
 				let sourceNode = prevProp;
-				if (prevProp && prevProp.trailingComments && prevProp.trailingComments.length > 0) {
-					sourceNode = prevProp.trailingComments[prevProp.trailingComments.length - 1];
+				if (
+					prevProp &&
+					prevProp.trailingComments &&
+					prevProp.trailingComments.length > 0
+				) {
+					sourceNode =
+						prevProp.trailingComments[prevProp.trailingComments.length - 1];
 				}
 
 				// Determine the target node (start of current property or its leading comments)
 				/** @type {AST.Property | AST.SpreadElement | AST.Comment} */
 				let targetNode = currentProp;
-				if (currentProp && currentProp.leadingComments && currentProp.leadingComments.length > 0) {
+				if (
+					currentProp &&
+					currentProp.leadingComments &&
+					currentProp.leadingComments.length > 0
+				) {
 					targetNode = currentProp.leadingComments[0];
 				}
 
-				if (sourceNode && targetNode && getBlankLinesBetweenNodes(sourceNode, targetNode) > 0) {
+				if (
+					sourceNode &&
+					targetNode &&
+					getBlankLinesBetweenNodes(sourceNode, targetNode) > 0
+				) {
 					propertyParts.push(hardline);
 					propertyParts.push(hardline); // Two hardlines = blank line
 				} else {
@@ -4033,7 +4221,8 @@ function printMemberExpression(node, path, options, print) {
 	// Preserve parentheses around the entire member expression when present
 	if (node.metadata?.parenthesized) {
 		// Check if there are leading comments - if so, use group with softlines to allow breaking
-		const hasLeadingComments = node.leadingComments && node.leadingComments.length > 0;
+		const hasLeadingComments =
+			node.leadingComments && node.leadingComments.length > 0;
 		if (hasLeadingComments) {
 			result = group(['(', indent([softline, result]), softline, ')']);
 		} else {
@@ -4275,7 +4464,12 @@ function printTSInterfaceBody(node, path, options, print) {
 	// Add semicolons to all members
 	const membersWithSemicolons = members.map((member) => [member, semi(options)]);
 
-	return group(['{', indent([hardline, join(hardline, membersWithSemicolons)]), hardline, '}']);
+	return group([
+		'{',
+		indent([hardline, join(hardline, membersWithSemicolons)]),
+		hardline,
+		'}',
+	]);
 }
 
 /**
@@ -4508,7 +4702,12 @@ function printSwitchStatement(node, path, options, print) {
 	// Print leading comments from discriminant node before 'switch' keyword
 	parts.push(...extractAndPrintLeadingComments(discriminantNode));
 
-	const discriminantDoc = group(['switch (', indent([softline, discriminant]), softline, ')']);
+	const discriminantDoc = group([
+		'switch (',
+		indent([softline, discriminant]),
+		softline,
+		')',
+	]);
 
 	parts.push(discriminantDoc);
 
@@ -4522,7 +4721,9 @@ function printSwitchStatement(node, path, options, print) {
 	}
 
 	const bodyDoc =
-		cases.length > 0 ? [indent([hardline, join(hardline, cases)]), hardline] : hardline;
+		cases.length > 0
+			? [indent([hardline, join(hardline, cases)]), hardline]
+			: hardline;
 
 	parts.push(' {', bodyDoc, '}');
 
@@ -4556,7 +4757,8 @@ function printSwitchCase(node, path, options, print) {
 	let bodyDoc = null;
 	if (printedConsequents.length > 0) {
 		const singleBlock =
-			printedConsequents.length === 1 && referencedConsequents[0].type === 'BlockStatement';
+			printedConsequents.length === 1 &&
+			referencedConsequents[0].type === 'BlockStatement';
 		if (singleBlock) {
 			bodyDoc = [' ', printedConsequents[0]];
 		} else {
@@ -4576,13 +4778,17 @@ function printSwitchCase(node, path, options, print) {
 
 		for (let i = 0; i < node.trailingComments.length; i++) {
 			const comment = node.trailingComments[i];
-			const blankLines = previousNode ? getBlankLinesBetweenNodes(previousNode, comment) : 0;
+			const blankLines = previousNode
+				? getBlankLinesBetweenNodes(previousNode, comment)
+				: 0;
 			commentDocs.push(hardline);
 			for (let j = 0; j < blankLines; j++) {
 				commentDocs.push(hardline);
 			}
 			const commentDoc =
-				comment.type === 'Line' ? ['//', comment.value] : ['/*', comment.value, '*/'];
+				comment.type === 'Line'
+					? ['//', comment.value]
+					: ['/*', comment.value, '*/'];
 			commentDocs.push(commentDoc);
 			previousNode = comment;
 		}
@@ -4745,7 +4951,10 @@ function shouldAddBlankLine(currentNode, nextNode) {
 
 	// Special case: Always add blank line after import declarations when followed by non-imports
 	// This is standard Prettier behavior for separating imports from code
-	if (currentNode.type === 'ImportDeclaration' && nextNode.type !== 'ImportDeclaration') {
+	if (
+		currentNode.type === 'ImportDeclaration' &&
+		nextNode.type !== 'ImportDeclaration'
+	) {
 		return true;
 	}
 
@@ -4877,7 +5086,8 @@ function printProperty(node, path, options, print) {
 		return path.call(print, 'key');
 	}
 
-	const is_component = /** @type {AST.TSRXProperty} */ (node).value?.type === 'Component';
+	const is_component =
+		/** @type {AST.TSRXProperty} */ (node).value?.type === 'Component';
 
 	// Handle getter/setter methods
 	if (node.kind === 'get' || node.kind === 'set') {
@@ -4937,7 +5147,10 @@ function printProperty(node, path, options, print) {
 
 		if (is_component) {
 			methodParts.push(
-				path.call((childPath) => print(childPath, { skipComponentLabel: true }), 'value'),
+				path.call(
+					(childPath) => print(childPath, { skipComponentLabel: true }),
+					'value',
+				),
 			);
 			return methodParts;
 		}
@@ -4998,14 +5211,20 @@ function printVariableDeclarator(node, path, options, print) {
 
 			// Check if test is a LogicalExpression or BinaryExpression with complex operators
 			const hasComplexTest =
-				node.init.test.type === 'LogicalExpression' || node.init.test.type === 'BinaryExpression';
+				node.init.test.type === 'LogicalExpression' ||
+				node.init.test.type === 'BinaryExpression';
 
 			// Check if there are nested ternaries
 			const hasNestedTernary =
 				node.init.consequent.type === 'ConditionalExpression' ||
 				node.init.alternate.type === 'ConditionalExpression';
 
-			if (ternaryWillBreak || hasComplexBranch || hasComplexTest || hasNestedTernary) {
+			if (
+				ternaryWillBreak ||
+				hasComplexBranch ||
+				hasComplexTest ||
+				hasNestedTernary
+			) {
 				return [id, ' =', indent([line, init])];
 			}
 		}
@@ -5059,7 +5278,10 @@ function printVariableDeclarator(node, path, options, print) {
 
 		// For BinaryExpression or LogicalExpression, use break-after-operator layout
 		// This allows the expression to break naturally based on print width
-		if (node.init.type === 'BinaryExpression' || node.init.type === 'LogicalExpression') {
+		if (
+			node.init.type === 'BinaryExpression' ||
+			node.init.type === 'LogicalExpression'
+		) {
 			// Use Prettier's break-after-operator strategy: break after = and let the expression break naturally
 			const init = path.call(print, 'init');
 			return group([group(id), ' =', group(indent([line, init]))]);
@@ -5121,7 +5343,12 @@ function printTSTypeLiteral(node, path, options, print) {
 	);
 	const multilineMembers = members.map((member) => [member, ';']);
 
-	const inlineDoc = group(['{', indent([line, join(line, inlineMembers)]), line, '}']);
+	const inlineDoc = group([
+		'{',
+		indent([line, join(line, inlineMembers)]),
+		line,
+		'}',
+	]);
 
 	const multilineDoc = group([
 		'{',
@@ -5131,7 +5358,9 @@ function printTSTypeLiteral(node, path, options, print) {
 	]);
 
 	return conditionalGroup(
-		wasOriginallySingleLine(node) ? [inlineDoc, multilineDoc] : [multilineDoc, inlineDoc],
+		wasOriginallySingleLine(node)
+			? [inlineDoc, multilineDoc]
+			: [multilineDoc, inlineDoc],
 	);
 }
 
@@ -5524,7 +5753,10 @@ function shouldInlineSingleChild(parentNode, firstChild, childDoc) {
 
 	// Inline JSX expressions if they fit, but respect original multi-line formatting
 	// for non-literal expressions (e.g. {children} should stay multi-line if written that way)
-	if (firstChild.type === 'TSRXExpression' || firstChild.type === 'JSXExpressionContainer') {
+	if (
+		firstChild.type === 'TSRXExpression' ||
+		firstChild.type === 'JSXExpressionContainer'
+	) {
 		if (wasOriginallySingleLine(parentNode)) {
 			return true;
 		}
@@ -5827,7 +6059,8 @@ function printJSXElement(node, path, options, print) {
 	}
 
 	const isSelfClosing = openingElement.selfClosing;
-	const hasAttributes = openingElement.attributes && openingElement.attributes.length > 0;
+	const hasAttributes =
+		openingElement.attributes && openingElement.attributes.length > 0;
 	const hasChildren = node.children && node.children.length > 0;
 
 	/** @type {Doc} */
@@ -5859,8 +6092,15 @@ function printJSXElement(node, path, options, print) {
 						'attributes',
 						i,
 					);
-				} else if (attr.type === 'JSXSpreadAttribute' || attr.type === 'SpreadAttribute') {
-					attrDoc = ['{...', path.call(print, 'openingElement', 'attributes', i, 'argument'), '}'];
+				} else if (
+					attr.type === 'JSXSpreadAttribute' ||
+					attr.type === 'SpreadAttribute'
+				) {
+					attrDoc = [
+						'{...',
+						path.call(print, 'openingElement', 'attributes', i, 'argument'),
+						'}',
+					];
 				}
 				if (!hasBreakingAttribute && attrDoc && willBreak(attrDoc)) {
 					hasBreakingAttribute = true;
@@ -5874,9 +6114,12 @@ function printJSXElement(node, path, options, print) {
 	const shouldForceBreak = hasBreakingAttribute;
 
 	if (isSelfClosing) {
-		return group(['<', tagName, typeArgsDoc, attributesDoc, hasAttributes ? line : ' ', '/>'], {
-			shouldBreak: shouldForceBreak,
-		});
+		return group(
+			['<', tagName, typeArgsDoc, attributesDoc, hasAttributes ? line : ' ', '/>'],
+			{
+				shouldBreak: shouldForceBreak,
+			},
+		);
 	}
 
 	const openingTag = group(
@@ -5941,7 +6184,8 @@ function printJSXElement(node, path, options, print) {
 	const meaningfulChildren = node.children.filter(
 		(child) => child.type !== 'JSXText' || child.value.trim(),
 	);
-	const singleMeaningfulChild = meaningfulChildren.length === 1 ? meaningfulChildren[0] : null;
+	const singleMeaningfulChild =
+		meaningfulChildren.length === 1 ? meaningfulChildren[0] : null;
 	if (
 		childrenDocs.length === 1 &&
 		singleMeaningfulChild?.type === 'JSXExpressionContainer' &&
@@ -6071,7 +6315,11 @@ function printJSXMemberExpression(node) {
 		return node.name;
 	}
 	if (node.type === 'JSXMemberExpression') {
-		return printJSXMemberExpression(node.object) + '.' + printJSXMemberExpression(node.property);
+		return (
+			printJSXMemberExpression(node.object) +
+			'.' +
+			printJSXMemberExpression(node.property)
+		);
 	}
 	return 'Unknown';
 }
@@ -6100,7 +6348,9 @@ function printMemberExpressionSimple(node, options, computed = false) {
 	}
 
 	if (node.type === 'Literal') {
-		return computed ? formatStringLiteral(node.value, options) : JSON.stringify(node.value);
+		return computed
+			? formatStringLiteral(node.value, options)
+			: JSON.stringify(node.value);
 	}
 	return '';
 }
@@ -6123,7 +6373,10 @@ function is_attribute_value_breakable(value, is_nested_in_object = false) {
 			return value.properties.some(
 				(property) =>
 					property.type === 'Property' &&
-					is_attribute_value_breakable(/** @type {AST.Expression} */ (property.value), true),
+					is_attribute_value_breakable(
+						/** @type {AST.Expression} */ (property.value),
+						true,
+					),
 			);
 		default:
 			return false;
@@ -6158,7 +6411,8 @@ function printElement(element, path, options, print) {
 	const innerElementBodyComments = elementLeadingComments.filter(
 		(/** @type {AST.Comment} */ comment) =>
 			typeof comment.start === 'number' &&
-			comment.start >= /** @type {AST.NodeWithLocation} */ (node.openingElement).end &&
+			comment.start >=
+				/** @type {AST.NodeWithLocation} */ (node.openingElement).end &&
 			comment.start < node.end,
 	);
 	const metadataCommentParts =
@@ -6169,7 +6423,8 @@ function printElement(element, path, options, print) {
 	const shouldLiftTextLevelComments = outerElementLeadingComments.length === 0;
 
 	const hasChildren = Array.isArray(node.children) && node.children.length > 0;
-	const hasInnerComments = Array.isArray(node.innerComments) && node.innerComments.length > 0;
+	const hasInnerComments =
+		Array.isArray(node.innerComments) && node.innerComments.length > 0;
 	const isSelfClosing = !!node.selfClosing;
 	const hasAttributes = Array.isArray(node.attributes) && node.attributes.length > 0;
 
@@ -6182,7 +6437,9 @@ function printElement(element, path, options, print) {
 		const openingEnd = /** @type {AST.NodeWithLocation} */ (node.openingElement).end;
 		for (const child of node.children) {
 			if (
-				(child.type === 'TSRXExpression' || child.type === 'Text' || child.type === 'Html') &&
+				(child.type === 'TSRXExpression' ||
+					child.type === 'Text' ||
+					child.type === 'Html') &&
 				Array.isArray(child.leadingComments)
 			) {
 				for (const comment of child.leadingComments) {
@@ -6224,7 +6481,9 @@ function printElement(element, path, options, print) {
 
 	if (isSelfClosing && !hasInnerComments && !hasAttributes) {
 		const elementDoc = group(['<', tagName, typeArgsDoc, ' />']);
-		return metadataCommentParts.length > 0 ? [...metadataCommentParts, elementDoc] : elementDoc;
+		return metadataCommentParts.length > 0
+			? [...metadataCommentParts, elementDoc]
+			: elementDoc;
 	}
 
 	// Determine the line break type for attributes
@@ -6232,7 +6491,8 @@ function printElement(element, path, options, print) {
 	// Otherwise, use line to allow collapsing when it fits
 	const attrLineBreak = options.singleAttributePerLine ? hardline : line;
 
-	const shouldUseSelfClosingSyntax = isSelfClosing || (!hasChildren && !hasInnerComments);
+	const shouldUseSelfClosingSyntax =
+		isSelfClosing || (!hasChildren && !hasInnerComments);
 
 	const hasOpeningTagComments = openingTagCommentsSet.size > 0;
 	let attrIndex = 0;
@@ -6259,11 +6519,14 @@ function printElement(element, path, options, print) {
 				parts.push(attrLineBreak);
 				const attrDoc = print(attrPath);
 				parts.push(attrDoc);
-				const attr_node = /** @type {AST.Attribute | AST.SpreadAttribute} */ (attrPath.node);
+				const attr_node = /** @type {AST.Attribute | AST.SpreadAttribute} */ (
+					attrPath.node
+				);
 				if (
 					!hasBreakingAttribute &&
 					(willBreak(attrDoc) ||
-						(attr_node.type === 'Attribute' && is_attribute_value_breakable(attr_node.value)))
+						(attr_node.type === 'Attribute' &&
+							is_attribute_value_breakable(attr_node.value)))
 				) {
 					hasBreakingAttribute = true;
 				}
@@ -6300,7 +6563,9 @@ function printElement(element, path, options, print) {
 
 	if (!hasChildren) {
 		if (!hasInnerComments) {
-			return metadataCommentParts.length > 0 ? [...metadataCommentParts, openingTag] : openingTag;
+			return metadataCommentParts.length > 0
+				? [...metadataCommentParts, openingTag]
+				: openingTag;
 		}
 
 		/** @type {Doc[]} */
@@ -6337,7 +6602,9 @@ function printElement(element, path, options, print) {
 	const finalChildren = [];
 	const sortedInnerElementBodyComments =
 		innerElementBodyComments.length > 0
-			? innerElementBodyComments.slice().sort((a, b) => (a.start ?? 0) - (b.start ?? 0))
+			? innerElementBodyComments
+					.slice()
+					.sort((a, b) => (a.start ?? 0) - (b.start ?? 0))
 			: [];
 	let innerElementBodyCommentIndex = 0;
 
@@ -6347,13 +6614,20 @@ function printElement(element, path, options, print) {
 
 		// Insert any element-body comments that appear before this child.
 		if (innerElementBodyCommentIndex < sortedInnerElementBodyComments.length) {
-			const currentChildStart = typeof currentChild.start === 'number' ? currentChild.start : null;
+			const currentChildStart =
+				typeof currentChild.start === 'number' ? currentChild.start : null;
 			if (currentChildStart != null) {
 				const commentsBefore = [];
-				while (innerElementBodyCommentIndex < sortedInnerElementBodyComments.length) {
+				while (
+					innerElementBodyCommentIndex < sortedInnerElementBodyComments.length
+				) {
 					/** @type {AST.Comment} */
-					const comment = sortedInnerElementBodyComments[innerElementBodyCommentIndex];
-					if (typeof comment.start !== 'number' || comment.start >= currentChildStart) {
+					const comment =
+						sortedInnerElementBodyComments[innerElementBodyCommentIndex];
+					if (
+						typeof comment.start !== 'number' ||
+						comment.start >= currentChildStart
+					) {
 						break;
 					}
 					commentsBefore.push(comment);
@@ -6363,7 +6637,9 @@ function printElement(element, path, options, print) {
 					if (finalChildren.length > 0) {
 						finalChildren.push(hardline);
 					}
-					finalChildren.push(...createElementLevelCommentPartsTrimmed(commentsBefore));
+					finalChildren.push(
+						...createElementLevelCommentPartsTrimmed(commentsBefore),
+					);
 					finalChildren.push(hardline);
 				}
 			}
@@ -6384,8 +6660,14 @@ function printElement(element, path, options, print) {
 				: null;
 
 		if (hasTextLeadingComments) {
-			for (let j = 0; j < /** @type {AST.Comment[]} */ (currentChild.leadingComments).length; j++) {
-				const comment = /** @type {AST.Comment[]} */ (currentChild.leadingComments)[j];
+			for (
+				let j = 0;
+				j < /** @type {AST.Comment[]} */ (currentChild.leadingComments).length;
+				j++
+			) {
+				const comment = /** @type {AST.Comment[]} */ (currentChild.leadingComments)[
+					j
+				];
 				// Don't lift comments that belong inside the opening tag (handled in attribute section)
 				if (!openingTagCommentsSet.has(comment)) {
 					fallbackElementComments.push(comment);
@@ -6408,7 +6690,10 @@ function printElement(element, path, options, print) {
 
 		const childDoc =
 			rawExpressionLeadingComments && rawExpressionLeadingComments.length > 0
-				? [...createElementLevelCommentParts(rawExpressionLeadingComments), printedChild]
+				? [
+						...createElementLevelCommentParts(rawExpressionLeadingComments),
+						printedChild,
+					]
 				: printedChild;
 		finalChildren.push(childDoc);
 
@@ -6440,13 +6725,18 @@ function printElement(element, path, options, print) {
 				const lastComment = commentsBetween[commentsBetween.length - 1];
 
 				// Preserve any blank line(s) that existed between the previous child and the comment block.
-				const blankLinesBefore = getBlankLinesBetweenNodes(currentChild, firstComment);
+				const blankLinesBefore = getBlankLinesBetweenNodes(
+					currentChild,
+					firstComment,
+				);
 				finalChildren.push(hardline);
 				if (blankLinesBefore > 0) {
 					finalChildren.push(hardline);
 				}
 
-				finalChildren.push(...createElementLevelCommentPartsTrimmed(commentsBetween));
+				finalChildren.push(
+					...createElementLevelCommentPartsTrimmed(commentsBetween),
+				);
 
 				if (nextChild) {
 					// Preserve any blank line(s) that existed between the comment block and the next child.
@@ -6468,7 +6758,10 @@ function printElement(element, path, options, print) {
 				nextChild.leadingComments && nextChild.leadingComments.length > 0
 					? nextChild.leadingComments[0]
 					: nextChild;
-			const whitespaceLinesCount = getBlankLinesBetweenNodes(currentChild, whitespaceTarget);
+			const whitespaceLinesCount = getBlankLinesBetweenNodes(
+				currentChild,
+				whitespaceTarget,
+			);
 			const isTextOrHtmlChild =
 				currentChild.type === 'TSRXExpression' ||
 				currentChild.type === 'Text' ||
@@ -6506,13 +6799,18 @@ function printElement(element, path, options, print) {
 	if (closingElementComments.length > 0) {
 		const lastChild = node.children[node.children.length - 1];
 		if (lastChild) {
-			const blankLinesBefore = getBlankLinesBetweenNodes(lastChild, closingElementComments[0]);
+			const blankLinesBefore = getBlankLinesBetweenNodes(
+				lastChild,
+				closingElementComments[0],
+			);
 			finalChildren.push(hardline);
 			if (blankLinesBefore > 0) {
 				finalChildren.push(hardline);
 			}
 		}
-		finalChildren.push(...createElementLevelCommentPartsTrimmed(closingElementComments));
+		finalChildren.push(
+			...createElementLevelCommentPartsTrimmed(closingElementComments),
+		);
 	}
 
 	const fallbackCommentParts =
@@ -6537,7 +6835,10 @@ function printElement(element, path, options, print) {
 			firstChild && firstChild.type === 'Element' && !firstChild.selfClosing;
 		const isElementChild = firstChild && firstChild.type === 'Element';
 
-		if (typeof child === 'string' && shouldInlineSingleChild(node, firstChild, child)) {
+		if (
+			typeof child === 'string' &&
+			shouldInlineSingleChild(node, firstChild, child)
+		) {
 			elementOutput = group([openingTag, child, closingTag]);
 		} else if (
 			child &&
@@ -6546,18 +6847,40 @@ function printElement(element, path, options, print) {
 			shouldInlineSingleChild(node, firstChild, child)
 		) {
 			if (isElementChild && hasAttributes) {
-				elementOutput = [openingTag, indent([hardline, child]), hardline, closingTag];
+				elementOutput = [
+					openingTag,
+					indent([hardline, child]),
+					hardline,
+					closingTag,
+				];
 			} else {
-				elementOutput = group([openingTag, indent([softline, child]), softline, closingTag]);
+				elementOutput = group([
+					openingTag,
+					indent([softline, child]),
+					softline,
+					closingTag,
+				]);
 			}
 		} else {
-			elementOutput = [openingTag, indent([hardline, ...finalChildren]), hardline, closingTag];
+			elementOutput = [
+				openingTag,
+				indent([hardline, ...finalChildren]),
+				hardline,
+				closingTag,
+			];
 		}
 	} else {
-		elementOutput = group([openingTag, indent([hardline, ...finalChildren]), hardline, closingTag]);
+		elementOutput = group([
+			openingTag,
+			indent([hardline, ...finalChildren]),
+			hardline,
+			closingTag,
+		]);
 	}
 
-	return leadingCommentParts.length > 0 ? [...leadingCommentParts, elementOutput] : elementOutput;
+	return leadingCommentParts.length > 0
+		? [...leadingCommentParts, elementOutput]
+		: elementOutput;
 }
 
 /**
@@ -6576,7 +6899,9 @@ function printAttribute(node, path, options, print) {
 	// Check if either node.shorthand is true, OR if the value is an Identifier with the same name
 	const isShorthand =
 		node.shorthand ||
-		(node.value && node.value.type === 'Identifier' && node.value.name === node.name.name);
+		(node.value &&
+			node.value.type === 'Identifier' &&
+			node.value.name === node.name.name);
 
 	if (isShorthand) {
 		parts.push('{');
@@ -6594,13 +6919,18 @@ function printAttribute(node, path, options, print) {
 			parts.push('=');
 			const useJsxSingleQuote = options.jsxSingleQuote === true;
 			parts.push(
-				formatStringLiteral(node.value.value, { ...options, singleQuote: useJsxSingleQuote }),
+				formatStringLiteral(node.value.value, {
+					...options,
+					singleQuote: useJsxSingleQuote,
+				}),
 			);
 		} else {
 			// All other values need curly braces: numbers, booleans, null, expressions, etc.
 			parts.push('={');
 			// Pass inline context for attribute values (keep objects compact)
-			parts.push(path.call((attrPath) => print(attrPath, { isInAttribute: true }), 'value'));
+			parts.push(
+				path.call((attrPath) => print(attrPath, { isInAttribute: true }), 'value'),
+			);
 			parts.push('}');
 		}
 	}
