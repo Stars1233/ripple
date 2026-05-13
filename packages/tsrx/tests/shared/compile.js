@@ -2101,6 +2101,26 @@ export function optionalFn(bar: string, baz?: string) {
 			expect(code).toMatch(/compat=\{\(\) => \{\s+return <div/);
 		});
 
+		it('parses semicolon-less native TSRX returns in component prop arrow functions', () => {
+			const { code } = compile(
+				`component Card(props) {}
+
+				component App() {
+					<Card
+						children={() => {
+							return <tsrx>
+								<div>"Hello, World!"</div>
+							</tsrx>
+						}}
+					/>
+				}`,
+				'App.tsrx',
+			);
+
+			expect(code).not.toContain('<tsrx>');
+			expect(code).toContain('Hello, World!');
+		});
+
 		it('keeps expression child arrays in fragment, tsx, and compat callback props', () => {
 			const compat_kind = name === 'solid' ? 'solid' : 'react';
 			const { code } = compile(
