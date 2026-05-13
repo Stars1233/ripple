@@ -1,6 +1,7 @@
 prettier_common: &prettier_common ^3.8.3
 ts_common: &ts_common ^5.9.3
 ts_eslint_parser: &ts_eslint_parser ^8.56.1
+esrap_common: &esrap_common ^2.2.8
 
 packages:
   - packages/*
@@ -13,6 +14,7 @@ packages:
   - benchmarks
 
 overrides:
+  esrap: *esrap_common
   semver: ^7.7.4
 
 catalogs:
@@ -56,7 +58,7 @@ catalogs:
     devalue: ^5.7.1
     eslint: ^10.3.0
     esm-env: ^1.2.2
-    esrap: ^2.2.7
+    esrap: *esrap_common
     is-reference: ^3.0.3
     jsdom: ^29.0.2
     kleur: ^4.1.5
@@ -105,6 +107,3 @@ catalogs:
     typescript: *ts_common
   vscode:
     typescript: *ts_common
-
-patchedDependencies:
-  esrap@2.2.7: patches/esrap@2.2.7.patch
