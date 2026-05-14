@@ -53,11 +53,10 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 24.x
-          cache: "pnpm"
 
       - name: Install deps w/ pnpm
         working-directory: ./packages/vscode-plugin
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Build VSIX
         working-directory: ./packages/vscode-plugin
@@ -80,12 +79,22 @@ jobs:
         uses: actions/download-artifact@v7
         with:
           name: vscode-plugin VSIX
+          path: ./packages/vscode-plugin
 
       - name: Install pnpm
         uses: pnpm/action-setup@v6
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.x
+
+      - name: Install deps w/ pnpm
+        run: pnpm install --frozen-lockfile
+
       - name: Publish to VSM
-        run: pnpx -- @vscode/vsce publish -i *.vsix
+        working-directory: ./packages/vscode-plugin
+        run: pnpm exec vsce publish -i *.vsix
         env:
           VSCE_PAT: ${{ secrets.VSM_TOKEN }}
 
@@ -100,11 +109,21 @@ jobs:
         uses: actions/download-artifact@v7
         with:
           name: vscode-plugin VSIX
+          path: ./packages/vscode-plugin
 
       - name: Install pnpm
         uses: pnpm/action-setup@v6
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.x
+
+      - name: Install deps w/ pnpm
+        run: pnpm install --frozen-lockfile
+
       - name: Publish to OVSX
-        run: pnpx ovsx publish *.vsix
+        working-directory: ./packages/vscode-plugin
+        run: pnpm exec ovsx publish *.vsix
         env:
           OVSX_PAT: ${{ secrets.OVSX_TOKEN }}

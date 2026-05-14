@@ -58,7 +58,8 @@
     "tsdown": "catalog:default",
     "@vscode/vsce": "catalog:default",
     "adm-zip": "catalog:default",
-    "@types/adm-zip": "catalog:default"
+    "@types/adm-zip": "catalog:default",
+    "ovsx": "catalog:default"
   },
   "contributes": {
     "breakpoints": [

@@ -91,6 +91,7 @@ catalogs:
     marked: ^17.0.3
     muggle-string: ^0.4.1
     ora: ^9.3.0
+    ovsx: ^0.10.12
     polka: ^1.0.0-next.25
     preact: ^10.27.0
     prettier: *prettier_common
