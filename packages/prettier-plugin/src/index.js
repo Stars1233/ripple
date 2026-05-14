@@ -36,7 +36,7 @@ const {
 	indentIfBreak,
 	lineSuffix,
 } = builders;
-const { willBreak } = utils;
+const { replaceEndOfLine, willBreak } = utils;
 
 /** @type {import('prettier').Plugin['languages']} */
 export const languages = [
@@ -2236,7 +2236,7 @@ function printRippleNode(node, path, options, print, args) {
 
 		case 'Text': {
 			if (typeof node.raw === 'string') {
-				nodeContent = node.raw;
+				nodeContent = printRawText(node.raw);
 				break;
 			}
 
@@ -5502,6 +5502,27 @@ function printTSIndexedAccessType(node, path, options, print) {
 }
 
 /**
+ * Print direct TSRX text so it can wrap like JSX text when an element body breaks.
+ * @param {string} raw
+ * @returns {Doc}
+ */
+function printRawText(raw) {
+	const text = raw.trim().replace(/(?:\r\n|\r|\n)[^\S\r\n]+/gu, ' ');
+	if (!text) {
+		return '';
+	}
+
+	return fill(
+		text
+			.split(/([^\S\r\n]+)/u)
+			.filter(Boolean)
+			.map((part) => {
+				return /^[^\S\r\n]+$/u.test(part) ? line : replaceEndOfLine(part);
+			}),
+	);
+}
+
+/**
  * @param {AST.Node} parentNode
  * @param {AST.Node} firstChild
  * @param {Doc} childDoc
@@ -6270,6 +6291,8 @@ function printElement(element, path, options, print) {
 			}, 'attributes')
 		: [];
 	const shouldForceBreak = hasOpeningTagComments || hasBreakingAttribute;
+	const openingTagAlwaysBreaks =
+		(hasAttributes && options.singleAttributePerLine) || shouldForceBreak;
 	const openingTag = group([
 		'<',
 		tagName,
@@ -6551,9 +6574,19 @@ function printElement(element, path, options, print) {
 		const isNonSelfClosingElement =
 			firstChild && firstChild.type === 'Element' && !firstChild.selfClosing;
 		const isElementChild = firstChild && firstChild.type === 'Element';
+		const isRawTextChild =
+			firstChild && firstChild.type === 'Text' && typeof firstChild.raw === 'string';
 
-		if (typeof child === 'string' && shouldInlineSingleChild(node, firstChild, child)) {
-			elementOutput = group([openingTag, child, closingTag]);
+		if (
+			(typeof child === 'string' || isRawTextChild) &&
+			shouldInlineSingleChild(node, firstChild, child)
+		) {
+			elementOutput = openingTagAlwaysBreaks
+				? [openingTag, indent([hardline, child]), hardline, closingTag]
+				: conditionalGroup([
+						group([openingTag, child, closingTag]),
+						[openingTag, indent([hardline, child]), hardline, closingTag],
+					]);
 		} else if (
 			child &&
 			typeof child === 'object' &&

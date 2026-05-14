@@ -4,6 +4,14 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { languages } from './index.js';
 
+/**
+ * @typedef {typeof prettier & {
+ *   __debug: {
+ *     printToDoc: (code: string, options: import('prettier').Options) => Promise<import('prettier').Doc>;
+ *   };
+ * }} PrettierWithDebug
+ */
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -60,6 +68,41 @@ describe('prettier-plugin', () => {
 			plugins: [join(__dirname, 'index.js')],
 			...options,
 		});
+	};
+
+	/**
+	 * @param {string} code
+	 * @param {import('prettier').Options} [options]
+	 */
+	const printToDoc = async (code, options = {}) => {
+		const prettierWithDebug = /** @type {PrettierWithDebug} */ (prettier);
+		return await prettierWithDebug.__debug.printToDoc(code, {
+			parser: 'ripple',
+			plugins: [join(__dirname, 'index.js')],
+			...options,
+		});
+	};
+
+	/**
+	 * @param {unknown} doc
+	 * @param {(doc: Record<string, unknown>) => boolean} predicate
+	 * @returns {boolean}
+	 */
+	const docContains = (doc, predicate) => {
+		if (!doc || typeof doc !== 'object') {
+			return false;
+		}
+
+		if (Array.isArray(doc)) {
+			return doc.some((part) => docContains(part, predicate));
+		}
+
+		const objectDoc = /** @type {Record<string, unknown>} */ (doc);
+		if (predicate(objectDoc)) {
+			return true;
+		}
+
+		return Object.values(objectDoc).some((value) => docContains(value, predicate));
 	};
 
 	/**
@@ -1045,6 +1088,23 @@ export component Test({ a, b }: Props) {}`;
   >
     {'this is a button'}
   </button>
+}`;
+
+			const result = await format(input, {
+				singleQuote: true,
+				printWidth: 100,
+				singleAttributePerLine: true,
+			});
+			expect(result).toBeWithNewline(expected);
+		});
+
+		it('should not force attribute-less elements to break with singleAttributePerLine', async () => {
+			const input = `component One() {
+  <div>"Hello"</div>
+}`;
+
+			const expected = `component One() {
+  <div>"Hello"</div>
 }`;
 
 			const result = await format(input, {
@@ -3237,6 +3297,114 @@ const items = [] as unknown[];`;
 
 		const result = await format(input, { singleQuote: true });
 		expect(result).toBeWithNewline(expected);
+	});
+
+	it('should preserve literal newlines in direct double-quoted text children', async () => {
+		const input = `component App() {
+  <pre>"first
+second"</pre>
+}`;
+
+		const expected = `component App() {
+  <pre>"first
+second"</pre>
+}`;
+
+		const result = await format(input);
+		expect(result).toBeWithNewline(expected);
+	});
+
+	it('should wrap direct double-quoted text children idempotently', async () => {
+		const input = `component App() {
+  <p class="lede">
+    "Set up TSRX with React, Preact, Solid, Vue, or Ripple and then wire in the editor tooling that makes "
+    <code class="inline-code">".tsrx"</code>
+    " files feel native in the rest of your repo."
+  </p>
+}`;
+
+		const expected = `component App() {
+  <p class="lede">
+    "Set up TSRX with React, Preact, Solid, Vue, or Ripple and then wire in the editor tooling that
+    makes "
+    <code class="inline-code">".tsrx"</code>
+    " files feel native in the rest of your repo."
+  </p>
+}`;
+
+		const result = await format(input, { printWidth: 100 });
+		const secondResult = await format(result, { printWidth: 100 });
+		expect(result).toBeWithNewline(expected);
+		expect(secondResult).toBeWithNewline(expected);
+	});
+
+	it('should break long direct text children after inline attributes', async () => {
+		const input = `component App() {
+  <span
+      class={styles.notificationMessage}
+  >"The report is ready. Review the summary before sharing it with the team."</span>
+}`;
+
+		const expected = `component App() {
+  <span class={styles.notificationMessage}>
+    "The report is ready. Review the summary before sharing it with the team."
+  </span>
+}`;
+
+		const result = await format(input, { printWidth: 80 });
+		expect(result).toBeWithNewline(expected);
+	});
+
+	it('should wrap long direct text children when elements break', async () => {
+		const input = `component App() {
+  <span class={styles.notificationMessage}>"The report is ready. Review the summary before sharing it with the team."</span>
+}`;
+
+		const expectedPrintWidth70 = `component App() {
+  <span class={styles.notificationMessage}>
+    "The report is ready. Review the summary before sharing it with
+    the team."
+  </span>
+}`;
+		const expectedPrintWidth40 = `component App() {
+  <span
+    class={styles.notificationMessage}
+  >
+    "The report is ready. Review the
+    summary before sharing it with the
+    team."
+  </span>
+}`;
+
+		const resultPrintWidth70 = await format(input, { printWidth: 70 });
+		expect(resultPrintWidth70).toBeWithNewline(expectedPrintWidth70);
+
+		const resultPrintWidth40 = await format(input, { printWidth: 40 });
+		expect(resultPrintWidth40).toBeWithNewline(expectedPrintWidth40);
+	});
+
+	it('should keep direct text children on the text-specific conditional layout path', async () => {
+		const input = `component App() {
+  <div>"The report is ready. Review the summary before sharing it with the team."</div>
+}`;
+
+		const doc = await printToDoc(input, { printWidth: 70 });
+		const hasConditionalTextGroup = docContains(doc, (part) => {
+			return (
+				part.type === 'group' &&
+				Array.isArray(part.expandedStates) &&
+				docContains(part.contents, (childPart) => {
+					return (
+						childPart.type === 'fill' &&
+						Array.isArray(childPart.parts) &&
+						childPart.parts.some((part) => Array.isArray(part) && part.includes('"The')) &&
+						childPart.parts.some((part) => Array.isArray(part) && part.includes('team."'))
+					);
+				})
+			);
+		});
+
+		expect(hasConditionalTextGroup).toBe(true);
 	});
 
 	it('should not insert a new line between js and jsx if not provided', async () => {
