@@ -261,6 +261,43 @@ describe('@tsrx/vue basic', () => {
 		expect(prop_mapping?.data.verification).toBe(true);
 	});
 
+	it('maps Vue component declarations to the generated function in Volar TSX', () => {
+		const source = `import { ref } from 'vue';
+
+		component App() {
+			const count = ref(0);
+			<button>{count.value}</button>
+		}`;
+		const result = compile_to_volar_mappings(source, 'App.tsrx');
+		const source_component_offset = source.indexOf('component');
+		const source_name_offset = source.indexOf('App');
+		const generated_function_keyword_offset = result.code.indexOf('function App');
+		const generated_function_name_offset = generated_function_keyword_offset + 'function '.length;
+		const generated_define_offset = result.code.indexOf('defineVaporComponent(function App');
+		const generated_outer_name_offset = result.code.indexOf('const App') + 'const '.length;
+		const find_generated_mapping = (offset) =>
+			result.mappings.find(
+				(mapping) =>
+					mapping.generatedOffsets[0] <= offset &&
+					offset < mapping.generatedOffsets[0] + mapping.generatedLengths[0],
+			);
+		const name_mappings = result.mappings.filter(
+			(mapping) =>
+				mapping.sourceOffsets[0] === source_name_offset && mapping.lengths[0] === 'App'.length,
+		);
+		const component_keyword_mapping = result.mappings.find(
+			(mapping) =>
+				mapping.sourceOffsets[0] === source_component_offset &&
+				mapping.lengths[0] === 'component'.length,
+		);
+
+		expect(name_mappings).toHaveLength(1);
+		expect(name_mappings[0].generatedOffsets[0]).toBe(generated_function_name_offset);
+		expect(component_keyword_mapping?.generatedOffsets[0]).toBe(generated_function_keyword_offset);
+		expect(find_generated_mapping(generated_define_offset)).toBeUndefined();
+		expect(find_generated_mapping(generated_outer_name_offset)).toBeUndefined();
+	});
+
 	it('rejects {ref ...} on composite components', () => {
 		expect(() =>
 			compile(
@@ -855,23 +892,122 @@ describe('@tsrx/vue basic', () => {
 		expect(code).not.toContain('Suspense');
 	});
 
-	it('rejects pending blocks in component try statements with a Vue-specific explanation', () => {
-		expect(() =>
-			compile(
-				`component App() {
-					try {
-						<div>{'Async content'}</div>
-					} pending {
-						<div>{'Loading...'}</div>
-					} catch (error, reset) {
-						<button onClick={reset}>{error.message}</button>
-					}
-				}`,
-				'App.tsrx',
-			),
-		).toThrow(
-			/Vue TSRX does not support `pending` blocks in component templates yet\. Vue Suspense uses fallback slots rather than a `fallback` prop/,
+	it('compiles try/pending into a Vue Suspense slot boundary', () => {
+		const { code } = compile(
+			`component App() {
+				try {
+					<div>{'Async content'}</div>
+				} pending {
+					<div>{'Loading...'}</div>
+				}
+			}`,
+			'App.tsrx',
 		);
+
+		expect(code).toContain('Suspense');
+		expect(code).toContain("from 'vue'");
+		expect(code).toContain('v-slots=');
+		expect(code).toContain('default: () =>');
+		expect(code).toContain('fallback: () =>');
+		expect(code).toContain("{'Loading...'}");
+		expect(code).not.toContain('fallback={');
+		expect(code).not.toContain('TsrxErrorBoundary');
+	});
+
+	it('compiles empty pending blocks as null Vue Suspense fallbacks', () => {
+		const { code } = compile(
+			`component App() {
+				try {
+					<div>{'Async content'}</div>
+				} pending {}
+			}`,
+			'App.tsrx',
+		);
+
+		expect(code).toContain('Suspense');
+		expect(code).toContain('v-slots=');
+		expect(code).toContain('default: () =>');
+		expect(code).not.toContain('fallback: () =>');
+		expect(code).not.toContain('fallback={');
+	});
+
+	it('compiles try/pending/catch into an error boundary around Suspense', () => {
+		const { code } = compile(
+			`component App() {
+				const suffix = '!';
+
+				try {
+					<div>{'Async content'}</div>
+				} pending {
+					<div>{'Loading...'}</div>
+				} catch (error, reset) {
+					<button onClick={reset}>{error.message}{suffix}</button>
+				}
+			}`,
+			'App.tsrx',
+		);
+
+		expect(code).toContain('TsrxErrorBoundary');
+		expect(code).toContain("from '@tsrx/vue/error-boundary'");
+		expect(code).toContain('Suspense');
+		expect(code).toContain("from 'vue'");
+		expect(code).toContain('v-slots=');
+		expect(code).toContain('content={() => <Suspense');
+		expect(code).toContain('default: () =>');
+		expect(code).toContain('content={() =>');
+		expect(code).toContain('error.message');
+		expect(code.match(/error\.message/g)).toHaveLength(1);
+		expect(code).toContain('StatementBodyHook');
+		expect(code).toContain('suffix={suffix}');
+
+		const error_boundary_index = code.indexOf('<TsrxErrorBoundary');
+		const suspense_index = code.indexOf('<Suspense');
+		expect(error_boundary_index).toBeLessThan(suspense_index);
+	});
+
+	it('keeps try/pending/catch Suspense lowering valid in type-only output', () => {
+		const source = `import { defineVaporAsyncComponent } from 'vue';
+
+			component AsyncResolvedChild(props: { value: string }) {
+				<p class="async-resolved">{props.value}</p>
+			}
+
+			component App(props: { promise: Promise<typeof AsyncResolvedChild> }) {
+				const suffix = '!';
+				const AsyncChild = defineVaporAsyncComponent(() => props.promise);
+
+				try {
+					<AsyncChild value="hello" />
+				} pending {
+					<p class="async-pending">{'loading...'}</p>
+				} catch (err) {
+					<p class="async-caught">{(err as Error).message}{suffix}</p>
+				}
+			}`;
+		const { code, errors, mappings } = compile_to_volar_mappings(source, 'App.tsrx');
+
+		expect(errors).toHaveLength(0);
+		expect(code).toContain('TsrxErrorBoundary');
+		expect(code).toContain('Suspense');
+		expect(code).toContain('fallback={(err, _reset) =>');
+		expect(code).toContain('default: () => (() => {');
+		expect(code).toContain('return <AsyncChild value="hello" />;');
+		expect(code).not.toContain('catch(_error)');
+		expect(code).not.toContain('return ((err, _reset) =>');
+		expect(code).not.toContain('err: any');
+		expect(code).not.toContain('suffix: typeof');
+		expect(code).not.toContain('StatementBodyHook');
+		expect(code).not.toContain('let App__StatementBodyHook1');
+		expect(code).not.toContain('_tsrx_StatementBodyHook1_err = err');
+
+		const catch_param_offset = source.indexOf('catch (err)') + 'catch ('.length;
+		expect(
+			mappings.some((mapping) => {
+				const start = mapping.sourceOffsets[0];
+				const end = start + mapping.lengths[0];
+				return start <= catch_param_offset && catch_param_offset < end;
+			}),
+		).toBe(true);
 	});
 
 	it('rejects JavaScript try/finally in component bodies', () => {

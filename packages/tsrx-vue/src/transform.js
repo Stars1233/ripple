@@ -4,10 +4,12 @@ import { walk } from 'zimmerframe';
 import is_reference from 'is-reference';
 import {
 	builders,
+	addJsxSetupDeclaration,
 	clone_expression_node,
 	clone_identifier,
 	contains_component_jsx,
 	CREATE_REF_PROP_INTERNAL_NAME,
+	createHookSafeHelper,
 	create_generated_identifier,
 	componentToFunctionDeclaration,
 	createJsxTransform,
@@ -46,8 +48,6 @@ const vue_platform = {
 	validation: {
 		requireUseServerForAwait: true,
 		scanUseServerDirectiveForAwaitWithCustomValidator: false,
-		unsupportedTryPendingMessage:
-			'Vue TSRX does not support `pending` blocks in component templates yet. Vue Suspense uses fallback slots rather than a `fallback` prop, so `try { ... } pending { ... }` cannot be lowered correctly for this target yet.',
 	},
 	hooks: {
 		// Hoist to module scope
@@ -83,8 +83,51 @@ const vue_platform = {
 		},
 		renderForOf: (node, loop_params, body_statements, ctx) =>
 			render_for_of_as_vapor_for(node, loop_params, body_statements, ctx),
+		createPendingBoundary(try_content, fallback_content) {
+			return create_vapor_pending_boundary(try_content, fallback_content);
+		},
+		createErrorFallbackComponent(catch_body_nodes, catch_params, ctx, node) {
+			if (ctx.typeOnly) return null;
+			return create_module_scoped_error_fallback_component(
+				catch_body_nodes,
+				catch_params,
+				ctx,
+				node,
+			);
+		},
+		createErrorBoundary(try_content, raw_try_content, fallback_fn, ctx, node, info) {
+			if (!node.pending) {
+				return null;
+			}
+			const fallback_content = /** @type {any} */ (try_content.metadata)?.vapor_pending_fallback;
+			if (!fallback_content) {
+				return create_vapor_error_boundary(try_content, fallback_fn);
+			}
+			const fallback_component = info?.fallbackComponent ?? null;
+			const fallback_renderer = fallback_component
+				? create_fallback_component_renderer(fallback_component, fallback_fn)
+				: fallback_fn;
+			const default_slot = ctx.typeOnly
+				? builders.arrow([], jsx_child_to_expression(raw_try_content))
+				: create_sync_error_boundary_slot(
+						raw_try_content,
+						fallback_fn,
+						fallback_component,
+						node.block,
+						node,
+					);
+			const suspense = create_vapor_pending_boundary_from_default_slot(
+				default_slot,
+				fallback_content,
+			);
+			const boundary = create_vapor_error_boundary(suspense, fallback_renderer);
+			for (const statement of fallback_component?.setup_statements ?? []) {
+				addJsxSetupDeclaration(boundary, statement);
+			}
+			return boundary;
+		},
 		createErrorBoundaryContent(try_content) {
-			return builders.arrow([], try_content.expression);
+			return builders.arrow([], jsx_child_to_expression(try_content));
 		},
 		transformElementChildren(node, walked_children, raw_children, attributes, ctx) {
 			return rewrite_host_text_or_html_children(
@@ -115,6 +158,207 @@ const vue_platform = {
 };
 
 export const transform = createJsxTransform(vue_platform);
+
+/**
+ * @param {any} try_content
+ * @param {any} fallback_content
+ * @returns {any}
+ */
+function create_vapor_pending_boundary(try_content, fallback_content) {
+	return create_vapor_pending_boundary_from_default_slot(
+		builders.arrow([], jsx_child_to_expression(try_content)),
+		fallback_content,
+	);
+}
+
+/**
+ * @param {any} default_slot
+ * @param {any} fallback_content
+ * @returns {any}
+ */
+function create_vapor_pending_boundary_from_default_slot(default_slot, fallback_content) {
+	const fallback_expression = jsx_child_to_expression(fallback_content);
+	const slots_properties = [
+		builders.init('_', builders.literal(1)),
+		builders.init('default', default_slot),
+	];
+
+	if (fallback_expression.type !== 'Literal' || fallback_expression.value !== null) {
+		slots_properties.push(builders.init('fallback', builders.arrow([], fallback_expression)));
+	}
+
+	const slots = builders.object(slots_properties);
+
+	const boundary = builders.jsx_element_fresh(
+		builders.jsx_opening_element(
+			builders.jsx_id('Suspense'),
+			[builders.jsx_attribute(builders.jsx_id('v-slots'), to_jsx_expression_container(slots))],
+			true,
+		),
+		null,
+		[],
+	);
+	/** @type {any} */ (boundary.metadata).vapor_pending_fallback = fallback_content;
+	return boundary;
+}
+
+/**
+ * @param {any[]} catch_body_nodes
+ * @param {any[]} catch_params
+ * @param {any} ctx
+ * @param {any} node
+ * @returns {any}
+ */
+function create_module_scoped_error_fallback_component(catch_body_nodes, catch_params, ctx, node) {
+	const saved_module_scoped = ctx.module_scoped_hook_components;
+	ctx.module_scoped_hook_components = true;
+	try {
+		return createHookSafeHelper(catch_body_nodes, undefined, node.handler ?? node, ctx, undefined, {
+			transientBindings: get_pattern_names(catch_params),
+		});
+	} finally {
+		ctx.module_scoped_hook_components = saved_module_scoped;
+	}
+}
+
+/**
+ * Catch synchronous setup errors directly in the Suspense default slot so
+ * Suspense can still observe async children while `catch` handles immediate
+ * render failures.
+ *
+ * @param {any} content
+ * @param {any} fallback_fn
+ * @param {{ component_element: any } | null} fallback_component
+ * @param {any} source_block
+ * @param {any} source_try
+ * @returns {any}
+ */
+function create_sync_error_boundary_slot(
+	content,
+	fallback_fn,
+	fallback_component,
+	source_block,
+	source_try,
+) {
+	const error_id = create_generated_identifier('_error');
+	const content_expression = jsx_child_to_expression(content);
+	const fallback_expression = fallback_component
+		? create_fallback_component_element(fallback_component, fallback_fn, [
+				error_id,
+				builders.arrow([], builders.block([])),
+			])
+		: builders.call(
+				builders.parenthesized(fallback_fn),
+				clone_identifier(error_id),
+				builders.arrow([], builders.block([])),
+			);
+	const try_block = setLocation(
+		builders.block([builders.return(content_expression)]),
+		source_block,
+		true,
+	);
+	const try_statement = setLocation(
+		builders.try(
+			try_block,
+			{
+				type: 'CatchClause',
+				param: error_id,
+				body: builders.block([builders.return(fallback_expression)]),
+				metadata: { path: [] },
+			},
+			null,
+			null,
+		),
+		source_try,
+		true,
+	);
+	return builders.arrow([], builders.block([try_statement]));
+}
+
+/**
+ * @param {{ component_element: any }} fallback_component
+ * @param {any} fallback_fn
+ * @returns {any}
+ */
+function create_fallback_component_renderer(fallback_component, fallback_fn) {
+	return builders.arrow(
+		fallback_fn.params.map((/** @type {any} */ param) => clone_expression_node(param, false)),
+		builders.block([
+			builders.return(create_fallback_component_element(fallback_component, fallback_fn)),
+		]),
+	);
+}
+
+/**
+ * @param {{ component_element: any }} fallback_component
+ * @param {any} fallback_fn
+ * @param {any[]} [replacement_args]
+ * @returns {any}
+ */
+function create_fallback_component_element(fallback_component, fallback_fn, replacement_args = []) {
+	const element = clone_expression_node(fallback_component.component_element, false);
+	const replacements = new Map();
+	for (let i = 0; i < fallback_fn.params.length && i < replacement_args.length; i += 1) {
+		const param = fallback_fn.params[i];
+		if (param?.type === 'Identifier') {
+			replacements.set(param.name, replacement_args[i]);
+		}
+	}
+
+	for (const attr of element.openingElement?.attributes ?? []) {
+		const attr_name = attr.name?.name;
+		if (!attr_name || !replacements.has(attr_name)) continue;
+		attr.value = to_jsx_expression_container(replacements.get(attr_name), attr.value ?? attr);
+	}
+
+	return element;
+}
+
+/**
+ * @param {any[]} patterns
+ * @returns {Set<string>}
+ */
+function get_pattern_names(patterns) {
+	const names = new Set();
+	for (const pattern of patterns) {
+		collect_pattern_names(pattern, names);
+	}
+	return names;
+}
+
+/**
+ * @param {any} child
+ * @returns {any}
+ */
+function jsx_child_to_expression(child) {
+	return child?.type === 'JSXExpressionContainer' ? child.expression : child;
+}
+
+/**
+ * @param {any} content
+ * @param {any} fallback_fn
+ * @returns {any}
+ */
+function create_vapor_error_boundary(content, fallback_fn) {
+	return builders.jsx_element_fresh(
+		builders.jsx_opening_element(
+			builders.jsx_id('TsrxErrorBoundary'),
+			[
+				builders.jsx_attribute(
+					builders.jsx_id('fallback'),
+					to_jsx_expression_container(fallback_fn),
+				),
+				builders.jsx_attribute(
+					builders.jsx_id('content'),
+					to_jsx_expression_container(builders.arrow([], jsx_child_to_expression(content))),
+				),
+			],
+			true,
+		),
+		null,
+		[],
+	);
+}
 
 /**
  * Vue's `VNodeRef` type is wider than TSRX host refs because it also supports
@@ -158,14 +402,13 @@ function component_to_vapor_component_declaration(component, transform_context, 
 		function_declaration_to_expression(fn),
 		generated_helpers,
 		generated_statics,
-		component,
 	);
 
 	if (component.default || !component.id) {
 		return call;
 	}
 
-	const component_id = clone_identifier(component.id);
+	const component_id = create_generated_identifier(component.id.name);
 	const fn_id = fn.type === 'FunctionDeclaration' ? fn.id : null;
 	component_id.metadata = {
 		...component_id.metadata,
@@ -179,7 +422,7 @@ function component_to_vapor_component_declaration(component, transform_context, 
 		generated_helpers,
 		generated_statics,
 	});
-	return setLocation(/** @type {any} */ (declaration), component);
+	return declaration;
 }
 
 /**
@@ -193,12 +436,7 @@ function wrap_helper_component(helper_fn, helper_id, source_node) {
 		builders.declaration('const', [
 			builders.declarator(
 				clone_identifier(helper_id),
-				create_define_vapor_component_call(
-					function_declaration_to_expression(helper_fn),
-					[],
-					[],
-					source_node,
-				),
+				create_define_vapor_component_call(function_declaration_to_expression(helper_fn), [], []),
 			),
 		]),
 		source_node,
@@ -209,21 +447,15 @@ function wrap_helper_component(helper_fn, helper_id, source_node) {
  * @param {any} fn_expression
  * @param {any[]} generated_helpers
  * @param {any[]} generated_statics
- * @param {any} source_node
  * @returns {any}
  */
-function create_define_vapor_component_call(
-	fn_expression,
-	generated_helpers,
-	generated_statics,
-	source_node,
-) {
+function create_define_vapor_component_call(fn_expression, generated_helpers, generated_statics) {
 	const call = builders.call('defineVaporComponent', fn_expression);
 	Object.assign(/** @type {any} */ (call.metadata), {
 		generated_helpers,
 		generated_statics,
 	});
-	return setLocation(call, source_node);
+	return call;
 }
 
 /**
