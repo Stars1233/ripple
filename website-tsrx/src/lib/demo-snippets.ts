@@ -150,6 +150,20 @@ export component App() {
     <AsyncProfile />
   } pending {
     <p class="pending">"Loading profile..."</p>
+  }
+}`,
+	},
+	{
+		value: 'async-boundary-error',
+		label: 'Async + Error boundary',
+		targets: ['react', 'preact', 'ripple', 'solid', 'vue'],
+		source: `import { AsyncProfile } from './profile.tsrx';
+
+export component App() {
+  try {
+    <AsyncProfile />
+  } pending {
+    <p class="pending">"Loading profile..."</p>
   } catch (error) {
     <p class="error">{(error as Error).message}</p>
   }
