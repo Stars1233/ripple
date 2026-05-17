@@ -4296,6 +4296,10 @@ function printTSTypeAliasDeclaration(node, path, options, print) {
 		head.push(path.call(print, 'typeParameters'));
 	}
 
+	if (node.typeAnnotation.type === 'TSTypeLiteral') {
+		return group([head, ' = ', path.call(print, 'typeAnnotation'), semi(options)]);
+	}
+
 	return group([head, ' =', indent([line, path.call(print, 'typeAnnotation')]), semi(options)]);
 }
 

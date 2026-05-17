@@ -3607,6 +3607,17 @@ second"</pre>
 			expect(result).toBeWithNewline(expected);
 		});
 
+		it('should not overindent multiline object type aliases', async () => {
+			const input = `type ModuleShape = {
+  default: ComponentType<{ value: string }>;
+}`;
+			const expected = `type ModuleShape = {
+  default: ComponentType<{ value: string }>;
+};`;
+			const result = await format(input);
+			expect(result).toBeWithNewline(expected);
+		});
+
 		it('should format TypeScript tuple types (TSTupleType)', async () => {
 			const input = `type T = [string, number, boolean];`;
 			const expected = `type T = [string, number, boolean];`;
