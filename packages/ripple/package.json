@@ -75,18 +75,9 @@
     "devalue": "catalog:default",
     "esm-env": "catalog:default",
     "@tsrx/core": "workspace:*",
-    "@tsrx/ripple": "workspace:*",
-    "@types/estree": "catalog:default",
-    "@types/estree-jsx": "catalog:default"
+    "@tsrx/ripple": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "catalog:default",
-    "@typescript-eslint/types": "catalog:default",
-    "typescript": "catalog:default",
-    "@volar/language-core": "catalog:default",
-    "vscode-languageserver-types": "catalog:default"
-  },
-  "peerDependencies": {
-    "ripple": "workspace:*"
+    "@types/node": "catalog:default"
   }
 }

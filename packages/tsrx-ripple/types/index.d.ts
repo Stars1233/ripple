@@ -5,7 +5,6 @@
  */
 import type * as AST from 'estree';
 import type {
-	CompileError,
 	CompileFn,
 	CompileOptions,
 	CompileResult,
@@ -15,11 +14,6 @@ import type {
 } from '@tsrx/core/types';
 
 export type * from '@tsrx/core/types';
-
-/**
- * Backward-compatible alias for CompileError
- */
-export type TSRXCompileError = CompileError;
 
 /**
  * Ripple's compile result extends the shared {@link CompileResult} with a

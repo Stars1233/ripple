@@ -6,8 +6,6 @@ import { fileURLToPath } from 'url';
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = process.env.NODE_ENV !== 'production';
 const ROOT_EXTERNAL_PACKAGES = [
-	'@tsrx/react',
-	'@tsrx/ripple',
 	'@tsrx/core',
 	'typescript',
 	'vscode-uri',

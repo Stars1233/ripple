@@ -30,6 +30,8 @@
     "@volar/typescript": "catalog:default"
   },
   "devDependencies": {
+    "@tsrx/core": "workspace:*",
+    "@types/estree": "catalog:default",
     "@types/node": "catalog:default",
     "tsdown": "catalog:default"
   },

@@ -3,7 +3,7 @@
  * @import {TextDocument} from 'vscode-languageserver-textdocument';
  * @import {TSRXVirtualCodeInstance} from '@tsrx/typescript-plugin/src/language.js';
  */
-/** @import {TSRXCompileError} from '@tsrx/ripple'; */
+/** @import {CompileError} from '@tsrx/core/types'; */
 
 import { getVirtualCode, createLogging } from './utils.js';
 
@@ -61,7 +61,7 @@ export function createCompileErrorDiagnosticPlugin() {
 }
 
 /**
- * @param {TSRXCompileError} error
+ * @param {CompileError} error
  * @param {TSRXVirtualCodeInstance} virtualCode
  * @param {Mapper | undefined} sourceMap
  * @param {TextDocument} document
@@ -120,7 +120,7 @@ function parseCompilationErrorWithDocument(error, virtualCode, sourceMap, docume
 }
 
 /**
- * @param {TSRXCompileError} error
+ * @param {CompileError} error
  * @param {TextDocument} document
  * @returns {Range}
  */
@@ -133,7 +133,7 @@ function get_error_range_from_source(error, document) {
 }
 
 /**
- * @param {TSRXCompileError} error
+ * @param {CompileError} error
  * @param {number} [start_offset]
  * @returns {number}
  */
@@ -147,7 +147,7 @@ function get_end_offset_from_error(error, start_offset) {
 }
 
 /**
- * @param {TSRXCompileError} error
+ * @param {CompileError} error
  * @returns {number}
  */
 function get_start_offset_from_error(error) {

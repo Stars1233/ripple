@@ -5420,7 +5420,13 @@ function create_tsx_with_typescript_support(comments) {
 			}
 		},
 		ClassDeclaration(node, context) {
+			if (node.loc) {
+				context.location(node.loc.start.line, node.loc.start.column);
+			}
 			context.write('class ');
+			if (node.loc) {
+				context.location(node.loc.start.line, node.loc.start.column + 'class'.length);
+			}
 			if (node.id) {
 				context.visit(node.id);
 			}
@@ -5445,7 +5451,13 @@ function create_tsx_with_typescript_support(comments) {
 			context.visit(node.body);
 		},
 		ClassExpression(node, context) {
+			if (node.loc) {
+				context.location(node.loc.start.line, node.loc.start.column);
+			}
 			context.write('class');
+			if (node.loc) {
+				context.location(node.loc.start.line, node.loc.start.column + 'class'.length);
+			}
 			if (node.id) {
 				context.write(' ');
 				context.visit(node.id);

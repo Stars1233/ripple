@@ -413,6 +413,15 @@ export default defineConfig({
 			},
 			{
 				test: {
+					name: 'language-server',
+					include: ['packages/language-server/tests/**/*.test.js'],
+					environment: 'node',
+					globals: true,
+				},
+				plugins: [],
+			},
+			{
+				test: {
 					name: 'tsrx-mcp',
 					include: ['packages/tsrx-mcp/tests/**/*.test.js'],
 					environment: 'node',

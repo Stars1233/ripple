@@ -4,6 +4,7 @@ import {
 } from '@tsrx/core/test-harness/compile';
 import { compile, compile_to_volar_mappings } from '../src/index.js';
 import { describe, expect, it } from 'vitest';
+import { find_exact_mapping } from '../../tsrx/src/source-map-utils.js';
 
 runSharedClassComponentDeclarationTests({
 	compile,
@@ -15,6 +16,37 @@ runSharedComponentParamsTests({
 	compile,
 	compile_to_volar_mappings,
 	name: 'ripple',
+});
+
+describe('@tsrx/ripple Volar mappings cover declaration keywords', () => {
+	/**
+	 * @param {string} source
+	 */
+	const expect_class_keyword_mapping = (source) => {
+		const result = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
+		const source_class_offset = source.indexOf('class');
+		const generated_class_offset = result.code.indexOf('class');
+		const mapping = find_exact_mapping(
+			result.mappings,
+			source_class_offset,
+			generated_class_offset,
+			'class'.length,
+		);
+
+		expect(mapping?.data.structure).toBe(true);
+	};
+
+	it('maps named class keywords', () => {
+		expect_class_keyword_mapping(`class Store {
+	value = 1;
+}`);
+	});
+
+	it('maps anonymous default class keywords', () => {
+		expect_class_keyword_mapping(`export default class {
+	value = 1;
+}`);
+	});
 });
 
 describe('@tsrx/ripple try pending fallbacks', () => {

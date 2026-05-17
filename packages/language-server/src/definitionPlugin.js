@@ -1,5 +1,5 @@
 /** @import { LanguageServicePlugin, LocationLink } from '@volar/language-server'; */
-/** @import { DefinitionLocation } from '@tsrx/ripple'; */
+/** @import { DefinitionLocation } from '@tsrx/core/types'; */
 
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { getVirtualCode, createLogging, getWordFromPosition } from './utils.js';

@@ -295,6 +295,25 @@ export function build_line_offsets(text) {
 }
 
 /**
+ * ONLY USE THIS FOR TESTS
+ *
+ * @param {CodeMapping[]} mappings
+ * @param {number} source_offset
+ * @param {number} generated_offset
+ * @param {number} length
+ * @returns {CodeMapping | undefined}
+ */
+export function find_exact_mapping(mappings, source_offset, generated_offset, length) {
+	return mappings.find(
+		(mapping) =>
+			mapping.sourceOffsets[0] === source_offset &&
+			mapping.generatedOffsets[0] === generated_offset &&
+			mapping.lengths[0] === length &&
+			mapping.generatedLengths[0] === length,
+	);
+}
+
+/**
  * DO NOT EXPORT THIS FUNCTION!
  * THE FIX NEEDS TO HAPPEN IN THE TRANSFORMER, SEGMENTS OR PARSER
  * @param {AST.Node | AST.NodeWithLocation} node

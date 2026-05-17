@@ -1585,6 +1585,7 @@ export interface VolarMappingsResult {
 	mappings: CodeMapping[];
 	cssMappings: CodeMapping[];
 	errors: CompileError[];
+	sourceAst: AST.Program;
 }
 
 /**

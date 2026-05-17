@@ -19,7 +19,7 @@ export default defineConfig({
 		legalComments: 'inline',
 		minify: true,
 	},
-	external: ['@tsrx/react', '@tsrx/ripple', '@tsrx/core', 'typescript'],
+	external: ['typescript', /^@tsrx\/.*$/],
 	clean: true,
 	noExternal: /.+/,
 	hooks: {

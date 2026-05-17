@@ -49,12 +49,10 @@
     "vscode-uri": "catalog:default"
   },
   "peerDependencies": {
-    "typescript": "catalog:vscode",
-    "@tsrx/react": "workspace:*",
-    "@tsrx/ripple": "workspace:*",
-    "@types/vscode": "catalog:default"
+    "typescript": "catalog:vscode"
   },
   "devDependencies": {
+    "@types/vscode": "catalog:default",
     "tsdown": "catalog:default",
     "@vscode/vsce": "catalog:default",
     "adm-zip": "catalog:default",
@@ -130,13 +128,6 @@
           "source.js.embedded.tsrx-isolated": "javascript",
           "source.css": "css"
         }
-      }
-    ],
-    "typescriptServerPlugins": [
-      {
-        "name": "@tsrx/typescript-plugin",
-        "enableForWorkspaceTypeScriptVersions": true,
-        "languages": []
       }
     ],
     "menus": {
