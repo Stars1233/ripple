@@ -28,7 +28,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: vscode-plugin VSIX
-          path: ./packages/vscode-plugin/*.vsix
+          path: ./packages/vscode-plugin/vscode-plugin.vsix
+          if-no-files-found: error
 
   publish-vsm:
     runs-on: ubuntu-latest
