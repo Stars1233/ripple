@@ -119,25 +119,23 @@ export function tsrxSolid(options = {}) {
 
 			const real_path = to_real_path(id.split('?')[0]);
 			const source = await readFile(real_path, 'utf-8');
-			const { code, css, map } = compile(source, real_path);
+			let { code, css, map } = compile(source, real_path);
 
-			let final_code = code;
-			let final_map = /** @type {any} */ (map);
 			if (css) {
 				css_cache.set(real_path, css);
-				final_code = `import ${JSON.stringify(real_path + CSS_QUERY)};\n${code}`;
+				code = `import ${JSON.stringify(real_path + CSS_QUERY)};\n${code}`;
 				// The prepended import adds one line to the generated output;
 				// shift every mapping down by one line so source positions stay
 				// aligned. In VLQ source maps, each `;` separates generated
 				// lines, so prefixing one `;` offsets all mappings by one line.
-				if (final_map && typeof final_map.mappings === 'string') {
-					final_map = { ...final_map, mappings: ';' + final_map.mappings };
+				if (map && typeof map.mappings === 'string') {
+					map = { ...map, mappings: ';' + map.mappings };
 				}
 			} else {
 				css_cache.delete(real_path);
 			}
 
-			return { code: final_code, map: final_map };
+			return { code, map };
 		},
 
 		handleHotUpdate(ctx) {

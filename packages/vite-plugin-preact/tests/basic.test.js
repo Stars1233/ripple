@@ -41,4 +41,19 @@ describe('@tsrx/vite-plugin-preact basic', () => {
 		expect(transformed.code).not.toContain(virtual_id);
 		expect(plugin.load(resolved_id)).toBe('');
 	});
+
+	it('maps the JSX transform output back to the original tsrx source', async () => {
+		const plugin = tsrxPreact();
+		const id = '/virtual/App.tsrx';
+		const source = `export component App() {
+			const message = 'Hello world';
+			<div>{message}</div>
+		}`;
+
+		const transformed = await plugin.transform(source, id);
+
+		expect(transformed).not.toBeNull();
+		expect(/** @type {any} */ (transformed.map).sources).toEqual([id]);
+		expect(/** @type {any} */ (transformed.map).sourcesContent).toEqual([source]);
+	});
 });

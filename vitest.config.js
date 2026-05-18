@@ -173,6 +173,15 @@ export default defineConfig({
 			},
 			{
 				test: {
+					name: 'vite-plugin-vue',
+					include: ['packages/vite-plugin-vue/tests/**/*.test.js'],
+					environment: 'node',
+					globals: true,
+				},
+				plugins: [],
+			},
+			{
+				test: {
 					name: 'tsrx-vue-runtime',
 					include: ['packages/vite-plugin-vue/tests/**/*.test.tsrx'],
 					environment: 'jsdom',

@@ -1,6 +1,6 @@
 /** @import {PackageJson} from 'type-fest' */
 /** @import {Plugin, ResolvedConfig, ViteDevServer} from 'vite' */
-/** @import {RipplePluginOptions, RippleConfigOptions, ResolvedRippleConfig, Route, RenderRoute} from '@ripple-ts/vite-plugin' */
+/** @import {RipplePlugin, RipplePluginOptions, RippleConfigOptions, ResolvedRippleConfig, Route, RenderRoute} from '@ripple-ts/vite-plugin' */
 
 /// <reference types="@tsrx/ripple/types/rpc" />
 
@@ -413,7 +413,7 @@ export function ripple(inlineOptions = {}) {
 		return loadedRippleConfig;
 	}
 
-	/** @type {Plugin[]} */
+	/** @type {[RipplePlugin, ...Plugin[]]} */
 	const plugins = [
 		{
 			name: 'vite-plugin-ripple',
@@ -1248,14 +1248,14 @@ import { hydrate, mount } from 'ripple';
 			transform: {
 				filter: { id: RIPPLE_EXTENSION_PATTERN },
 
-				async handler(code, id, opts) {
+				async handler(source_code, id, opts) {
 					const filename = id.replace(root, '');
 					const ssr = opts?.ssr === true || this.environment.config.consumer === 'server';
 
 					const is_dev = config?.command === 'serve';
 					const current_ripple_config = await get_current_ripple_config();
 
-					const result = await compile(code, filename, {
+					let { code, css, map } = await compile(source_code, filename, {
 						mode: ssr ? 'server' : 'client',
 						dev: is_dev,
 						hmr: is_dev && !ssr,
@@ -1266,17 +1266,17 @@ import { hydrate, mount } from 'ripple';
 					});
 
 					// Track modules with `module server` declarations for RPC (client build only)
-					if (isBuild && !ssr && result.code.includes('_$_.rpc(')) {
+					if (isBuild && !ssr && code.includes('_$_.rpc(')) {
 						serverModuleModules.add(filename);
 					}
 
-					if (result.css) {
+					if (css) {
 						const cssId = createVirtualImportId(filename, root, 'style');
-						cssCache.set(cssId, result.css);
-						result.code += `\nimport ${JSON.stringify(cssId)};\n`;
+						cssCache.set(cssId, css);
+						code += `\nimport ${JSON.stringify(cssId)};\n`;
 					}
 
-					return { code: result.code, map: result.map };
+					return { code, map };
 				},
 			},
 		},

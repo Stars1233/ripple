@@ -5,7 +5,16 @@ import type { RuntimePrimitives } from '@ripple-ts/adapter';
 // Plugin exports
 // ============================================================================
 
-export function ripple(options?: RipplePluginOptions): Plugin[];
+/**
+ * The core `vite-plugin-ripple` plugin produced by {@link ripple}. The `name`
+ * is narrowed so consumers (and tests) can locate it via `find` without an
+ * `as` cast.
+ */
+export interface RipplePlugin extends Plugin {
+	readonly name: 'vite-plugin-ripple';
+}
+
+export function ripple(options?: RipplePluginOptions): [RipplePlugin, ...Plugin[]];
 export function defineConfig(options: RippleConfigOptions): RippleConfigOptions;
 export function resolveRippleConfig(
 	raw: RippleConfigOptions,

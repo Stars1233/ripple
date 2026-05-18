@@ -1,3 +1,6 @@
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { tsrxSolid } from '../src/index.js';
 
 /**
@@ -10,6 +13,16 @@ import { tsrxSolid } from '../src/index.js';
  */
 async function fake_plugin_resolve(source) {
 	return { id: source, external: false, moduleSideEffects: true, meta: {} };
+}
+
+/**
+ * @param {import('vite').Plugin} plugin
+ * @param {string} id
+ */
+function call_load(plugin, id) {
+	const hook = typeof plugin.load === 'function' ? plugin.load : plugin.load?.handler;
+	if (!hook) throw new Error('plugin has no load hook');
+	return hook.call(/** @type {any} */ ({}), id);
 }
 
 /**
@@ -66,6 +79,25 @@ describe('@tsrx/vite-plugin-solid routing', () => {
 			const skipped = await call_resolve_id(plugin, '/proj/tests/App.tsrx');
 			expect(resolved_id(matched)).toBe('/proj/src/App.tsrx.tsx');
 			expect(skipped).toBeNull();
+		});
+	});
+
+	describe('source maps', () => {
+		it('maps the compiled output back to the original tsrx source', async () => {
+			const plugin = tsrxSolid();
+			const dir = mkdtempSync(join(tmpdir(), 'tsrx-solid-'));
+			const real_path = join(dir, 'App.tsrx');
+			const source = `export component App() {
+				const message = 'Hello world';
+				<div>{message}</div>
+			}`;
+			writeFileSync(real_path, source);
+
+			const result = await call_load(plugin, real_path + '.tsx');
+
+			expect(result).toBeTruthy();
+			expect(/** @type {any} */ (result).map.sources).toEqual([real_path]);
+			expect(/** @type {any} */ (result).map.sourcesContent).toEqual([source]);
 		});
 	});
 });

@@ -68,25 +68,33 @@ export function tsrxPreact(options = {}) {
 		async transform(/** @type {string} */ code, /** @type {string} */ id) {
 			if (!TSRX_EXTENSION_PATTERN.test(id)) return null;
 
-			const { code: tsx_code, css } = compile(code, id, compile_options);
+			let { code: tsx_code, css, map } = compile(code, id, compile_options);
 
 			let source = tsx_code;
 			if (css) {
 				css_cache.set(id, css);
 				source = `import ${JSON.stringify(id + CSS_QUERY)};\n${tsx_code}`;
+				if (map && typeof map.mappings === 'string') {
+					map = { ...map, mappings: ';' + map.mappings };
+				}
 			} else {
 				css_cache.delete(id);
 			}
 
-			const result = await transformWithOxc(source, id, {
-				lang: 'tsx',
-				sourcemap: true,
-				jsx: {
-					runtime: 'automatic',
-					importSource: jsxImportSource,
+			const result = await transformWithOxc(
+				source,
+				id,
+				{
+					lang: 'tsx',
+					sourcemap: true,
+					jsx: {
+						runtime: 'automatic',
+						importSource: jsxImportSource,
+					},
+					target: 'esnext',
 				},
-				target: 'esnext',
-			});
+				map,
+			);
 
 			return { code: result.code, map: result.map };
 		},

@@ -176,21 +176,19 @@ function create_tsrx_vue_plugin(options) {
 
 			const realPath = toRealPath(id.split('?')[0]);
 			const source = await readFile(realPath, 'utf-8');
-			const { code, css, map } = compile(source, realPath);
+			let { code, css, map } = compile(source, realPath);
 
-			let finalCode = code;
-			let finalMap = /** @type {any} */ (map);
 			if (css) {
 				cssCache.set(realPath, css);
-				finalCode = `import ${JSON.stringify(realPath + CSS_QUERY)};\n${code}`;
-				if (finalMap && typeof finalMap.mappings === 'string') {
-					finalMap = { ...finalMap, mappings: ';' + finalMap.mappings };
+				code = `import ${JSON.stringify(realPath + CSS_QUERY)};\n${code}`;
+				if (map && typeof map.mappings === 'string') {
+					map = { ...map, mappings: ';' + map.mappings };
 				}
 			} else {
 				cssCache.delete(realPath);
 			}
 
-			return { code: finalCode, map: finalMap };
+			return { code, map };
 		},
 
 		handleHotUpdate(ctx) {
