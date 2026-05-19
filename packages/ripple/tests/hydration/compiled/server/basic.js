@@ -283,6 +283,514 @@ export function ExpressionContent() {
 	_$_.pop_component();
 }
 
+function makeNestedTsxTsrxFragment(label) {
+	return _$_.tsrx_element(function render_children() {
+		_$_.output_push('<span');
+		_$_.output_push(' class="label"');
+		_$_.output_push('>');
+
+		{
+			_$_.output_push(_$_.escape(label));
+		}
+
+		_$_.output_push('</span>');
+
+		const test = _$_.tsrx_element(function render_children() {
+			_$_.render_expression([1, 2, 3, 4].map((item) => _$_.tsrx_element(function render_children() {
+				{
+					_$_.render_expression(_$_.tsrx_element(function render_children() {
+						{
+							_$_.output_push('<div');
+							_$_.output_push(' class="helper-item"');
+							_$_.output_push('>');
+
+							{
+								_$_.output_push(_$_.escape(item));
+							}
+
+							_$_.output_push('</div>');
+						}
+					}));
+				}
+			})));
+		});
+
+		_$_.render_expression(test);
+	});
+}
+
+export function NestedTsxTsrxExpressionValues() {
+	_$_.push_component();
+
+	_$_.regular_block(() => {
+		_$_.render_expression(_$_.tsrx_element(function render_children() {
+			_$_.render_expression([1, 2, 3].map((item) => _$_.tsrx_element(function render_children() {
+				_$_.output_push('<div');
+				_$_.output_push(' class="app-item"');
+				_$_.output_push('>');
+
+				{
+					_$_.output_push(_$_.escape(item));
+				}
+
+				_$_.output_push('</div>');
+			})));
+		}));
+	});
+
+	_$_.regular_block(() => {
+		_$_.render_expression(makeNestedTsxTsrxFragment('from helper'));
+	});
+
+	_$_.pop_component();
+}
+
+export function MixedTsrxCollectionText() {
+	_$_.push_component();
+
+	const content = _$_.tsrx_element(function render_children() {
+		_$_.regular_block(() => {
+			_$_.render_expression([
+				'alpha ',
+				_$_.tsrx_element(function render_children() {
+					_$_.output_push('<strong');
+					_$_.output_push(' class="middle"');
+					_$_.output_push('>');
+
+					{
+						_$_.output_push('beta');
+					}
+
+					_$_.output_push('</strong>');
+				}),
+				' gamma ',
+				[
+					'delta ',
+					_$_.tsrx_element(function render_children() {
+						_$_.output_push('<em');
+						_$_.output_push(' class="tail"');
+						_$_.output_push('>');
+
+						{
+							_$_.output_push('epsilon');
+						}
+
+						_$_.output_push('</em>');
+					}),
+					' zeta'
+				]
+			]);
+		});
+	});
+
+	_$_.regular_block(() => {
+		_$_.output_push('<div');
+		_$_.output_push(' class="mixed-collection"');
+		_$_.output_push('>');
+
+		{
+			_$_.render_expression(content);
+		}
+
+		_$_.output_push('</div>');
+	});
+
+	_$_.pop_component();
+}
+
+export function MixedTsrxCollectionSplitServerText() {
+	_$_.push_component();
+
+	const content = _$_.tsrx_element(function render_children() {
+		_$_.regular_block(() => {
+			_$_.render_expression([
+				'alpha ',
+				_$_.tsrx_element(function render_children() {
+					_$_.output_push('<strong');
+					_$_.output_push(' class="middle"');
+					_$_.output_push('>');
+
+					{
+						_$_.output_push('beta');
+					}
+
+					_$_.output_push('</strong>');
+				}),
+				' gamma ',
+				[
+					'delta ',
+					_$_.tsrx_element(function render_children() {
+						_$_.output_push('<em');
+						_$_.output_push(' class="tail"');
+						_$_.output_push('>');
+
+						{
+							_$_.output_push('epsilon');
+						}
+
+						_$_.output_push('</em>');
+					}),
+					' zeta'
+				]
+			]);
+		});
+	});
+
+	_$_.regular_block(() => {
+		_$_.output_push('<div');
+		_$_.output_push(' class="mixed-collection-split"');
+		_$_.output_push('>');
+
+		{
+			_$_.render_expression(content);
+		}
+
+		_$_.output_push('</div>');
+	});
+
+	_$_.pop_component();
+}
+
+export function MixedTsrxCollectionSplitClientText() {
+	_$_.push_component();
+
+	const content = _$_.tsrx_element(function render_children() {
+		_$_.regular_block(() => {
+			_$_.render_expression([
+				'alpha ',
+				_$_.tsrx_element(function render_children() {
+					_$_.output_push('<strong');
+					_$_.output_push(' class="middle"');
+					_$_.output_push('>');
+
+					{
+						_$_.output_push('beta');
+					}
+
+					_$_.output_push('</strong>');
+				}),
+				' gamma ',
+				[
+					'changed ',
+					_$_.tsrx_element(function render_children() {
+						_$_.output_push('<em');
+						_$_.output_push(' class="tail"');
+						_$_.output_push('>');
+
+						{
+							_$_.output_push('epsilon');
+						}
+
+						_$_.output_push('</em>');
+					}),
+					' zeta'
+				]
+			]);
+		});
+	});
+
+	_$_.regular_block(() => {
+		_$_.output_push('<div');
+		_$_.output_push(' class="mixed-collection-split"');
+		_$_.output_push('>');
+
+		{
+			_$_.render_expression(content);
+		}
+
+		_$_.output_push('</div>');
+	});
+
+	_$_.pop_component();
+}
+
+export function MixedTsrxCollectionPrimitiveServerText() {
+	_$_.push_component();
+
+	const content = _$_.tsrx_element(function render_children() {
+		_$_.regular_block(() => {
+			_$_.render_expression([
+				'count: ',
+				1,
+				' / ',
+				true,
+				_$_.tsrx_element(function render_children() {
+					_$_.output_push('<span');
+					_$_.output_push(' class="primitive-tail"');
+					_$_.output_push('>');
+
+					{
+						_$_.output_push(' ok');
+					}
+
+					_$_.output_push('</span>');
+				})
+			]);
+		});
+	});
+
+	_$_.regular_block(() => {
+		_$_.output_push('<div');
+		_$_.output_push(' class="mixed-collection-primitive"');
+		_$_.output_push('>');
+
+		{
+			_$_.render_expression(content);
+		}
+
+		_$_.output_push('</div>');
+	});
+
+	_$_.pop_component();
+}
+
+export function MixedTsrxCollectionPrimitiveClientText() {
+	_$_.push_component();
+
+	const content = _$_.tsrx_element(function render_children() {
+		_$_.regular_block(() => {
+			_$_.render_expression([
+				'count: ',
+				2,
+				' / ',
+				false,
+				_$_.tsrx_element(function render_children() {
+					_$_.output_push('<span');
+					_$_.output_push(' class="primitive-tail"');
+					_$_.output_push('>');
+
+					{
+						_$_.output_push(' ok');
+					}
+
+					_$_.output_push('</span>');
+				})
+			]);
+		});
+	});
+
+	_$_.regular_block(() => {
+		_$_.output_push('<div');
+		_$_.output_push(' class="mixed-collection-primitive"');
+		_$_.output_push('>');
+
+		{
+			_$_.render_expression(content);
+		}
+
+		_$_.output_push('</div>');
+	});
+
+	_$_.pop_component();
+}
+
+function createPrimitiveItems() {
+	return ['start:', ['one', 2], true, null, false, ':end'];
+}
+
+export function DynamicArrayFromCall() {
+	_$_.push_component();
+
+	const items = createPrimitiveItems();
+
+	_$_.regular_block(() => {
+		_$_.output_push('<div');
+		_$_.output_push(' class="dynamic-array-call"');
+		_$_.output_push('>');
+
+		{
+			_$_.render_expression(items);
+		}
+
+		_$_.output_push('</div>');
+	});
+
+	_$_.pop_component();
+}
+
+export function DynamicArrayFromTrack() {
+	_$_.push_component();
+
+	let lazy = _$_.track(['start:', ['one', 2], true, null, false, ':end'], 'b5de6402');
+
+	_$_.regular_block(() => {
+		_$_.output_push('<div');
+		_$_.output_push(' class="dynamic-array-track"');
+		_$_.output_push('>');
+
+		{
+			_$_.render_expression(_$_.get(lazy));
+		}
+
+		_$_.output_push('</div>');
+	});
+
+	_$_.pop_component();
+}
+
+export function DynamicArrayFromConditional() {
+	_$_.push_component();
+
+	const condition = true;
+
+	const items = condition
+		? ['start:', ['one', 2], true, null, false, ':end']
+		: ['fallback'];
+
+	_$_.regular_block(() => {
+		_$_.output_push('<div');
+		_$_.output_push(' class="dynamic-array-conditional"');
+		_$_.output_push('>');
+
+		{
+			_$_.render_expression(items);
+		}
+
+		_$_.output_push('</div>');
+	});
+
+	_$_.pop_component();
+}
+
+export function DynamicArrayFromLogical() {
+	_$_.push_component();
+
+	const condition = true;
+	const items = condition && ['start:', ['one', 2], true, null, false, ':end'];
+
+	_$_.regular_block(() => {
+		_$_.output_push('<div');
+		_$_.output_push(' class="dynamic-array-logical"');
+		_$_.output_push('>');
+
+		{
+			_$_.render_expression(items);
+		}
+
+		_$_.output_push('</div>');
+	});
+
+	_$_.pop_component();
+}
+
+export function NestedTsrxInsideTopLevelTsxExpression() {
+	_$_.push_component();
+
+	const content = _$_.tsrx_element(function render_children() {
+		_$_.regular_block(() => {
+			_$_.output_push('<section');
+			_$_.output_push(' class="outer"');
+			_$_.output_push('>');
+
+			{
+				_$_.render_expression(_$_.tsrx_element(function render_children() {
+					{
+						_$_.output_push('<div');
+						_$_.output_push(' class="inner"');
+						_$_.output_push('>');
+
+						{
+							_$_.output_push('from tsrx');
+						}
+
+						_$_.output_push('</div>');
+					}
+				}));
+			}
+
+			_$_.output_push('</section>');
+		});
+	});
+
+	_$_.regular_block(() => {
+		_$_.render_expression(content);
+	});
+
+	_$_.pop_component();
+}
+
+export function NestedTsrxElementsInsideTopLevelTsxValue() {
+	_$_.push_component();
+
+	const content = _$_.tsrx_element(function render_children() {
+		_$_.regular_block(() => {
+			_$_.output_push('<div');
+			_$_.output_push(' class="wrapper"');
+			_$_.output_push('>');
+
+			{
+				_$_.render_expression(_$_.tsrx_element(function render_children() {
+					{
+						_$_.output_push('<section');
+						_$_.output_push(' class="native"');
+						_$_.output_push('>');
+
+						{
+							_$_.output_push('<span');
+							_$_.output_push(' class="nested-tsrx"');
+							_$_.output_push('>');
+
+							{
+								_$_.output_push('inside nested tsrx');
+							}
+
+							_$_.output_push('</span>');
+						}
+
+						_$_.output_push('</section>');
+					}
+				}));
+			}
+
+			_$_.output_push('</div>');
+		});
+	});
+
+	_$_.regular_block(() => {
+		_$_.render_expression(content);
+	});
+
+	_$_.pop_component();
+}
+
+export function TsxDeclaredInsideNestedTsrxFromTopLevelTsx() {
+	_$_.push_component();
+
+	const content = _$_.tsrx_element(function render_children() {
+		_$_.regular_block(() => {
+			_$_.render_expression(_$_.tsrx_element(function render_children() {
+				const nested = _$_.tsrx_element(function render_children() {
+					_$_.output_push('<span');
+					_$_.output_push(' class="nested-tsx"');
+					_$_.output_push('>');
+
+					{
+						_$_.output_push('inside nested tsx');
+					}
+
+					_$_.output_push('</span>');
+				});
+
+				_$_.output_push('<div');
+				_$_.output_push(' class="native"');
+				_$_.output_push('>');
+
+				{
+					_$_.render_expression(nested);
+				}
+
+				_$_.output_push('</div>');
+			}));
+		});
+	});
+
+	_$_.regular_block(() => {
+		_$_.render_expression(content);
+	});
+
+	_$_.pop_component();
+}
+
 function TextProp(__props) {
 	_$_.push_component();
 
@@ -304,7 +812,7 @@ function TextProp(__props) {
 export function TextPropWithToggle() {
 	_$_.push_component();
 
-	let lazy = _$_.track(false, 'b5de6402');
+	let lazy_1 = _$_.track(false, '1ba81c3b');
 
 	_$_.regular_block(() => {
 		{
@@ -312,7 +820,7 @@ export function TextPropWithToggle() {
 
 			const args = [
 				{
-					children: _$_.normalize_children(_$_.get(lazy) ? 'hello' : '')
+					children: _$_.normalize_children(_$_.get(lazy_1) ? 'hello' : '')
 				}
 			];
 

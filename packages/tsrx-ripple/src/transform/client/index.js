@@ -122,6 +122,31 @@ function apply_tsrx_css_scoping(nodes, state) {
 }
 
 /**
+ * JSX parsed inside `<tsx>` treats `<tsx>`/`<tsrx>` as ordinary JSX tags. For
+ * TypeScript output, convert those reserved tags back into TSRX nodes before
+ * visiting so nested islands use the same lowering path as top-level islands.
+ *
+ * @param {ESTreeJSX.JSXElement} node
+ * @param {VisitorClientContext} context
+ * @returns {AST.Node | null}
+ */
+function jsx_template_to_ts_node(node, context) {
+	const name = node.openingElement.name;
+	if (name.type !== 'JSXIdentifier' || (name.name !== 'tsx' && name.name !== 'tsrx')) {
+		return null;
+	}
+
+	const converted = jsx_to_ripple_node(
+		/** @type {AST.Node} */ (/** @type {unknown} */ (node)),
+		context.path,
+	);
+	if (converted === null || Array.isArray(converted)) {
+		return null;
+	}
+	return /** @type {AST.Node} */ (converted);
+}
+
+/**
  * @param {AST.ImportDeclaration} node
  * @returns {string | null}
  */
@@ -642,6 +667,36 @@ function SetStateForOutsideComponent(state, more_state = {}) {
 		update: null,
 		final: null,
 	});
+}
+
+/**
+ * @param {ESTreeJSX.JSXElement | ESTreeJSX.JSXFragment} node
+ * @param {TransformClientContext} context
+ * @returns {AST.CallExpression}
+ */
+function build_jsx_to_tsrx_element(node, context) {
+	const { state, visit, path } = context;
+	const result = jsx_to_ripple_node(/** @type {AST.Node} */ (node), path);
+	const converted = Array.isArray(result) ? result : [result];
+	/** @type {AST.Node[]} */
+	const children = converted.filter((child) => child != null && child.type !== 'EmptyStatement');
+
+	apply_tsrx_css_scoping(children, state);
+
+	const children_component = b.component(b.id('render_children'), [], children);
+
+	return b.call(
+		'_$_.tsrx_element',
+		/** @type {AST.Expression} */ (
+			visit(children_component, {
+				...state,
+				flush_node: null,
+				namespace: state.namespace,
+				is_tsrx_element: true,
+				jsx_to_tsrx_element: true,
+			})
+		),
+	);
 }
 
 /** @type {Visitors<AST.Node, TransformClientState>} */
@@ -1199,6 +1254,17 @@ const visitors = {
 					metadata: { path: [] },
 				});
 			}
+			if (node.expression?.type === 'JSXElement') {
+				const tsx_template_node = jsx_template_to_ts_node(node.expression, context);
+				if (tsx_template_node !== null) {
+					return b.jsx_expression_container(
+						/** @type {AST.Expression | ESTreeJSX.JSXEmptyExpression} */ (
+							context.visit(tsx_template_node, context.state)
+						),
+						/** @type {AST.NodeWithLocation} */ (node),
+					);
+				}
+			}
 			return context.next();
 		}
 		return context.visit(node.expression);
@@ -1222,6 +1288,9 @@ const visitors = {
 	JSXFragment(node, context) {
 		if (context.state.to_ts) {
 			return context.next();
+		}
+		if (context.state.jsx_to_tsrx_element) {
+			return build_jsx_to_tsrx_element(node, context);
 		}
 		const attributes = node.openingFragment.attributes;
 		const normalized_children = node.children.filter((child) => {
@@ -1273,7 +1342,14 @@ const visitors = {
 
 	JSXElement(node, context) {
 		if (context.state.to_ts) {
+			const tsx_template_node = jsx_template_to_ts_node(node, context);
+			if (tsx_template_node !== null) {
+				return context.visit(tsx_template_node, context.state);
+			}
 			return context.next();
+		}
+		if (context.state.jsx_to_tsrx_element) {
+			return build_jsx_to_tsrx_element(node, context);
 		}
 		const name = node.openingElement.name;
 		const attributes = node.openingElement.attributes;
@@ -1414,6 +1490,7 @@ const visitors = {
 					...state,
 					namespace: state.namespace,
 					is_tsrx_element: true,
+					jsx_to_tsrx_element: true,
 				})
 			),
 		);
@@ -1459,6 +1536,7 @@ const visitors = {
 					...state,
 					namespace: state.namespace,
 					is_tsrx_element: true,
+					jsx_to_tsrx_element: true,
 				})
 			),
 		);
@@ -4074,7 +4152,9 @@ function transform_children(children, context) {
 			let is_create_text_only = false;
 			if (node.type === 'TSRXExpression' || node.type === 'Text' || node.type === 'Html') {
 				metadata = { tracking: false };
-				expression = /** @type {AST.Expression} */ (visit(node.expression, { ...state, metadata }));
+				expression = /** @type {AST.Expression} */ (
+					visit(node.expression, { ...state, flush_node: null, metadata })
+				);
 				is_create_text_only =
 					node.type !== 'Html' && normalized.length === 1 && expression.type === 'Literal';
 			}
@@ -4249,7 +4329,7 @@ function transform_children(children, context) {
 				) {
 					skipped++;
 					state.template?.push(' ');
-					const id = flush_node(true);
+					const id = flush_node(false);
 					const call = b.call('_$_.expression', id, b.thunk(expr));
 					state.init?.push(
 						state.namespace !== DEFAULT_NAMESPACE

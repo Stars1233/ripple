@@ -60,6 +60,133 @@ describe('hydration > basic', () => {
 		expect(container.innerHTML).toBeHtml('<div>42</div><span>COMPUTED</span>');
 	});
 
+	it('hydrates deeply nested tsx and tsrx expression values', async () => {
+		await hydrateComponent(
+			ServerComponents.NestedTsxTsrxExpressionValues,
+			ClientComponents.NestedTsxTsrxExpressionValues,
+		);
+
+		expect(
+			Array.from(container.querySelectorAll('.app-item')).map((node) => node.textContent),
+		).toEqual(['1', '2', '3']);
+		expect(container.querySelector('.label')?.textContent).toBe('from helper');
+		expect(
+			Array.from(container.querySelectorAll('.helper-item')).map((node) => node.textContent),
+		).toEqual(['1', '2', '3', '4']);
+	});
+
+	it('hydrates mixed tsrx collection text without duplicating server text', async () => {
+		await hydrateComponent(
+			ServerComponents.MixedTsrxCollectionText,
+			ClientComponents.MixedTsrxCollectionText,
+		);
+
+		const collection = container.querySelector('.mixed-collection');
+		expect(collection?.textContent).toBe('alpha beta gamma delta epsilon zeta');
+		expect(collection?.querySelector('.middle')?.textContent).toBe('beta');
+		expect(collection?.querySelector('.tail')?.textContent).toBe('epsilon');
+	});
+
+	it('hydrates split mixed collection text when the client updates a coalesced server text segment', async () => {
+		await hydrateComponent(
+			ServerComponents.MixedTsrxCollectionSplitServerText,
+			ClientComponents.MixedTsrxCollectionSplitClientText,
+		);
+
+		const collection = container.querySelector('.mixed-collection-split');
+		expect(collection?.textContent).toBe('alpha beta gamma changed epsilon zeta');
+		expect(collection?.querySelector('.middle')?.textContent).toBe('beta');
+		expect(collection?.querySelector('.tail')?.textContent).toBe('epsilon');
+	});
+
+	it('hydrates primitive mixed collection text with client/server text differences', async () => {
+		await hydrateComponent(
+			ServerComponents.MixedTsrxCollectionPrimitiveServerText,
+			ClientComponents.MixedTsrxCollectionPrimitiveClientText,
+		);
+
+		const collection = container.querySelector('.mixed-collection-primitive');
+		expect(collection?.textContent).toBe('count: 2 / false ok');
+		expect(collection?.querySelector('.primitive-tail')?.textContent).toBe(' ok');
+	});
+
+	it('hydrates dynamic array values returned from calls without comma stringification', async () => {
+		await hydrateComponent(
+			ServerComponents.DynamicArrayFromCall,
+			ClientComponents.DynamicArrayFromCall,
+		);
+
+		expect(container.querySelector('.dynamic-array-call')?.textContent).toBe(
+			'start:one2truefalse:end',
+		);
+	});
+
+	it('hydrates dynamic array values from tracked state without comma stringification', async () => {
+		await hydrateComponent(
+			ServerComponents.DynamicArrayFromTrack,
+			ClientComponents.DynamicArrayFromTrack,
+		);
+
+		expect(container.querySelector('.dynamic-array-track')?.textContent).toBe(
+			'start:one2truefalse:end',
+		);
+	});
+
+	it('hydrates dynamic array values from conditionals without comma stringification', async () => {
+		await hydrateComponent(
+			ServerComponents.DynamicArrayFromConditional,
+			ClientComponents.DynamicArrayFromConditional,
+		);
+
+		expect(container.querySelector('.dynamic-array-conditional')?.textContent).toBe(
+			'start:one2truefalse:end',
+		);
+	});
+
+	it('hydrates dynamic array values from logical expressions without comma stringification', async () => {
+		await hydrateComponent(
+			ServerComponents.DynamicArrayFromLogical,
+			ClientComponents.DynamicArrayFromLogical,
+		);
+
+		expect(container.querySelector('.dynamic-array-logical')?.textContent).toBe(
+			'start:one2truefalse:end',
+		);
+	});
+
+	it('hydrates tsrx nested directly inside a top-level tsx expression value', async () => {
+		await hydrateComponent(
+			ServerComponents.NestedTsrxInsideTopLevelTsxExpression,
+			ClientComponents.NestedTsrxInsideTopLevelTsxExpression,
+		);
+
+		const outer = container.querySelector('.outer');
+		expect(outer).toBeTruthy();
+		expect(outer?.querySelector('.inner')?.textContent).toBe('from tsrx');
+	});
+
+	it('hydrates nested elements from tsrx inside a top-level tsx value', async () => {
+		await hydrateComponent(
+			ServerComponents.NestedTsrxElementsInsideTopLevelTsxValue,
+			ClientComponents.NestedTsrxElementsInsideTopLevelTsxValue,
+		);
+
+		const native = container.querySelector('.native');
+		expect(native).toBeTruthy();
+		expect(native?.querySelector('.nested-tsrx')?.textContent).toBe('inside nested tsrx');
+	});
+
+	it('hydrates tsx declared inside tsrx nested from a top-level tsx value', async () => {
+		await hydrateComponent(
+			ServerComponents.TsxDeclaredInsideNestedTsrxFromTopLevelTsx,
+			ClientComponents.TsxDeclaredInsideNestedTsrxFromTopLevelTsx,
+		);
+
+		const native = container.querySelector('.native');
+		expect(native).toBeTruthy();
+		expect(native?.querySelector('.nested-tsx')?.textContent).toBe('inside nested tsx');
+	});
+
 	it('restores text children after hydrating away initial server text', async () => {
 		await hydrateComponent(
 			ServerComponents.TextPropWithToggle,

@@ -28,7 +28,7 @@ import {
 } from '../client/constants.js';
 import { DEV } from 'esm-env';
 import { is_ripple_object } from '../client/utils.js';
-import { array_slice } from '@tsrx/core/runtime/language-helpers';
+import { array_slice, is_array } from '@tsrx/core/runtime/language-helpers';
 import {
 	escape,
 	escape_script,
@@ -84,6 +84,24 @@ export class TrackAsyncRunError extends Error {
 export function noop() {}
 
 /**
+ * @param {any[]} value
+ * @returns {void}
+ */
+function render_tsrx_collection(value) {
+	for (var i = 0; i < value.length; i++) {
+		var item = value[i];
+
+		if (is_tsrx_element(item)) {
+			item.render({});
+		} else if (is_array(item)) {
+			render_tsrx_collection(item);
+		} else if (item != null) {
+			output_push(escape(item));
+		}
+	}
+}
+
+/**
  * @param {any} value
  * @returns {void}
  */
@@ -92,6 +110,8 @@ export function render_expression(value) {
 
 	if (is_tsrx_element(value)) {
 		value.render({});
+	} else if (is_array(value)) {
+		render_tsrx_collection(value);
 	} else {
 		output_push(escape(value ?? ''));
 	}

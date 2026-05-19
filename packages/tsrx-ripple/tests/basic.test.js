@@ -227,6 +227,20 @@ component App() {
 });
 
 describe('@tsrx/ripple <tsrx> Volar output', () => {
+	it('prints JSX converted from nested tsrx inside tsx expression containers', () => {
+		const source = `component App() {
+	const content = <tsx>
+		<section>{<tsrx><div>{'inside'}</div></tsrx>}</section>
+	</tsx>;
+	{content}
+}`;
+		const result = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
+
+		expect(result.code).toContain('<section>{<div>');
+		expect(result.code).not.toContain('<tsrx>');
+		expect(result.code).not.toContain('<tsx>');
+	});
+
 	it('returns children before and after setup statements', () => {
 		const source = `class Foo { bar() { return <tsrx><div>"before"</div> const x = 1; <div>{x}</div></tsrx>; } }`;
 		const result = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
@@ -246,6 +260,65 @@ describe('@tsrx/ripple <tsrx> Volar output', () => {
 		expect(first_push).toBeLessThan(declaration);
 		expect(declaration).toBeLessThan(second_push);
 		expect(second_push).toBeLessThan(returned_children);
+	});
+});
+
+describe('@tsrx/ripple <tsx> expression values', () => {
+	it('lowers tsx values nested in template expressions', () => {
+		const { code } = compile(
+			`component App() {
+				const primary = true;
+				<div>
+					{<tsx>
+						{primary
+							? ['first:', <strong>{'one'}</strong>, ':tail']
+							: ['second:', <strong>{'two'}</strong>, ':done']}
+					</tsx>}
+				</div>
+			}`,
+			'App.tsrx',
+		);
+
+		expect(code).toContain('_$_.tsrx_element');
+		expect(code).toContain('? [');
+		expect(code).not.toContain('<tsx>');
+	});
+
+	it('uses server render_expression for conditional array expression values', () => {
+		const { code } = compile(
+			`component App() {
+				const condition = true;
+				const ternary_items = condition ? ['start:', ['one', 2], ':end'] : ['fallback'];
+				const logical_items = condition && ['start:', ['one', 2], ':end'];
+
+				<div>{ternary_items}</div>
+				<div>{logical_items}</div>
+			}`,
+			'App.tsrx',
+			{ mode: 'server' },
+		);
+
+		expect(code).toContain('_$_.render_expression(ternary_items)');
+		expect(code).toContain('_$_.render_expression(logical_items)');
+		expect(code).not.toContain('_$_.escape(ternary_items)');
+		expect(code).not.toContain('_$_.escape(logical_items)');
+	});
+
+	it('uses client expression anchors that can hydrate conditional array markers', () => {
+		const { code } = compile(
+			`component App() {
+				const condition = true;
+				const items = condition ? ['start:', ['one', 2], ':end'] : ['fallback'];
+
+				<div>{items}</div>
+			}`,
+			'App.tsrx',
+		);
+
+		expect(code).toContain('template(`<div> </div>`');
+		expect(code).toContain('_$_.child(');
+		expect(code).not.toContain('_$_.child(div, true)');
+		expect(code).toContain('_$_.expression(');
 	});
 });
 

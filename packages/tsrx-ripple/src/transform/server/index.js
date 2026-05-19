@@ -1,4 +1,5 @@
 /** @import * as AST from 'estree'; */
+/** @import * as ESTreeJSX from 'estree-jsx'; */
 /** @import { RawSourceMap } from 'source-map'; */
 /**
 @import {
@@ -22,6 +23,7 @@ import {
 	obfuscateIdentifier,
 	BLOCK_CLOSE,
 	BLOCK_OPEN,
+	isFunctionNode,
 } from '@tsrx/core';
 const b = builders;
 import { walk } from 'zimmerframe';
@@ -91,6 +93,287 @@ function apply_tsrx_css_scoping(nodes, state) {
 	for (const node of nodes) {
 		visit_node(node);
 	}
+}
+
+/**
+ * @param {ESTreeJSX.JSXElement | ESTreeJSX.JSXFragment} node
+ * @param {TransformServerContext} context
+ * @returns {AST.CallExpression}
+ */
+function build_jsx_to_tsrx_element(node, context) {
+	const { visit, state, path } = context;
+	const result = jsx_to_ripple_node(/** @type {AST.Node} */ (node), path);
+	const converted = Array.isArray(result) ? result : [result];
+	/** @type {AST.Node[]} */
+	const children = converted.filter((child) => child != null && child.type !== 'EmptyStatement');
+
+	apply_tsrx_css_scoping(children, state);
+
+	/** @type {AST.Statement[]} */
+	const init = [];
+	transform_children(
+		children,
+		/** @type {TransformServerContext} */ ({
+			visit,
+			state: {
+				...state,
+				init,
+				jsx_to_tsrx_element: true,
+			},
+		}),
+	);
+
+	return b.call('_$_.tsrx_element', b.function(b.id('render_children'), [], b.block(init)));
+}
+
+/**
+ * @param {AST.Tsx | AST.Tsrx} node
+ * @param {TransformServerContext} context
+ * @returns {AST.CallExpression}
+ */
+function build_template_node_to_tsrx_element(node, context) {
+	const { visit, state, path } = context;
+	const children =
+		node.type === 'Tsx'
+			? node.children
+					.map((child) => jsx_to_ripple_node(/** @type {AST.Node} */ (child), path))
+					.flat()
+					.filter((child) => child != null)
+			: node.children.filter((child) => child != null && child.type !== 'EmptyStatement');
+
+	apply_tsrx_css_scoping(children, state);
+
+	/** @type {AST.Statement[]} */
+	const init = [];
+	transform_children(
+		children,
+		/** @type {TransformServerContext} */ ({
+			visit,
+			state: {
+				...state,
+				init,
+				template_child: false,
+				jsx_to_tsrx_element: true,
+			},
+		}),
+	);
+
+	return b.call('_$_.tsrx_element', b.function(b.id('render_children'), [], b.block(init)));
+}
+
+/**
+ * @param {AST.Node} node
+ * @returns {boolean}
+ */
+function contains_template_value_node(node) {
+	let found = false;
+
+	walk(node, null, {
+		_(node, { next }) {
+			if (found) {
+				return;
+			}
+			if (
+				node.type === 'JSXElement' ||
+				node.type === 'JSXFragment' ||
+				node.type === 'Tsx' ||
+				node.type === 'Tsrx' ||
+				node.type === 'TsxCompat'
+			) {
+				found = true;
+				return;
+			}
+			next();
+		},
+	});
+
+	return found;
+}
+
+/**
+ * @param {AST.Statement} statement
+ * @param {(expression: AST.Expression) => boolean} returns_value
+ * @returns {boolean}
+ */
+function statement_returns_value(statement, returns_value) {
+	switch (statement.type) {
+		case 'ReturnStatement':
+			return (
+				statement.argument != null &&
+				returns_value(/** @type {AST.Expression} */ (statement.argument))
+			);
+
+		case 'BlockStatement':
+			return statements_return_value(statement.body, returns_value);
+
+		case 'IfStatement':
+			return (
+				statement_returns_value(statement.consequent, returns_value) ||
+				(statement.alternate != null && statement_returns_value(statement.alternate, returns_value))
+			);
+
+		case 'SwitchStatement':
+			return statement.cases.some((switch_case) =>
+				statements_return_value(switch_case.consequent, returns_value),
+			);
+
+		case 'TryStatement':
+			return (
+				statement_returns_value(statement.block, returns_value) ||
+				(statement.handler != null &&
+					statement_returns_value(statement.handler.body, returns_value)) ||
+				(statement.finalizer != null && statement_returns_value(statement.finalizer, returns_value))
+			);
+
+		case 'ForStatement':
+		case 'ForInStatement':
+		case 'ForOfStatement':
+		case 'WhileStatement':
+		case 'DoWhileStatement':
+		case 'LabeledStatement':
+		case 'WithStatement':
+			return statement_returns_value(statement.body, returns_value);
+
+		default:
+			return false;
+	}
+}
+
+/**
+ * @param {AST.Statement[]} statements
+ * @param {(expression: AST.Expression) => boolean} returns_value
+ * @returns {boolean}
+ */
+function statements_return_value(statements, returns_value) {
+	return statements.some((statement) => statement_returns_value(statement, returns_value));
+}
+
+/**
+ * @param {AST.Node | null | undefined} node
+ * @param {(expression: AST.Expression) => boolean} returns_value
+ * @returns {boolean}
+ */
+function function_returns_value(node, returns_value) {
+	if (node == null || !isFunctionNode(node)) {
+		return false;
+	}
+
+	if (node.type === 'ArrowFunctionExpression' && node.body.type !== 'BlockStatement') {
+		return returns_value(/** @type {AST.Expression} */ (node.body));
+	}
+
+	const body = /** @type {AST.Function} */ (node).body;
+	if (body.type !== 'BlockStatement') {
+		return false;
+	}
+
+	return statements_return_value(body.body, returns_value);
+}
+
+/**
+ * @param {AST.Node | null | undefined} node
+ * @returns {boolean}
+ */
+function function_returns_template_value(node) {
+	return function_returns_value(node, (expression) =>
+		contains_template_value_node(/** @type {AST.Node} */ (expression)),
+	);
+}
+
+/**
+ * @param {AST.Expression} expression
+ * @param {ScopeInterface} scope
+ * @returns {boolean}
+ */
+function is_template_value_call(expression, scope) {
+	if (expression.type !== 'CallExpression' || expression.callee.type !== 'Identifier') {
+		return false;
+	}
+
+	return function_returns_template_value(scope.get(expression.callee.name)?.initial);
+}
+
+/**
+ * @param {AST.Node} expression
+ * @param {ScopeInterface} scope
+ * @returns {boolean}
+ */
+function is_template_value_binding(expression, scope) {
+	if (expression.type !== 'Identifier') {
+		return false;
+	}
+
+	const binding = scope.get(expression.name);
+	const initial = binding?.initial;
+	return (
+		binding?.metadata?.is_template_value === true ||
+		initial?.type === 'Tsx' ||
+		initial?.type === 'Tsrx'
+	);
+}
+
+/**
+ * @param {AST.Expression | AST.SpreadElement} expression
+ * @param {ScopeInterface} scope
+ * @param {TransformServerContext} context
+ * @returns {boolean}
+ */
+function is_collection_value_expression(expression, scope, context) {
+	if (expression.type === 'ArrayExpression') {
+		return true;
+	}
+
+	if (
+		expression.type === 'TSAsExpression' ||
+		expression.type === 'TSSatisfiesExpression' ||
+		expression.type === 'TSNonNullExpression'
+	) {
+		return is_collection_value_expression(expression.expression, scope, context);
+	}
+
+	if (expression.type === 'ConditionalExpression') {
+		return (
+			is_collection_value_expression(expression.consequent, scope, context) ||
+			is_collection_value_expression(expression.alternate, scope, context)
+		);
+	}
+
+	if (expression.type === 'LogicalExpression') {
+		return (
+			is_collection_value_expression(expression.left, scope, context) ||
+			is_collection_value_expression(expression.right, scope, context)
+		);
+	}
+
+	if (expression.type === 'CallExpression') {
+		if (is_ripple_track_call(expression.callee, context)) {
+			const first_arg = expression.arguments[0];
+			return (
+				first_arg != null &&
+				is_collection_value_expression(
+					/** @type {AST.Expression | AST.SpreadElement} */ (first_arg),
+					scope,
+					context,
+				)
+			);
+		}
+
+		if (expression.callee.type === 'Identifier') {
+			return function_returns_value(scope.get(expression.callee.name)?.initial, (expression) =>
+				is_collection_value_expression(expression, scope, context),
+			);
+		}
+	}
+
+	if (expression.type !== 'Identifier') {
+		return false;
+	}
+
+	const initial = scope.get(expression.name)?.initial;
+	return (
+		initial != null &&
+		is_collection_value_expression(/** @type {AST.Expression} */ (initial), scope, context)
+	);
 }
 
 /**
@@ -275,6 +558,50 @@ function collect_returns_from_children(children) {
 }
 
 /**
+ * @param {AST.VariableDeclaration} node
+ * @param {TransformServerContext} context
+ * @returns {AST.VariableDeclaration}
+ */
+function transform_variable_declaration(node, context) {
+	/** @type {Map<AST.VariableDeclarator, AST.Expression | null>} */
+	const transformed_inits = new Map();
+
+	for (const declarator of node.declarations) {
+		if (!context.state.to_ts) {
+			delete declarator.id.typeAnnotation;
+
+			if (
+				(declarator.id.type === 'ObjectPattern' || declarator.id.type === 'ArrayPattern') &&
+				declarator.id.lazy &&
+				declarator.id.metadata?.lazy_id
+			) {
+				declarator.id = b.id(declarator.id.metadata.lazy_id);
+			}
+		}
+
+		const declarator_init = /** @type {AST.Node | null | undefined} */ (declarator.init);
+		const init =
+			declarator_init?.type === 'Tsx' || declarator_init?.type === 'Tsrx'
+				? build_template_node_to_tsrx_element(declarator_init, context)
+				: declarator_init
+					? /** @type {AST.Expression} */ (
+							context.visit(declarator_init, { ...context.state, template_child: false })
+						)
+					: null;
+		transformed_inits.set(declarator, init);
+	}
+
+	return {
+		...node,
+		declarations: node.declarations.map((declarator) => ({
+			...declarator,
+			id: /** @type {AST.Pattern} */ (context.visit(declarator.id)),
+			init: transformed_inits.get(declarator) ?? null,
+		})),
+	};
+}
+
+/**
  * @param {AST.Node[]} children
  * @param {TransformServerContext} context
  */
@@ -353,7 +680,12 @@ function transform_children(children, context) {
 			node.type === 'Component'
 		) {
 			state.init?.push(
-				/** @type {AST.Statement} */ (visit(node, { ...local_state, return_flags })),
+				node.type === 'VariableDeclaration'
+					? transform_variable_declaration(node, {
+							...context,
+							state: local_state,
+						})
+					: /** @type {AST.Statement} */ (visit(node, { ...local_state, return_flags })),
 			);
 			if (node.type === 'ReturnStatement') {
 				const info = return_flags.get(node);
@@ -673,6 +1005,20 @@ const visitors = {
 		return context.next();
 	},
 
+	JSXElement(node, context) {
+		if (context.state.jsx_to_tsrx_element) {
+			return build_jsx_to_tsrx_element(node, context);
+		}
+		return context.next();
+	},
+
+	JSXFragment(node, context) {
+		if (context.state.jsx_to_tsrx_element) {
+			return build_jsx_to_tsrx_element(node, context);
+		}
+		return context.next();
+	},
+
 	NewExpression(node, context) {
 		const callee = node.callee;
 
@@ -781,8 +1127,7 @@ const visitors = {
 	ArrowFunctionExpression(node, context) {
 		delete node.returnType;
 		delete node.typeParameters;
-		for (let i = 0; i < node.params.length; i++) {
-			const param = node.params[i];
+		const params = node.params.map((param) => {
 			delete param.typeAnnotation;
 			// Handle AssignmentPattern (parameters with default values)
 			if (param.type === 'AssignmentPattern' && param.left) {
@@ -792,14 +1137,21 @@ const visitors = {
 			const pattern = param.type === 'AssignmentPattern' ? param.left : param;
 			if (pattern.type === 'ObjectPattern' || pattern.type === 'ArrayPattern') {
 				const transformed_pattern = replace_lazy_param_pattern(pattern);
-				node.params[i] =
-					param.type === 'AssignmentPattern'
-						? /** @type {AST.AssignmentPattern} */ ({ ...param, left: transformed_pattern })
-						: transformed_pattern;
+				return param.type === 'AssignmentPattern'
+					? /** @type {AST.AssignmentPattern} */ ({ ...param, left: transformed_pattern })
+					: transformed_pattern;
 			}
-		}
+			return param;
+		});
 
-		return context.next();
+		return {
+			...node,
+			params: params.map((param) => /** @type {AST.Pattern} */ (context.visit(param))),
+			body:
+				node.body.type === 'BlockStatement'
+					? /** @type {AST.BlockStatement} */ (context.visit(node.body))
+					: /** @type {AST.Expression} */ (context.visit(node.body)),
+		};
 	},
 
 	TSAsExpression(node, context) {
@@ -950,22 +1302,7 @@ const visitors = {
 	},
 
 	VariableDeclaration(node, context) {
-		for (const declarator of node.declarations) {
-			if (!context.state.to_ts) {
-				delete declarator.id.typeAnnotation;
-
-				// Replace lazy destructuring patterns with the generated identifier
-				if (
-					(declarator.id.type === 'ObjectPattern' || declarator.id.type === 'ArrayPattern') &&
-					declarator.id.lazy &&
-					declarator.id.metadata?.lazy_id
-				) {
-					declarator.id = b.id(declarator.id.metadata.lazy_id);
-				}
-			}
-		}
-
-		return context.next();
+		return transform_variable_declaration(node, context);
 	},
 
 	Element(node, context) {
@@ -1676,15 +2013,30 @@ const visitors = {
 		context.state.init?.push(b.stmt(b.call('_$_.try_block', try_fn, catch_fn, pending_fn)));
 	},
 
-	TSRXExpression(node, { visit, state }) {
-		let expression = /** @type {AST.Expression} */ (visit(node.expression, state));
-		const is_children_expression = is_children_template_expression(node.expression, state.scope);
+	TSRXExpression(node, context) {
+		const { visit, state } = context;
+		const is_children_expression =
+			is_children_template_expression(node.expression, state.scope) ||
+			contains_template_value_node(/** @type {AST.Node} */ (node.expression)) ||
+			is_template_value_call(/** @type {AST.Expression} */ (node.expression), state.scope) ||
+			is_template_value_binding(node.expression, state.scope);
+		const is_collection_expression = is_collection_value_expression(
+			/** @type {AST.Expression} */ (node.expression),
+			state.scope,
+			context,
+		);
+		let expression = /** @type {AST.Expression} */ (
+			visit(node.expression, {
+				...state,
+				template_child: is_children_expression ? false : state.template_child,
+			})
+		);
 
 		if (expression.type === 'Literal') {
 			state.init?.push(
 				b.stmt(b.call(b.id('_$_.output_push'), b.literal(escape(expression.value)))),
 			);
-		} else if (is_children_expression) {
+		} else if (is_children_expression || is_collection_expression) {
 			state.init?.push(b.stmt(b.call('_$_.render_expression', expression)));
 		} else {
 			state.init?.push(b.stmt(b.call(b.id('_$_.output_push'), b.call('_$_.escape', expression))));
@@ -1719,6 +2071,7 @@ const visitors = {
 				state: {
 					...state,
 					init,
+					jsx_to_tsrx_element: true,
 				},
 			}),
 		);
@@ -1750,6 +2103,7 @@ const visitors = {
 				state: {
 					...state,
 					init,
+					jsx_to_tsrx_element: true,
 				},
 			}),
 		);

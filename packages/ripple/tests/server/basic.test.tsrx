@@ -55,6 +55,153 @@ second"</pre>
 		expect(body).toBeHtml('<div><span>Server</span></div>');
 	});
 
+	it('renders deeply nested tsx and tsrx expression values', async () => {
+		function makeFragment(label: string) {
+			return <tsrx>
+				<span class="label">{label}</span>
+				const test = <tsx>
+					{[1, 2, 3, 4].map(
+						(item) => <tsx>
+							{<tsrx>
+								<div class="helper-item">{item}</div>
+							</tsrx>}
+						</tsx>,
+					)}
+				</tsx>;
+				{test}
+			</tsrx>;
+		}
+
+		component Basic() {
+			{<tsx>{[1, 2, 3].map((item) => <div class="app-item">{item}</div>)}</tsx>}
+			{makeFragment('from helper')}
+		}
+
+		const { body } = await render(Basic);
+
+		expect(body).toBeHtml(
+			'<div class="app-item">1</div><div class="app-item">2</div><div class="app-item">3</div><span class="label">from helper</span><div class="helper-item">1</div><div class="helper-item">2</div><div class="helper-item">3</div><div class="helper-item">4</div>',
+		);
+	});
+
+	it('renders tsrx nested directly inside a top-level tsx expression value', async () => {
+		component Basic() {
+			const content = <tsx>
+				<section class="outer">
+					{<tsrx>
+						<div class="inner">
+							{'from tsrx'}
+						</div>
+					</tsrx>}
+				</section>
+			</tsx>;
+
+			{content}
+		}
+
+		const { body } = await render(Basic);
+
+		expect(body).toBeHtml('<section class="outer"><div class="inner">from tsrx</div></section>');
+	});
+
+	it('renders nested elements from tsrx inside a top-level tsx value', async () => {
+		component Basic() {
+			const content = <tsx>
+				<div class="wrapper">
+					{<tsrx>
+						<section class="native">
+							<span class="nested-tsrx">
+								{'inside nested tsrx'}
+							</span>
+						</section>
+					</tsrx>}
+				</div>
+			</tsx>;
+
+			{content}
+		}
+
+		const { body } = await render(Basic);
+
+		expect(body).toBeHtml(
+			'<div class="wrapper"><section class="native"><span class="nested-tsrx">inside nested tsrx</span></section></div>',
+		);
+	});
+
+	it('renders tsx declared inside tsrx nested from a top-level tsx value', async () => {
+		component Basic() {
+			const content = <tsx>
+				{<tsrx>
+					const nested = <tsx>
+						<span class="nested-tsx">
+							{'inside nested tsx'}
+						</span>
+					</tsx>;
+					<div class="native">{nested}</div>
+				</tsrx>}
+			</tsx>;
+
+			{content}
+		}
+
+		const { body } = await render(Basic);
+
+		expect(body).toBeHtml(
+			'<div class="native"><span class="nested-tsx">inside nested tsx</span></div>',
+		);
+	});
+
+	it('flattens nested primitive arrays inside mixed tsrx collections', async () => {
+		component Basic() {
+			<div>
+				{<tsx>
+					{[
+						'start:',
+						['one', 2, true, null, false],
+						<strong>
+							{'!'}
+						</strong>,
+						':end',
+					]}
+				</tsx>}
+			</div>
+		}
+
+		const { body } = await render(Basic);
+
+		expect(body).toBeHtml('<div>start:one2truefalse<strong>!</strong>:end</div>');
+	});
+
+	it('flattens direct primitive array expressions', async () => {
+		component Basic() {
+			const items = ['start:', ['one', 2], null, true, false, ':end'];
+
+			<div>{['start:', ['one', 2], null, true, false, ':end']}</div>
+			<div>{items}</div>
+		}
+
+		const { body } = await render(Basic);
+
+		expect(body).toBeHtml('<div>start:one2truefalse:end</div><div>start:one2truefalse:end</div>');
+	});
+
+	it('flattens conditional primitive array expressions', async () => {
+		component Basic() {
+			const condition = true;
+			const ternary_items = condition
+				? ['start:', ['one', 2], null, true, false, ':end']
+				: ['fallback'];
+			const logical_items = condition && ['start:', ['one', 2], null, true, false, ':end'];
+
+			<div>{ternary_items}</div>
+			<div>{logical_items}</div>
+		}
+
+		const { body } = await render(Basic);
+
+		expect(body).toBeHtml('<div>start:one2truefalse:end</div><div>start:one2truefalse:end</div>');
+	});
+
 	it('renders tracked state updates', async () => {
 		component Counter() {
 			let &[count] = track(0);

@@ -1,10 +1,12 @@
 /** @import { Block } from '#client' */
 
+import { is_array } from '@tsrx/core/runtime/language-helpers';
 import { branch, destroy_block, render } from './blocks.js';
 import { BRANCH_BLOCK, UNINITIALIZED } from './constants.js';
 import { create_text, get_next_sibling } from './operations.js';
+import { assign_nodes } from './template.js';
 import { active_block } from './runtime.js';
-import { hydrating, set_hydrate_node } from './hydration.js';
+import { hydrate_node, hydrating, set_hydrate_node } from './hydration.js';
 import { COMMENT_NODE, HYDRATION_END, HYDRATION_START, TEXT_NODE } from '../../../constants.js';
 import { is_tsrx_element } from '../../element.js';
 
@@ -21,6 +23,93 @@ function find_enclosing_branch(block) {
 		block = block.p;
 	}
 	return null;
+}
+
+/**
+ * @param {any[]} value
+ * @param {ChildNode} anchor
+ * @param {Block} block
+ * @returns {void}
+ */
+function render_tsrx_collection(value, anchor, block) {
+	if (hydrating) {
+		assign_nodes(/** @type {Node} */ (hydrate_node ?? anchor), anchor);
+		render_tsrx_collection_items(value, anchor, block);
+		return;
+	}
+
+	var start = document.createComment('');
+	var end = document.createComment('');
+
+	anchor.before(start, end);
+	assign_nodes(start, end);
+	render_tsrx_collection_items(value, end, block);
+}
+
+/**
+ * @param {any[]} value
+ * @param {ChildNode} anchor
+ * @param {Block} block
+ * @returns {void}
+ */
+function render_tsrx_collection_items(value, anchor, block) {
+	for (var i = 0; i < value.length; i++) {
+		var item = value[i];
+
+		if (is_tsrx_element(item)) {
+			item.render(anchor, block);
+		} else if (is_array(item)) {
+			render_tsrx_collection_items(item, anchor, block);
+		} else if (item != null) {
+			render_tsrx_collection_text(item + '', anchor);
+		}
+	}
+}
+
+/**
+ * @param {string} value
+ * @param {ChildNode} anchor
+ * @returns {void}
+ */
+function render_tsrx_collection_text(value, anchor) {
+	if (!hydrating) {
+		anchor.before(create_text(value));
+		return;
+	}
+
+	var node = hydrate_node;
+
+	if (node?.nodeType === TEXT_NODE) {
+		var current_value = /** @type {Text} */ (node).nodeValue ?? '';
+
+		if (current_value !== value) {
+			/** @type {Text} */ (node).nodeValue = value;
+
+			if (current_value.startsWith(value)) {
+				var remaining = current_value.slice(value.length);
+
+				if (remaining !== '') {
+					var remaining_text = create_text(remaining);
+					/** @type {ChildNode} */ (node).after(remaining_text);
+					set_hydrate_node(remaining_text);
+					return;
+				}
+			}
+		}
+
+		set_hydrate_node(get_next_sibling(node) ?? anchor);
+		return;
+	}
+
+	var new_text = create_text(value);
+
+	if (node !== null && node !== anchor) {
+		/** @type {ChildNode} */ (node).before(new_text);
+	} else {
+		anchor.before(new_text);
+	}
+
+	set_hydrate_node(node ?? anchor);
 }
 
 /**
@@ -47,7 +136,8 @@ export function expression(node, get_value) {
 
 	render(() => {
 		var next_value = get_value();
-		var next_is_element = is_tsrx_element(next_value);
+		var next_is_collection = is_array(next_value);
+		var next_is_element = next_is_collection || is_tsrx_element(next_value);
 		var is_hydration_marker = hydrating && anchor.nodeType === COMMENT_NODE;
 
 		if (is_hydration_marker) {
@@ -93,8 +183,12 @@ export function expression(node, get_value) {
 			var parent_branch = find_enclosing_branch(active_block);
 
 			child_block = branch(() => {
-				var block = active_block;
-				next_value.render(end ?? anchor, block);
+				var block = /** @type {Block} */ (active_block);
+				if (next_is_collection) {
+					render_tsrx_collection(next_value, end ?? anchor, block);
+				} else {
+					next_value.render(end ?? anchor, block);
+				}
 			});
 
 			// Update parent branch's s.start to include content inserted before anchor.

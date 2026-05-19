@@ -66,6 +66,197 @@ export component ExpressionContent() {
 	<span>{label.toUpperCase()}</span>
 }
 
+function makeNestedTsxTsrxFragment(label: string) {
+	return <tsrx>
+		<span class="label">{label}</span>
+		const test = <tsx>
+			{[1, 2, 3, 4].map(
+				(item) => <tsx>
+					{<tsrx>
+						<div class="helper-item">{item}</div>
+					</tsrx>}
+				</tsx>,
+			)}
+		</tsx>;
+		{test}
+	</tsrx>;
+}
+
+export component NestedTsxTsrxExpressionValues() {
+	{<tsx>{[1, 2, 3].map((item) => <div class="app-item">{item}</div>)}</tsx>}
+	{makeNestedTsxTsrxFragment('from helper')}
+}
+
+export component MixedTsrxCollectionText() {
+	const content = <tsx>
+		{[
+			'alpha ',
+			<strong class="middle">
+				{'beta'}
+			</strong>,
+			' gamma ',
+			[
+				'delta ',
+				<em class="tail">
+					{'epsilon'}
+				</em>,
+				' zeta',
+			],
+		]}
+	</tsx>;
+
+	<div class="mixed-collection">{content}</div>
+}
+
+export component MixedTsrxCollectionSplitServerText() {
+	const content = <tsx>
+		{[
+			'alpha ',
+			<strong class="middle">
+				{'beta'}
+			</strong>,
+			' gamma ',
+			[
+				'delta ',
+				<em class="tail">
+					{'epsilon'}
+				</em>,
+				' zeta',
+			],
+		]}
+	</tsx>;
+
+	<div class="mixed-collection-split">{content}</div>
+}
+
+export component MixedTsrxCollectionSplitClientText() {
+	const content = <tsx>
+		{[
+			'alpha ',
+			<strong class="middle">
+				{'beta'}
+			</strong>,
+			' gamma ',
+			[
+				'changed ',
+				<em class="tail">
+					{'epsilon'}
+				</em>,
+				' zeta',
+			],
+		]}
+	</tsx>;
+
+	<div class="mixed-collection-split">{content}</div>
+}
+
+export component MixedTsrxCollectionPrimitiveServerText() {
+	const content = <tsx>
+		{[
+			'count: ',
+			1,
+			' / ',
+			true,
+			<span class="primitive-tail">
+				{' ok'}
+			</span>,
+		]}
+	</tsx>;
+
+	<div class="mixed-collection-primitive">{content}</div>
+}
+
+export component MixedTsrxCollectionPrimitiveClientText() {
+	const content = <tsx>
+		{[
+			'count: ',
+			2,
+			' / ',
+			false,
+			<span class="primitive-tail">
+				{' ok'}
+			</span>,
+		]}
+	</tsx>;
+
+	<div class="mixed-collection-primitive">{content}</div>
+}
+
+function createPrimitiveItems() {
+	return ['start:', ['one', 2], true, null, false, ':end'];
+}
+
+export component DynamicArrayFromCall() {
+	const items = createPrimitiveItems();
+
+	<div class="dynamic-array-call">{items}</div>
+}
+
+export component DynamicArrayFromTrack() {
+	let &[items] = track(['start:', ['one', 2], true, null, false, ':end']);
+
+	<div class="dynamic-array-track">{items}</div>
+}
+
+export component DynamicArrayFromConditional() {
+	const condition = true;
+	const items = condition ? ['start:', ['one', 2], true, null, false, ':end'] : ['fallback'];
+
+	<div class="dynamic-array-conditional">{items}</div>
+}
+
+export component DynamicArrayFromLogical() {
+	const condition = true;
+	const items = condition && ['start:', ['one', 2], true, null, false, ':end'];
+
+	<div class="dynamic-array-logical">{items}</div>
+}
+
+export component NestedTsrxInsideTopLevelTsxExpression() {
+	const content = <tsx>
+		<section class="outer">
+			{<tsrx>
+				<div class="inner">
+					{'from tsrx'}
+				</div>
+			</tsrx>}
+		</section>
+	</tsx>;
+
+	{content}
+}
+
+export component NestedTsrxElementsInsideTopLevelTsxValue() {
+	const content = <tsx>
+		<div class="wrapper">
+			{<tsrx>
+				<section class="native">
+					<span class="nested-tsrx">
+						{'inside nested tsrx'}
+					</span>
+				</section>
+			</tsrx>}
+		</div>
+	</tsx>;
+
+	{content}
+}
+
+export component TsxDeclaredInsideNestedTsrxFromTopLevelTsx() {
+	const content = <tsx>
+		{<tsrx>
+			const nested = <tsx>
+				<span class="nested-tsx">
+					{'inside nested tsx'}
+				</span>
+			</tsx>;
+			<div class="native">{nested}</div>
+		</tsrx>}
+	</tsx>;
+
+	{content}
+}
+
 component TextProp(&{ children }: { children: string }) {
 	<div class="text-prop">{children}</div>
 }

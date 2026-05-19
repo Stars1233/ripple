@@ -1040,6 +1040,28 @@ export function jsx_to_ripple_node(node, inherited_path = []) {
 		const opening = node.openingElement;
 		const name = opening.name;
 
+		if (name.type === 'JSXIdentifier' && (name.name === 'tsx' || name.name === 'tsrx')) {
+			const children =
+				name.name === 'tsrx'
+					? /** @type {AST.Node[]} */ (
+							/** @type {AST.Node[]} */ (node.children)
+								.map((child) => jsx_to_ripple_node(child, inherited_path))
+								.flat()
+								.filter(Boolean)
+						)
+					: node.children;
+
+			return /** @type {AST.Node} */ (
+				/** @type {unknown} */ ({
+					...node,
+					type: name.name === 'tsx' ? 'Tsx' : 'Tsrx',
+					children,
+					attributes: opening.attributes,
+					selfClosing: opening.selfClosing,
+				})
+			);
+		}
+
 		/** @type {AST.Identifier | AST.MemberExpression} */
 		let id;
 
@@ -1115,6 +1137,8 @@ export function jsx_to_ripple_node(node, inherited_path = []) {
 				id,
 				attributes,
 				children: [],
+				openingElement: opening,
+				closingElement: node.closingElement,
 				selfClosing: opening.selfClosing,
 				metadata: { scoped: false, path: inherited_path },
 				start: node.start,
