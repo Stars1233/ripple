@@ -70,22 +70,11 @@
     "zimmerframe": "catalog:default"
   },
   "devDependencies": {
-    "@solidjs/web": "2.0.0-beta.7",
-    "@tsrx/preact": "workspace:*",
-    "@tsrx/react": "workspace:*",
-    "@tsrx/solid": "workspace:*",
-    "@tsrx/vue": "workspace:*",
     "@types/node": "catalog:default",
     "@typescript-eslint/types": "catalog:default",
     "@volar/language-core": "catalog:default",
-    "preact": "catalog:default",
-    "react": "catalog:default",
-    "react-dom": "catalog:default",
-    "solid-js": "2.0.0-beta.7",
     "typescript": "catalog:default",
-    "vscode-languageserver-types": "catalog:default",
-    "vue": "3.6.0-beta.12",
-    "vue-jsx-vapor": "^3.2.14"
+    "vscode-languageserver-types": "catalog:default"
   },
   "files": [
     "src",

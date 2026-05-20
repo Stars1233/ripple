@@ -1,5 +1,10 @@
 import { configDefaults, defineConfig } from 'vitest/config';
 import { ripple } from '@ripple-ts/vite-plugin';
+import { tsrxPreact } from './packages/vite-plugin-preact/src/index.js';
+import { tsrxReact } from './packages/vite-plugin-react/src/index.js';
+import { tsrxSolid } from './packages/vite-plugin-solid/src/index.js';
+import { tsrxVue } from './packages/vite-plugin-vue/src/index.js';
+import solid from 'vite-plugin-solid';
 import { fileURLToPath } from 'node:url';
 
 const vue_runtime_path = fileURLToPath(
@@ -31,6 +36,47 @@ const tsrx_core_test_harness_alias = [
 		replacement: `${tsrx_core_test_harness_runtime_dir}$1`,
 	},
 ];
+
+function create_test_dependency_resolver(name, package_json, package_names) {
+	const importer = fileURLToPath(new URL(package_json, import.meta.url));
+
+	return {
+		name,
+		enforce: 'pre',
+		/** @param {string} source */
+		async resolveId(source) {
+			if (!package_names.some((pkg) => source === pkg || source.startsWith(`${pkg}/`))) {
+				return null;
+			}
+
+			return this.resolve(source, importer, { skipSelf: true });
+		},
+	};
+}
+
+const react_runtime_dependency_resolver = create_test_dependency_resolver(
+	'tsrx-react-runtime-dependencies',
+	'./packages/vite-plugin-react/package.json',
+	['@tsrx/react', 'react', 'react-dom'],
+);
+
+const preact_runtime_dependency_resolver = create_test_dependency_resolver(
+	'tsrx-preact-runtime-dependencies',
+	'./packages/vite-plugin-preact/package.json',
+	['@tsrx/preact', 'preact'],
+);
+
+const solid_runtime_dependency_resolver = create_test_dependency_resolver(
+	'tsrx-solid-runtime-dependencies',
+	'./packages/vite-plugin-solid/package.json',
+	['@solidjs/web', '@tsrx/solid', 'solid-js'],
+);
+
+const vue_runtime_dependency_resolver = create_test_dependency_resolver(
+	'tsrx-vue-runtime-dependencies',
+	'./packages/vite-plugin-vue/package.json',
+	['@tsrx/vue'],
+);
 
 const vue_runtime_alias_plugin = {
 	name: 'tsrx-vue-runtime-aliases',
@@ -115,7 +161,10 @@ export default defineConfig({
 					setupFiles: ['packages/vite-plugin-preact/tests/setup.js'],
 					globals: true,
 				},
-				plugins: [(await import('./packages/vite-plugin-preact/src/index.js')).tsrxPreact()],
+				plugins: [preact_runtime_dependency_resolver, tsrxPreact()],
+				resolve: {
+					alias: tsrx_core_test_harness_alias,
+				},
 			},
 			{
 				test: {
@@ -188,10 +237,7 @@ export default defineConfig({
 					setupFiles: ['packages/vite-plugin-vue/tests/setup.js'],
 					globals: true,
 				},
-				plugins: [
-					vue_runtime_alias_plugin,
-					(await import('./packages/vite-plugin-vue/src/index.js')).tsrxVue(),
-				],
+				plugins: [vue_runtime_dependency_resolver, vue_runtime_alias_plugin, tsrxVue()],
 				resolve: process.env.VITEST
 					? { conditions: ['browser'], alias: tsrx_core_test_harness_alias }
 					: { alias: tsrx_core_test_harness_alias },
@@ -261,7 +307,10 @@ export default defineConfig({
 					setupFiles: ['packages/vite-plugin-react/tests/setup.js'],
 					globals: true,
 				},
-				plugins: [(await import('./packages/vite-plugin-react/src/index.js')).tsrxReact()],
+				plugins: [react_runtime_dependency_resolver, tsrxReact()],
+				resolve: {
+					alias: tsrx_core_test_harness_alias,
+				},
 			},
 			{
 				test: {
@@ -280,10 +329,7 @@ export default defineConfig({
 					setupFiles: ['packages/vite-plugin-solid/tests/setup.js'],
 					globals: true,
 				},
-				plugins: [
-					(await import('./packages/vite-plugin-solid/src/index.js')).tsrxSolid(),
-					(await import('vite-plugin-solid')).default(),
-				],
+				plugins: [solid_runtime_dependency_resolver, tsrxSolid(), solid()],
 				resolve: {
 					alias: tsrx_core_test_harness_alias,
 				},
