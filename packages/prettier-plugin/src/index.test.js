@@ -2694,6 +2694,35 @@ component Child({ something }) {
 			expect(result).toBeWithNewline(expected);
 		});
 
+		it('prints satisfies expressions in switch default cases', async () => {
+			const input = `export component Test(props: { status: "ok" | "error" }) {
+  switch (props.status) {
+    case "ok":
+      <div>"ok"</div>
+      return
+    case "error":
+      <div>"error"</div>
+      return
+    default:
+      props.status satisfies never
+  }
+}`;
+			const expected = `export component Test(props: { status: "ok" | "error" }) {
+  switch (props.status) {
+    case "ok":
+      <div>"ok"</div>
+      return;
+    case "error":
+      <div>"error"</div>
+      return;
+    default:
+      props.status satisfies never;
+  }
+}`;
+			const result = await format(input);
+			expect(result).toBeWithNewline(expected);
+		});
+
 		it('prints function with a rest parameter correctly', async () => {
 			const expected = `function TestRest(...args: string[]) {
   console.log(args);

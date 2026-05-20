@@ -1506,6 +1506,15 @@ function printRippleNode(node, path, options, print, args) {
 			break;
 		}
 
+		case 'TSSatisfiesExpression': {
+			nodeContent = [
+				path.call(print, 'expression'),
+				' satisfies ',
+				path.call(print, 'typeAnnotation'),
+			];
+			break;
+		}
+
 		case 'TSNonNullExpression': {
 			nodeContent = [path.call(print, 'expression'), '!'];
 			break;
