@@ -1930,21 +1930,21 @@ function printRippleNode(node, path, options, print, args) {
 				(node.left.type === 'CallExpression' ||
 					node.left.type === 'ChainExpression' ||
 					node.left.type === 'NewExpression');
-			// Don't add indent if we're in a conditional test context
-			if (args?.isConditionalTest) {
-				logicalResult = group([
-					path.call((childPath) => print(childPath, { isConditionalTest: true }), 'left'),
-					' ',
-					node.operator,
-					[line, path.call((childPath) => print(childPath, { isConditionalTest: true }), 'right')],
-				]);
-			} else if (shouldKeepNullishFallbackInline) {
+			if (shouldKeepNullishFallbackInline) {
 				logicalResult = group([
 					path.call(print, 'left'),
 					' ',
 					node.operator,
 					' ',
 					path.call(print, 'right'),
+				]);
+			} else if (args?.isConditionalTest) {
+				// Don't add indent if we're in a conditional test context
+				logicalResult = group([
+					path.call((childPath) => print(childPath, { isConditionalTest: true }), 'left'),
+					' ',
+					node.operator,
+					[line, path.call((childPath) => print(childPath, { isConditionalTest: true }), 'right')],
 				]);
 			} else {
 				logicalResult = group([
