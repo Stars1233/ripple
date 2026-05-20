@@ -6446,20 +6446,25 @@
 						</dict>
 					</dict>
 					<key>end</key>
-					<string>(&lt;/)([_$[:alpha:]][-_$[:alnum:].]*)\s*(&gt;)</string>
+					<string>(/&gt;)|(?:(&lt;/)([_$[:alpha:]][-_$[:alnum:].]*)\s*(&gt;))</string>
 					<key>endCaptures</key>
 					<dict>
 						<key>1</key>
 						<dict>
 							<key>name</key>
-							<string>punctuation.definition.tag.begin.js</string>
+							<string>punctuation.definition.tag.end.js</string>
 						</dict>
 						<key>2</key>
 						<dict>
 							<key>name</key>
-							<string>entity.name.tag.js</string>
+							<string>punctuation.definition.tag.begin.js</string>
 						</dict>
 						<key>3</key>
+						<dict>
+							<key>name</key>
+							<string>entity.name.tag.js</string>
+						</dict>
+						<key>4</key>
 						<dict>
 							<key>name</key>
 							<string>punctuation.definition.tag.end.js</string>
@@ -6473,7 +6478,7 @@
 							<key>begin</key>
 							<string>\G(?![/&gt;])</string>
 							<key>end</key>
-							<string>(?=&gt;)</string>
+							<string>(?=/?&gt;)</string>
 							<key>patterns</key>
 							<array>
 								<dict>

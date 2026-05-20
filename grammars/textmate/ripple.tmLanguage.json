@@ -7039,22 +7039,25 @@
               "name": "entity.name.tag.js"
             }
           },
-          "end": "(</)([_$[:alpha:]][-_$[:alnum:].]*)\\s*(>)",
+          "end": "(/>)|(?:(</)([_$[:alpha:]][-_$[:alnum:].]*)\\s*(>))",
           "endCaptures": {
             "1": {
-              "name": "punctuation.definition.tag.begin.js"
+              "name": "punctuation.definition.tag.end.js"
             },
             "2": {
-              "name": "entity.name.tag.js"
+              "name": "punctuation.definition.tag.begin.js"
             },
             "3": {
+              "name": "entity.name.tag.js"
+            },
+            "4": {
               "name": "punctuation.definition.tag.end.js"
             }
           },
           "patterns": [
             {
               "begin": "\\G(?![/>])",
-              "end": "(?=>)",
+              "end": "(?=/?>)",
               "patterns": [
                 {
                   "include": "#jsx-tsx-tag-attributes"
