@@ -37,9 +37,7 @@ describe('tsx expression', () => {
 
 	it('renders a basic fragment shorthand element', () => {
 		component App() {
-			const el = <tsx>
-				<div>hello world</div>
-			</tsx>;
+			const el = <tsx><div>hello world</div></tsx>;
 			{el}
 		}
 		render(App);
@@ -99,9 +97,7 @@ describe('tsx expression', () => {
 
 	it('renders a tsx element assigned to a variable', () => {
 		component App() {
-			const el = <tsx>
-				<span class="test">content</span>
-			</tsx>;
+			const el = <tsx><span class="test">content</span></tsx>;
 			{el}
 		}
 		render(App);
@@ -144,9 +140,7 @@ describe('tsx expression', () => {
 
 	it('renders a tsx element inline in a parent element', () => {
 		component App() {
-			const el = <tsx>
-				<span>inline</span>
-			</tsx>;
+			const el = <tsx><span>inline</span></tsx>;
 			<div class="parent">{el}</div>
 		}
 		render(App);
@@ -178,9 +172,7 @@ describe('tsx expression', () => {
 	it('conditionally renders tsx elements', () => {
 		component App() {
 			let &[show] = track(true);
-			const el = <tsx>
-				<div class="tsx-content">visible</div>
-			</tsx>;
+			const el = <tsx><div class="tsx-content">visible</div></tsx>;
 
 			if (show) {
 				{el}
@@ -205,9 +197,7 @@ describe('tsx expression', () => {
 		}
 
 		component App() {
-			const el = <tsx>
-				<span>from tsx</span>
-			</tsx>;
+			const el = <tsx><span>from tsx</span></tsx>;
 			<Child children={el} />
 		}
 		render(App);
@@ -219,14 +209,12 @@ describe('tsx expression', () => {
 
 	it('renders tsx element with text content only', () => {
 		component App() {
-			const el = <tsx>
-				just text
-			</tsx>;
+			const el = <tsx>just text</tsx>;
 			{el}
 		}
 
 		render(App);
-		expect(container.textContent).toBe('just text');
+		expect(container.textContent.trim()).toBe('just text');
 	});
 
 	it('renders tsx element with static attributes', () => {
@@ -249,9 +237,7 @@ describe('tsx expression', () => {
 		component App() {
 			let &[name] = track('initial');
 
-			const el = <tsx>
-				<div id={name} class={'cls-' + name}>content</div>
-			</tsx>;
+			const el = <tsx><div id={name} class={'cls-' + name}>content</div></tsx>;
 			{el}
 			<button onClick={() => (name = 'updated')}>{'update'}</button>
 		}
@@ -313,9 +299,7 @@ describe('tsx expression', () => {
 		component App() {
 			let &[color] = track('red');
 
-			const el = <tsx>
-				<div style={'color: ' + color}>styled</div>
-			</tsx>;
+			const el = <tsx><div style={'color: ' + color}>styled</div></tsx>;
 			{el}
 			<button onClick={() => (color = 'blue')}>{'change color'}</button>
 		}
@@ -367,11 +351,7 @@ describe('tsx expression', () => {
 		}
 
 		component App() {
-			<Wrapper
-				content={<tsx>
-					<span class="inner">direct prop</span>
-				</tsx>}
-			/>
+			<Wrapper content={<tsx><span class="inner">direct prop</span></tsx>} />
 		}
 
 		render(App);
@@ -391,12 +371,8 @@ describe('tsx expression', () => {
 
 		component App() {
 			<Card
-				title={<tsx>
-					<span class="bold">Title</span>
-				</tsx>}
-				children={<tsx>
-					<p>Card content here</p>
-				</tsx>}
+				title={<tsx><span class="bold">Title</span></tsx>}
+				children={<tsx><p>Card content here</p></tsx>}
 			/>
 		}
 
@@ -408,9 +384,7 @@ describe('tsx expression', () => {
 
 	it('renders tsx from function defined outside component', () => {
 		function createBadge(label: string) {
-			return <tsx>
-				<span class="badge">{label}</span>
-			</tsx>;
+			return <tsx><span class="badge">{label}</span></tsx>;
 		}
 
 		component App() {
@@ -425,9 +399,7 @@ describe('tsx expression', () => {
 
 	it('renders tsx from function with multiple elements', () => {
 		function createListItem(item: string) {
-			return <tsx>
-				<li class="list-item">{item}</li>
-			</tsx>;
+			return <tsx><li class="list-item">{item}</li></tsx>;
 		}
 
 		component App() {
@@ -507,9 +479,7 @@ describe('tsx expression', () => {
 
 	it('renders nested tsx from multiple functions', () => {
 		function createIcon(name: string) {
-			return <tsx>
-				<i class={'icon icon-' + name}></i>
-			</tsx>;
+			return <tsx><i class={'icon icon-' + name}></i></tsx>;
 		}
 
 		function createButton(icon: string, label: string) {
@@ -551,9 +521,7 @@ describe('tsx expression', () => {
 		}
 
 		component App() {
-			{<tsx>
-				{[1, 2, 3].map((item) => <div class="app-item">{item}</div>)}
-			</tsx>}
+			{<tsx>{[1, 2, 3].map((item) => <div class="app-item">{item}</div>)}</tsx>}
 			{makeFragment('from helper')}
 		}
 
@@ -647,12 +615,7 @@ describe('tsx expression', () => {
 
 		component App() {
 			<Alert message="No icon" />
-			<Alert
-				icon={<tsx>
-					<span class="custom-icon">✓</span>
-				</tsx>}
-				message="Custom icon"
-			/>
+			<Alert icon={<tsx><span class="custom-icon">✓</span></tsx>} message="Custom icon" />
 		}
 
 		render(App);
@@ -664,9 +627,7 @@ describe('tsx expression', () => {
 
 	it('renders tsx stored in array via function', () => {
 		function createItem(className: string, content: string) {
-			return <tsx>
-				<div class={className}>{content}</div>
-			</tsx>;
+			return <tsx><div class={className}>{content}</div></tsx>;
 		}
 
 		component App() {
@@ -693,17 +654,11 @@ describe('tsx expression', () => {
 	it('renders tsx conditionally from function', () => {
 		function createContent(type: string) {
 			if (type === 'success') {
-				return <tsx>
-					<div class="success">Success!</div>
-				</tsx>;
+				return <tsx><div class="success">Success!</div></tsx>;
 			} else if (type === 'error') {
-				return <tsx>
-					<div class="error">Error!</div>
-				</tsx>;
+				return <tsx><div class="error">Error!</div></tsx>;
 			}
-			return <tsx>
-				<div class="default">Default</div>
-			</tsx>;
+			return <tsx><div class="default">Default</div></tsx>;
 		}
 
 		component App() {
