@@ -361,6 +361,49 @@ function binaryExpressionNeedsParens(node, parent) {
 }
 
 /**
+ * Check if a parenthesized AssignmentExpression needs its parentheses preserved.
+ * @param {AST.AssignmentExpression} node - The expression node
+ * @param {AST.Node | null} parent - The parent node
+ * @returns {boolean} - True if parentheses are needed
+ */
+function assignmentExpressionNeedsParens(node, parent) {
+	if (!node.metadata?.parenthesized || !parent) {
+		return false;
+	}
+
+	if (parent.type === 'BinaryExpression' || parent.type === 'LogicalExpression') {
+		return true;
+	}
+
+	if (parent.type === 'ConditionalExpression') {
+		return parent.test === node;
+	}
+
+	if (parent.type === 'AwaitExpression' || parent.type === 'YieldExpression') {
+		return parent.argument === node;
+	}
+
+	if (parent.type === 'CallExpression' || parent.type === 'NewExpression') {
+		return parent.callee === node;
+	}
+
+	if (parent.type === 'TaggedTemplateExpression') {
+		return parent.tag === node;
+	}
+
+	if (
+		parent.type === 'TSAsExpression' ||
+		parent.type === 'TSSatisfiesExpression' ||
+		parent.type === 'TSNonNullExpression' ||
+		parent.type === 'TSInstantiationExpression'
+	) {
+		return parent.expression === node;
+	}
+
+	return false;
+}
+
+/**
  * Create a function that skips specified characters in text
  * @param {string | RegExp} characters - Characters to skip
  * @returns {(text: string, startIndex: number | false, options?: { backwards?: boolean }) => number | false}
@@ -1337,6 +1380,10 @@ function printRippleNode(node, path, options, print, args) {
 				group(indent(line), { id: groupId }),
 				indentIfBreak(rightSide, { groupId }),
 			]);
+			const parent = path.getParentNode();
+			if (assignmentExpressionNeedsParens(node, parent)) {
+				nodeContent = ['(', nodeContent, ')'];
+			}
 			break;
 		}
 

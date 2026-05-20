@@ -805,6 +805,28 @@ function test() {
 			expect(result).toBeWithNewline(expected);
 		});
 
+		it('should preserve required parentheses around assignment expressions', async () => {
+			const input = `const openSignal = useRef<Signal<boolean> | null>(null)
+const open = props.open ?? (openSignal.current ??= signal(false))
+const sum = a + (b = c)
+const condition = (a = b) ? c : d
+const called = (factory = getFactory())()
+async function load() {
+  await (promise = getPromise())
+}`;
+			const expected = `const openSignal = useRef<Signal<boolean> | null>(null);
+const open = props.open ?? (openSignal.current ??= signal(false));
+const sum = a + (b = c);
+const condition = (a = b) ? c : d;
+const called = (factory = getFactory())();
+async function load() {
+  await (promise = getPromise());
+}`;
+
+			const result = await format(input, { singleQuote: true });
+			expect(result).toBeWithNewline(expected);
+		});
+
 		it('should not change formatting for function object properties and properties in square brackets', async () => {
 			const expected = `export component App() {
   const SYMBOL_PROP = Symbol();
