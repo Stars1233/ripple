@@ -3748,6 +3748,18 @@
     "expression-inside-possibly-arrow-parens": {
       "patterns": [
         {
+          "include": "#jsx-tag-tsx"
+        },
+        {
+          "include": "#jsx-tag-tsrx"
+        },
+        {
+          "include": "#jsx-tag-tsx-react"
+        },
+        {
+          "include": "#jsx-tsx-tag-fragment"
+        },
+        {
           "include": "#expressionWithoutIdentifiers"
         },
         {

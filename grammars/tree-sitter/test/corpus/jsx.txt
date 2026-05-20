@@ -233,6 +233,156 @@ component App() {
                       (identifier))))
                 close_tag: (jsx_closing_fragment)))))))))
 
+=========================================
+Parenthesized JSX Arrow Return Attributes
+=========================================
+
+export function Test(props) {
+  return <>
+    <List
+      tsrxItem={(item) => (
+        <tsrx>
+          <ItemView item={item} onSelect={props.onSelect} />
+        </tsrx>
+      )}
+      tsxItem={(item) => (
+        <tsx>
+          <ItemView item={item} onSelect={props.onSelect} />
+        </tsx>
+      )}
+      fragmentItem={(item) => (
+        <>
+          <ItemView item={item} onSelect={props.onSelect} />
+        </>
+      )}
+    />
+  </>;
+}
+
+---
+
+(program
+  (export_statement
+    (function_declaration
+      name: (identifier)
+      parameters: (formal_parameters
+        (required_parameter
+          pattern: (identifier)))
+      body: (statement_block
+        (return_statement
+          (jsx_fragment
+            open_tag: (jsx_opening_fragment)
+            children: (jsx_text)
+            children: (jsx_self_closing_element
+              name: (jsx_non_namespaced_element_name
+                (identifier))
+              attribute: (jsx_attribute
+                name: (identifier)
+                value: (jsx_expression
+                  (component_statement
+                    (expression_statement
+                      (arrow_function
+                        parameters: (formal_parameters
+                          (required_parameter
+                            pattern: (identifier)))
+                        body: (parenthesized_expression
+                          (jsx_element
+                            open_tag: (jsx_opening_element
+                              name: (jsx_element_name
+                                (identifier)))
+                            children: (jsx_text)
+                            children: (jsx_self_closing_element
+                              name: (jsx_non_namespaced_element_name
+                                (identifier))
+                              attribute: (jsx_attribute
+                                name: (identifier)
+                                value: (jsx_expression
+                                  (component_statement
+                                    (expression_statement
+                                      (identifier)))))
+                              attribute: (jsx_attribute
+                                name: (identifier)
+                                value: (jsx_expression
+                                  (component_statement
+                                    (expression_statement
+                                      (member_expression
+                                        object: (identifier)
+                                        property: (identifier)))))))
+                            children: (jsx_text)
+                            close_tag: (jsx_closing_element
+                              name: (jsx_element_name
+                                (identifier))))))))))
+              attribute: (jsx_attribute
+                name: (identifier)
+                value: (jsx_expression
+                  (component_statement
+                    (expression_statement
+                      (arrow_function
+                        parameters: (formal_parameters
+                          (required_parameter
+                            pattern: (identifier)))
+                        body: (parenthesized_expression
+                          (jsx_element
+                            open_tag: (jsx_opening_element
+                              name: (jsx_element_name
+                                (identifier)))
+                            children: (jsx_text)
+                            children: (jsx_self_closing_element
+                              name: (jsx_non_namespaced_element_name
+                                (identifier))
+                              attribute: (jsx_attribute
+                                name: (identifier)
+                                value: (jsx_expression
+                                  (component_statement
+                                    (expression_statement
+                                      (identifier)))))
+                              attribute: (jsx_attribute
+                                name: (identifier)
+                                value: (jsx_expression
+                                  (component_statement
+                                    (expression_statement
+                                      (member_expression
+                                        object: (identifier)
+                                        property: (identifier)))))))
+                            children: (jsx_text)
+                            close_tag: (jsx_closing_element
+                              name: (jsx_element_name
+                                (identifier))))))))))
+              attribute: (jsx_attribute
+                name: (identifier)
+                value: (jsx_expression
+                  (component_statement
+                    (expression_statement
+                      (arrow_function
+                        parameters: (formal_parameters
+                          (required_parameter
+                            pattern: (identifier)))
+                        body: (parenthesized_expression
+                          (jsx_fragment
+                            open_tag: (jsx_opening_fragment)
+                            children: (jsx_text)
+                            children: (jsx_self_closing_element
+                              name: (jsx_non_namespaced_element_name
+                                (identifier))
+                              attribute: (jsx_attribute
+                                name: (identifier)
+                                value: (jsx_expression
+                                  (component_statement
+                                    (expression_statement
+                                      (identifier)))))
+                              attribute: (jsx_attribute
+                                name: (identifier)
+                                value: (jsx_expression
+                                  (component_statement
+                                    (expression_statement
+                                      (member_expression
+                                        object: (identifier)
+                                        property: (identifier)))))))
+                            children: (jsx_text)
+                            close_tag: (jsx_closing_fragment)))))))))
+            children: (jsx_text)
+            close_tag: (jsx_closing_fragment)))))))
+
 ==================
 Style Element
 ==================
