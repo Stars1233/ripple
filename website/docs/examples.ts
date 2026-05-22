@@ -576,29 +576,30 @@ export default component App() {
 		title: 'Transporting Reactivity',
 		code: `import { effect, track } from 'ripple';
 
-function createDouble(&[ count ]) {
-  const &[double] = track(() => count * 2);
+function createDouble(&[count]) {
+  const doubleTrack = track(() => count * 2);
+
   effect(() => {
     console.log('Count:', count)
   });
-  return [ double ];
+  return doubleTrack;
 }
 
-function createQuad(&{ count }) {
-  const &[quad] = track(() => count * 4);
+function createQuad(&[count]) {
+  const quadTrack = track(() => count * 4);
   effect(() => {
     console.log('Count:', count)
   });
-  return { quad };
+  return quadTrack;
 }
 
 export default component App() {
-  let &[count] = track(0);
+  let &[count, countTrack] = track(0);
 
-  const &[ double ] = createDouble([ count ]); // array
+  const &[double] = createDouble(countTrack);
   <p>"Double: "{double}</p>
 
-  const &{ quad } = createQuad({ count }); // object
+  const &[quad] = createQuad(countTrack);
   <p>"Quadruple: "{quad}</p>
 
 	<button onClick={() => { count++; }}>"Increment"</button>
