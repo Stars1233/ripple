@@ -34,7 +34,7 @@ export function loadRippleConfig(
 export class RenderRoute {
 	readonly type: 'render';
 	path: string;
-	entry: string;
+	entry: RenderRouteEntry;
 	layout?: string;
 	before: Middleware[];
 	constructor(options: RenderRouteOptions);
@@ -59,8 +59,8 @@ export type Route = RenderRoute | ServerRoute;
 export interface RenderRouteOptions {
 	/** URL path pattern (e.g., '/', '/posts/:id', '/docs/*slug') */
 	path: string;
-	/** Path to the Ripple component entry file */
-	entry: string;
+	/** Path to the Ripple component entry file, optionally with a preferred named export */
+	entry: RenderRouteEntry;
 	/** Path to the layout component (wraps the entry) */
 	layout?: string;
 	/** Middleware to run before rendering */
@@ -107,6 +107,15 @@ export interface RipplePluginOptions {
 	excludeRippleExternalModules?: boolean;
 }
 
+export type Component<T = Record<string, any>> = (props: T) => void;
+
+export type RenderRouteEntry = string | readonly [exportName: string, path: string];
+
+export interface RootBoundaryOptions {
+	pending?: Component<Record<string, never>>;
+	catch?: Component<{ error: unknown; reset: () => void }>;
+}
+
 export interface CompatFactoryConfig {
 	/** Module specifier that exports the compat factory */
 	from: string;
@@ -150,6 +159,8 @@ export interface RippleConfigOptions {
 	router?: {
 		routes: Route[];
 	};
+	/** Global root pending/catch UI used by client and SSR render roots */
+	rootBoundary?: RootBoundaryOptions;
 	/** Global middlewares applied to all routes */
 	middlewares?: Middleware[];
 	/**
@@ -199,6 +210,7 @@ export interface ResolvedRippleConfig {
 	router: {
 		routes: Route[];
 	};
+	rootBoundary: RootBoundaryOptions;
 	/** @default [] */
 	middlewares: Middleware[];
 	/** @default {} */

@@ -12,6 +12,7 @@
 import { createRouter } from './router.js';
 import { createContext, runMiddlewareChain } from './middleware.js';
 import { createLayoutWrapper, createPropsWrapper } from './component-wrappers.js';
+import { get_route_entry_id, get_route_entry_path } from '../routes.js';
 import {
 	patch_global_fetch,
 	build_rpc_lookup,
@@ -135,7 +136,7 @@ export function createHandler(manifest, options) {
  * @param {import('@ripple-ts/vite-plugin').Context} context
  * @param {ServerManifest} manifest
  * @param {Middleware[]} globalMiddlewares
- * @param {(component: Function) => Promise<RenderResult>} render
+ * @param {(component: Function, options?: { rootBoundary?: import('@ripple-ts/vite-plugin').RootBoundaryOptions }) => Promise<RenderResult>} render
  * @param {(css: Set<string>) => string} getCss
  * @param {string} htmlTemplate
  * @param {Record<string, ClientAssetEntry>} clientAssets
@@ -153,9 +154,11 @@ async function handleRenderRoute(
 ) {
 	const renderHandler = async () => {
 		// Get the page component
-		const PageComponent = manifest.components[route.entry];
+		const entryId = get_route_entry_id(route.entry);
+		const entryPath = get_route_entry_path(route.entry);
+		const PageComponent = entryId ? manifest.components[entryId] : null;
 		if (!PageComponent) {
-			throw new Error(`Component not found: ${route.entry}`);
+			throw new Error(`Component not found for route ${route.path}`);
 		}
 
 		// Get layout if specified
@@ -170,7 +173,9 @@ async function handleRenderRoute(
 		}
 
 		// Render to HTML
-		const { head, body, css } = await render(RootComponent);
+		const { head, body, css } = await render(RootComponent, {
+			rootBoundary: manifest.rootBoundary,
+		});
 
 		// Generate inline scoped CSS (from SSR-rendered component hashes)
 		let cssContent = '';
@@ -186,7 +191,7 @@ async function handleRenderRoute(
 		// immediately, before the hydration script executes.
 		/** @type {string[]} */
 		const preloadTags = [];
-		const entryAssets = clientAssets[route.entry];
+		const entryAssets = entryPath ? clientAssets[entryPath] : undefined;
 
 		if (entryAssets?.css) {
 			for (const cssFile of entryAssets.css) {
@@ -205,7 +210,8 @@ async function handleRenderRoute(
 
 		// Build head content with hydration data
 		const routeData = JSON.stringify({
-			entry: route.entry,
+			entry: entryPath,
+			routeIndex: getRenderRouteIndex(manifest.routes, route),
 			params: context.params,
 		});
 		const headContent = [
@@ -229,6 +235,17 @@ async function handleRenderRoute(
 	};
 
 	return runMiddlewareChain(context, globalMiddlewares, route.before || [], renderHandler, []);
+}
+
+/**
+ * @param {Route[]} routes
+ * @param {RenderRoute} route
+ * @returns {number | undefined}
+ */
+function getRenderRouteIndex(routes, route) {
+	const renderRoutes = routes.filter((r) => r.type === 'render');
+	const index = renderRoutes.indexOf(route);
+	return index === -1 ? undefined : index;
 }
 
 // ============================================================================
