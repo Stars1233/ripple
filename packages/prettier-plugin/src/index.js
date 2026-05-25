@@ -16,7 +16,7 @@
 
 /** @typedef {Partial<Pick<ParserOptions, 'singleQuote' | 'jsxSingleQuote' | 'semi' | 'trailingComma' | 'useTabs' | 'tabWidth' | 'singleAttributePerLine' | 'bracketSameLine' | 'bracketSpacing' | 'arrowParens' | 'originalText' | 'printWidth'>> & { locStart: (node: AST.NodeWithLocation) => number, locEnd: (node: AST.NodeWithLocation) => number }} RippleFormatOptions */
 
-/** @typedef {{ isInAttribute?: boolean, isInArray?: boolean, allowInlineObject?: boolean, isConditionalTest?: boolean, isNestedConditional?: boolean, suppressLeadingComments?: boolean, suppressExpressionLeadingComments?: boolean, isInlineContext?: boolean, isStatement?: boolean, isLogicalAndOr?: boolean, allowShorthandProperty?: boolean, isFirstChild?: boolean, skipComponentLabel?: boolean, noBreakInside?: boolean, expandLastArg?: boolean }} PrintArgs */
+/** @typedef {{ isInAttribute?: boolean, isInArray?: boolean, allowInlineObject?: boolean, isConditionalTest?: boolean, isNestedConditional?: boolean, suppressLeadingComments?: boolean, suppressExpressionLeadingComments?: boolean, isInlineContext?: boolean, isStatement?: boolean, isLogicalAndOr?: boolean, allowShorthandProperty?: boolean, isFirstChild?: boolean, skipComponentLabel?: boolean, noBreakInside?: boolean, expandLastArg?: boolean, preferInlineSimpleUnionType?: boolean }} PrintArgs */
 
 import { parseModule } from '@tsrx/core';
 import { doc } from 'prettier';
@@ -35,6 +35,7 @@ const {
 	breakParent,
 	indentIfBreak,
 	lineSuffix,
+	align,
 } = builders;
 const { replaceEndOfLine, willBreak } = utils;
 
@@ -1502,16 +1503,24 @@ function printRippleNode(node, path, options, print, args) {
 			break;
 
 		case 'TSAsExpression': {
-			nodeContent = [path.call(print, 'expression'), ' as ', path.call(print, 'typeAnnotation')];
+			const typeAnnotation = path.call(
+				(typePath) => print(typePath, { preferInlineSimpleUnionType: true }),
+				'typeAnnotation',
+			);
+			nodeContent = willBreak(typeAnnotation)
+				? [path.call(print, 'expression'), ' as', indent([line, typeAnnotation])]
+				: [path.call(print, 'expression'), ' as ', typeAnnotation];
 			break;
 		}
 
 		case 'TSSatisfiesExpression': {
-			nodeContent = [
-				path.call(print, 'expression'),
-				' satisfies ',
-				path.call(print, 'typeAnnotation'),
-			];
+			const typeAnnotation = path.call(
+				(typePath) => print(typePath, { preferInlineSimpleUnionType: true }),
+				'typeAnnotation',
+			);
+			nodeContent = willBreak(typeAnnotation)
+				? [path.call(print, 'expression'), ' satisfies', indent([line, typeAnnotation])]
+				: [path.call(print, 'expression'), ' satisfies ', typeAnnotation];
 			break;
 		}
 
@@ -2137,8 +2146,7 @@ function printRippleNode(node, path, options, print, args) {
 			break;
 
 		case 'TSUnionType': {
-			const types = path.map(print, 'types');
-			nodeContent = join(' | ', types);
+			nodeContent = printTSUnionType(node, path, print, args);
 			break;
 		}
 
@@ -4416,6 +4424,35 @@ function printTSTypeAliasDeclaration(node, path, options, print) {
 	}
 
 	return group([head, ' =', indent([line, path.call(print, 'typeAnnotation')]), semi(options)]);
+}
+
+/**
+ * Print a TypeScript union type
+ * @param {AST.TSUnionType} node - The union node
+ * @param {AstPath<AST.TSUnionType>} path - The AST path
+ * @param {PrintFn} print - Print callback
+ * @param {PrintArgs} [args] - Additional context arguments
+ * @returns {Doc}
+ */
+function printTSUnionType(node, path, print, args) {
+	const types = path.map(print, 'types');
+	const inlineDoc = join(' | ', types);
+	const multilineDoc = [
+		'| ',
+		join(
+			[hardline, '| '],
+			types.map((typeDoc) => align(2, typeDoc)),
+		),
+	];
+	const shouldBreak = node.types.some(
+		(typeNode, index) => !wasOriginallySingleLine(typeNode) || willBreak(types[index]),
+	);
+
+	if (args?.preferInlineSimpleUnionType && !types.some((typeDoc) => willBreak(typeDoc))) {
+		return inlineDoc;
+	}
+
+	return shouldBreak ? group(multilineDoc) : conditionalGroup([inlineDoc, multilineDoc]);
 }
 
 /**
