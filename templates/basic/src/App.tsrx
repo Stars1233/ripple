@@ -38,7 +38,12 @@ export component App() {
 	</div>
 
 	<style>
+		:global(body) {
+			margin: 0;
+		}
+
 		.app {
+			box-sizing: border-box;
 			min-height: 100vh;
 			display: flex;
 			justify-content: center;
