@@ -60,6 +60,20 @@ const NORMAL_RETURN_HTML = highlight_tsrx(
 }`,
 );
 
+const REACT_PREACT_HOOKS_HTML = highlight_tsrx(
+	`function Profile({ user }: { user: User | null }) {
+  if (!user) {
+    return null;
+  }
+
+  useEffect(() => {
+    trackProfile(user.id);
+  }, [user.id]);
+
+  return <ProfileCard {user} />;
+}`,
+);
+
 const SPECIAL_CASES_BEFORE_HTML = highlight_tsrx(
 	`component Article({ contentHtml, inputRef }: Props) {
   <article>{html contentHtml}</article>
@@ -87,6 +101,29 @@ const SPECIAL_CASES_AFTER_HTML = highlight_tsrx(
       .card { padding: 1rem; }
     </style>
   </>;
+}`,
+);
+
+const SCOPED_STYLE_HTML = highlight_tsrx(
+	`function Card({ title }: Props) {
+  return <>
+    <article class="card">
+      <h2>{title}</h2>
+    </article>
+
+    <style>
+      .card {
+        padding: 1rem;
+        border-radius: 0.75rem;
+      }
+    </style>
+  </>;
+}`,
+);
+
+const TAILWIND_STYLE_HTML = highlight_tsrx(
+	`function Card({ title }: Props) {
+  return <article class="rounded-xl p-4">{title}</article>;
 }`,
 );
 
@@ -200,6 +237,12 @@ export function BlogSimplifyingTsrxAfterFeedbackPage() {
 						<pre class="code-block">
 							<code innerHTML={NORMAL_RETURN_HTML} />
 						</pre>
+						<p>
+							{'React and Preact still get one useful target-specific compiler pass here. If a guard return appears before a hook, TSRX can keep the source simple while compiling the hook path into a shape that preserves hook ordering.'}
+						</p>
+						<pre class="code-block">
+							<code innerHTML={REACT_PREACT_HOOKS_HTML} />
+						</pre>
 
 						<h2>{'Fewer special cases'}</h2>
 						<p>
@@ -221,8 +264,29 @@ export function BlogSimplifyingTsrxAfterFeedbackPage() {
 							<code>{'<style ref>'}</code>
 							{'.'}
 						</p>
+						<p>
+							{'Style refs are resolved while TSRX renders the returned fragment, not later in a framework update cycle. That keeps the class map available to the same render without forcing a second render or paint.'}
+						</p>
 						<pre class="code-block">
 							<code innerHTML={SPECIAL_CASES_AFTER_HTML} />
+						</pre>
+
+						<h2>{'Styling stays optional'}</h2>
+						<p>
+							{'The '}
+							<code>{'<style>'}</code>
+							{' block is still there, but its mental model is clearer: styles are scoped to the TSRX fragment that contains them, not to a separate component declaration form. It works the same way as before for colocated styles.'}
+						</p>
+						<pre class="code-block">
+							<code innerHTML={SCOPED_STYLE_HTML} />
+						</pre>
+						<p>
+							{'This is optional. If your team prefers Tailwind, CSS modules, vanilla CSS, or a design system class API, keep using that. TSRX does not require colocated '}
+							<code>{'<style>'}</code>
+							{' blocks.'}
+						</p>
+						<pre class="code-block">
+							<code innerHTML={TAILWIND_STYLE_HTML} />
 						</pre>
 
 						<h2>{'Why this matters'}</h2>
