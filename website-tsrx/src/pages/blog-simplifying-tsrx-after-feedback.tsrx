@@ -130,7 +130,7 @@ const TAILWIND_STYLE_HTML = highlight_tsrx(
 export function BlogSimplifyingTsrxAfterFeedbackPage() {
 	return <>
 		<head>
-			<title>{'Simplifying TSRX after feedback | TSRX Blog'}</title>
+			<title>{'Simplifying TSRX | TSRX Blog'}</title>
 			<meta
 				name="description"
 				content="TSRX is removing early alpha syntax and moving closer to ordinary TypeScript and JSX patterns."
@@ -167,8 +167,10 @@ export function BlogSimplifyingTsrxAfterFeedbackPage() {
 					<article>
 						<header class="article-header">
 							<p class="eyebrow">{'May 29, 2026'}</p>
-							<h1>{'Simplifying TSRX after feedback'}</h1>
-							<p class="lead">{'TSRX is becoming smaller, clearer, and easier to debug.'}</p>
+							<h1>{'Simplifying TSRX'}</h1>
+							<p class="lead">
+								{'We listened to your feedback, TSRX is becoming smaller, clearer, and easier to debug.'}
+							</p>
 						</header>
 
 						<p>
