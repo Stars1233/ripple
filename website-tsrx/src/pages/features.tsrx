@@ -58,6 +58,14 @@ const TSX_EXPR_HTML = highlight_tsrx(
 }`,
 );
 
+const TSX_EXPR_HTML_SINGLE = highlight_tsrx(
+	`function App() {
+  const title = <span class="title">"Settings"</span>;
+
+  return <Card {title} />;
+}`,
+);
+
 const TEXT_EXPR_HTML = highlight_tsrx(
 	`function Inbox({ name, count }: { name: string; count: number }) {
   return <>
@@ -406,6 +414,12 @@ export function FeaturesPage() {
 							</p>
 							<pre class="code-block">
 								<code innerHTML={TSX_EXPR_HTML} />
+							</pre>
+							<p class="section-body">
+								{'As in JSX, you don\'t need fragments for a single element: '}
+							</p>
+							<pre class="code-block">
+								<code innerHTML={TSX_EXPR_HTML_SINGLE} />
 							</pre>
 						</section>
 
