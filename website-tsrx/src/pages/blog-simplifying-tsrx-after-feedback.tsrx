@@ -9,7 +9,7 @@ const OLD_COMPONENT_SYNTAX_HTML = highlight_tsrx(
   const displayName = user.name.trim();
 
   if (user.isAdmin) {
-    <p>{displayName} can manage settings.</p>
+    <p>{displayName}" can manage settings."</p>
   }
 
   const title = <tsx><strong>{displayName}</strong></tsx>;
@@ -31,7 +31,7 @@ const EXPRESSION_TSRX_HTML = highlight_tsrx(
     const displayName = user.name.trim();
 
     if (user.isAdmin) {
-      <p>{displayName} can manage settings.</p>
+      <p>{displayName}" can manage settings."</p>
     }
 
     const title = <tsx><strong>{displayName}</strong></tsx>;
@@ -187,7 +187,7 @@ export function BlogSimplifyingTsrxAfterFeedbackPage() {
 							{'This came from feedback from humans and companies experimenting with TSRX. It also came from evaluations of AI-generated output. The same pattern kept showing up: people and tools liked inline UI structure, but got confused by new concepts when debugging, especially the lack of a normal return statement, early-return magic, and too many TSRX-only syntax points.'}
 						</p>
 
-						<h2>{'Functions are just functions'}</h2>
+						<h2>{'Components are just functions'}</h2>
 						<p>
 							{'Before this cleanup, TSRX introduced its own '}
 							<code>{'component'}</code>
