@@ -5,6 +5,7 @@ const KEYWORDS = new Set([
 	'case',
 	'catch',
 	'class',
+	'component',
 	'const',
 	'default',
 	'else',
@@ -37,7 +38,7 @@ const KEYWORDS = new Set([
 
 const CONTROL_KEYWORDS = new Set(['break', 'continue', 'return']);
 const LITERALS = new Set(['false', 'null', 'true', 'undefined']);
-const TEMPLATE_KEYWORDS = new Set(['ref']);
+const TEMPLATE_KEYWORDS = new Set(['html', 'ref', 'style']);
 
 function escape_html(value: string): string {
 	return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -71,9 +72,31 @@ function read_identifier(line: string, start: number): number {
 	return index;
 }
 
+function read_jsx_tag_end(line: string, start: number): number {
+	let index = start + 1;
+	let expression_depth = 0;
+
+	while (index < line.length) {
+		const char = line[index];
+		if (char === '"' || char === "'" || char === '`') {
+			index = read_string(line, index);
+			continue;
+		}
+		if (char === '{') {
+			expression_depth++;
+		} else if (char === '}') {
+			expression_depth = Math.max(expression_depth - 1, 0);
+		} else if (char === '>' && expression_depth === 0) {
+			return index + 1;
+		}
+		index++;
+	}
+
+	return line.length;
+}
+
 function read_jsx_tag(line: string, start: number): { html: string; next: number } {
-	const end = line.indexOf('>', start + 1);
-	const next = end === -1 ? line.length : end + 1;
+	const next = read_jsx_tag_end(line, start);
 	const tag = line.slice(start, next);
 	let index = 0;
 	let html = '';
@@ -89,10 +112,10 @@ function read_jsx_tag(line: string, start: number): { html: string; next: number
 
 	while (index < tag.length) {
 		const char = tag[index];
-		if (char === '>') {
+		if (char === '>' && expression_depth === 0) {
 			html += span('tag', '>');
 			index++;
-		} else if (char === '/' && tag[index + 1] === '>') {
+		} else if (char === '/' && tag[index + 1] === '>' && expression_depth === 0) {
 			html += span('tag', '/>');
 			index += 2;
 		} else if (char === '"' || char === "'" || char === '`') {
@@ -219,7 +242,11 @@ function highlight_code_line(line: string): string {
 				class_name = 'val';
 			} else if (TEMPLATE_KEYWORDS.has(ident)) {
 				class_name = 'kw';
-			} else if (previous_keyword === 'function' || /^\s*\(/.test(rest)) {
+			} else if (
+				previous_keyword === 'function' ||
+				previous_keyword === 'component' ||
+				/^\s*\(/.test(rest)
+			) {
 				class_name = 'fn';
 			} else if (/^[A-Z]/.test(ident)) {
 				class_name = 'type';

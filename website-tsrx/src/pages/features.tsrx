@@ -310,6 +310,7 @@ export function FeaturesPage() {
 						<a href="/features" aria-current="page">{'Features'}</a>
 						<a href="/specification">{'Specification'}</a>
 						<a href="/playground">{'Playground'}</a>
+						<a href="/blog">{'Blog'}</a>
 						<a href="https://discord.gg/HCYpT5QHQR" target="_blank" rel="noopener noreferrer">
 							{'Discord'}
 						</a>

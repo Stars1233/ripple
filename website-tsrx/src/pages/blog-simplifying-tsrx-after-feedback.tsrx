@@ -1,0 +1,546 @@
+import { highlight_tsrx } from '../lib/code-highlight.ts';
+
+const OLD_COMPONENT_SYNTAX_HTML = highlight_tsrx(
+	`component Profile({ user }: { user: User | null }) {
+  if (!user) {
+    return;
+  }
+
+  const displayName = user.name.trim();
+
+  if (user.isAdmin) {
+    <p>{displayName} can manage settings.</p>
+  }
+
+  const title = <tsx><strong>{displayName}</strong></tsx>;
+  <Card {title} />
+}`,
+);
+
+const EXPRESSION_TSRX_HTML = highlight_tsrx(
+	`function Profile({ user }: { user: User | null }) {
+  if (!user) return null;
+
+  return <>
+    const displayName = user.name.trim();
+
+    if (user.isAdmin) {
+      <p>{displayName} can manage settings.</p>
+    }
+
+    const title = <tsx><strong>{displayName}</strong></tsx>;
+    <Card {title} />
+  </>;
+}`,
+);
+
+const OLD_RETURN_MAGIC_HTML = highlight_tsrx(
+	`component Profile({ user }: { user: User | null }) {
+  if (!user) {
+    return;
+  }
+
+  <h1>{user.name}</h1>
+}`,
+);
+
+const NORMAL_RETURN_HTML = highlight_tsrx(
+	`function Profile({ user }: { user: User | null }) {
+  if (!user) {
+    return null;
+  }
+
+  return <h1>{user.name}</h1>;
+}`,
+);
+
+const SPECIAL_CASES_BEFORE_HTML = highlight_tsrx(
+	`component Article({ contentHtml, inputRef }: Props) {
+  <article>{html contentHtml}</article>
+  {html contentHtml}
+  <input {ref inputRef} />
+  <Child class={style 'card'} />
+
+  <style>
+    .card { padding: 1rem; }
+  </style>
+}`,
+);
+
+const SPECIAL_CASES_AFTER_HTML = highlight_tsrx(
+	`function Article({ contentHtml, inputRef }: Props) {
+  let styles;
+
+  return <>
+    <article innerHTML={contentHtml} />
+    <Fragment innerHTML={contentHtml} />
+    <input ref={inputRef} />
+    <Child class={styles.card} />
+
+    <style ref={(s) => styles = s}>
+      .card { padding: 1rem; }
+    </style>
+  </>;
+}`,
+);
+
+export function BlogSimplifyingTsrxAfterFeedbackPage() {
+	return <>
+		<head>
+			<title>{'Simplifying TSRX after feedback | TSRX Blog'}</title>
+			<meta
+				name="description"
+				content="TSRX is removing early alpha syntax and moving closer to ordinary TypeScript and JSX patterns."
+			/>
+		</head>
+		<div class="app-shell">
+			<div class="page-shell">
+				<header class="masthead">
+					<a class="brand-lockup" href="/" aria-label="TSRX home">
+						<img class="header-logo" src="/images/tsrx-mark.svg?v=4" alt="TSRX logo" />
+					</a>
+					<nav class="masthead-nav">
+						<a href="/getting-started">{'Getting Started'}</a>
+						<a href="/features">{'Features'}</a>
+						<a href="/specification">{'Specification'}</a>
+						<a href="/playground">{'Playground'}</a>
+						<a href="/blog" aria-current="page">{'Blog'}</a>
+						<a href="https://discord.gg/HCYpT5QHQR" target="_blank" rel="noopener noreferrer">
+							{'Discord'}
+						</a>
+						<a
+							href="https://github.com/Ripple-TS/ripple/tree/main/packages/tsrx"
+							target="_blank"
+							rel="noopener noreferrer"
+						>
+							{'GitHub'}
+						</a>
+						<a href="/llms.txt" target="_blank" rel="noopener noreferrer">{'llms.txt'}</a>
+					</nav>
+				</header>
+
+				<main class="article-shell">
+					<a class="back-link" href="/blog">{'Back to blog'}</a>
+					<article>
+						<header class="article-header">
+							<p class="eyebrow">{'May 29, 2026'}</p>
+							<h1>{'Simplifying TSRX after feedback'}</h1>
+							<p class="lead">{'TSRX is becoming smaller, clearer, and easier to debug.'}</p>
+						</header>
+
+						<p>
+							{'PR '}
+							<a
+								href="https://github.com/Ripple-TS/ripple/pull/1177"
+								target="_blank"
+								rel="noopener noreferrer"
+							>
+								{'#1177'}
+							</a>
+							{' is a big cleanup pass for TSRX. The goal is simple: keep the parts that make UI authoring nicer, and remove the parts that made the language feel unfamiliar.'}
+						</p>
+
+						<p>
+							{'This came from feedback from humans and companies experimenting with TSRX. It also came from evaluations of AI-generated output. The same pattern kept showing up: people and tools liked inline UI structure, but got confused by new concepts when debugging, especially the lack of a normal return statement, early-return magic, and too many TSRX-only syntax points.'}
+						</p>
+
+						<h2>{'Functions are just functions'}</h2>
+						<p>
+							{'Before this cleanup, TSRX introduced its own '}
+							<code>{'component'}</code>
+							{' form. It removed the visible return statement, which made components look less like ordinary TypeScript.'}
+						</p>
+						<pre class="code-block">
+							<code innerHTML={OLD_COMPONENT_SYNTAX_HTML} />
+						</pre>
+						<p>
+							{'Now TSRX is an expression you return from an ordinary function. Once the expression opens, its body is statement-driven: you can declare values, branch with '}
+							<code>{'if'}</code>
+							{', loop with '}
+							<code>{'for...of'}</code>
+							{', and emit UI in order.'}
+						</p>
+						<p>
+							{'When you need traditional JSX or TSX children instead of TSRX children, wrap that island in '}
+							<code>{'<tsx>'}</code>
+							{'. That gives you a small escape hatch without making the whole file feel like a different language.'}
+						</p>
+						<pre class="code-block">
+							<code innerHTML={EXPRESSION_TSRX_HTML} />
+						</pre>
+
+						<h2>{'No more return magic inside templates'}</h2>
+						<p>
+							{'The earlier '}
+							<code>{'component'}</code>
+							{' model also allowed template bodies to bail out with a return. That looked convenient, but it made debugging strange because UI output and component exit behavior were mixed together.'}
+						</p>
+						<pre class="code-block">
+							<code innerHTML={OLD_RETURN_MAGIC_HTML} />
+						</pre>
+						<p>
+							{'Now guard returns live before TSRX opens, just like normal TypeScript and JSX. Inside template '}
+							<code>{'for...of'}</code>
+							{' loops, '}
+							<code>{'continue'}</code>
+							{' still skips the current item.'}
+						</p>
+						<pre class="code-block">
+							<code innerHTML={NORMAL_RETURN_HTML} />
+						</pre>
+
+						<h2>{'Fewer special cases'}</h2>
+						<p>
+							{'Ripple had accumulated a few TSRX-only shortcuts inside the old '}
+							<code>{'component'}</code>
+							{' shape: raw HTML blocks, ref blocks, and style class expressions. They worked, but each one was another rule to remember and another thing for tools to explain.'}
+						</p>
+						<pre class="code-block">
+							<code innerHTML={SPECIAL_CASES_BEFORE_HTML} />
+						</pre>
+						<p>
+							{'Those are now regular props. Raw HTML uses '}
+							<code>{'innerHTML'}</code>
+							{' on DOM elements, or '}
+							<code>{'<Fragment innerHTML={...} />'}</code>
+							{' when you want to insert HTML without a wrapper element. Refs use '}
+							<code>{'ref={...}'}</code>
+							{', and scoped classes can be shared with children through '}
+							<code>{'<style ref>'}</code>
+							{'.'}
+						</p>
+						<pre class="code-block">
+							<code innerHTML={SPECIAL_CASES_AFTER_HTML} />
+						</pre>
+
+						<h2>{'Why this matters'}</h2>
+						<p>
+							{'TSRX should make UI code easier to read, not harder to reason about. These changes make the language closer to TypeScript, closer to JSX, and easier for both people and AI tools to debug.'}
+						</p>
+						<p>
+							{'The result is a smaller language with the same core idea: open TSRX from an expression, then write clear statement-based UI inside it.'}
+						</p>
+					</article>
+				</main>
+
+				<footer class="site-footer">
+					<p>{'Released under the MIT License.'}</p>
+					<p>{'Copyright © 2025-present Dominic Gannaway'}</p>
+				</footer>
+			</div>
+		</div>
+		<style>
+			:global(*) {
+				box-sizing: border-box;
+			}
+
+			:global(html) {
+				scroll-behavior: smooth;
+				overflow-x: clip;
+				scrollbar-gutter: stable;
+			}
+
+			:global(body) {
+				margin: 0;
+				font-family:
+					system-ui,
+					-apple-system,
+					BlinkMacSystemFont,
+					'Segoe UI',
+					Roboto,
+					sans-serif;
+				color: #1a1640;
+				background:
+					radial-gradient(circle at top, rgba(146, 92, 255, 0.14), transparent 15%),
+					radial-gradient(circle at 80% 10%, rgba(111, 0, 255, 0.1), transparent 15%),
+					linear-gradient(180deg, #ffffff 0%, #f6f3ff 46%, #f2f4fb 100%);
+				background-repeat: no-repeat;
+				background-size:
+					100% 100vh,
+					100% 100vh,
+					100% 100%;
+				min-height: 100vh;
+				overflow-x: clip;
+			}
+
+			:global(a) {
+				color: inherit;
+				text-decoration: none;
+			}
+
+			:global(code),
+			:global(pre) {
+				font-family: 'Spline Sans Mono', 'SFMono-Regular', monospace;
+			}
+
+			.app-shell {
+				position: relative;
+				z-index: 1;
+				width: 100%;
+			}
+
+			.page-shell {
+				width: min(1040px, calc(100vw - 2rem));
+				margin: 0 auto;
+				padding: 1rem 0 4rem;
+			}
+
+			.masthead {
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+				gap: 1rem;
+				padding: 1rem 0 2rem;
+				flex-wrap: wrap;
+			}
+
+			.brand-lockup {
+				display: inline-flex;
+				align-items: center;
+			}
+
+			.header-logo {
+				display: block;
+				width: 3.2rem;
+				height: 3.2rem;
+			}
+
+			.masthead-nav {
+				display: inline-flex;
+				gap: 1rem;
+				font-size: 0.95rem;
+				color: rgba(26, 22, 64, 0.7);
+			}
+
+			.masthead-nav a {
+				white-space: nowrap;
+			}
+
+			.masthead-nav a:hover,
+			.back-link:hover,
+			article a:hover {
+				color: #5e2cff;
+			}
+
+			.masthead-nav a[aria-current='page'] {
+				color: #5e2cff;
+				font-weight: 500;
+			}
+
+			.article-shell {
+				width: min(760px, 100%);
+				margin: 0;
+				padding-top: 2.5rem;
+			}
+
+			.back-link {
+				display: inline-flex;
+				margin-bottom: 2rem;
+				font-size: 0.95rem;
+				font-weight: 700;
+				color: #5e2cff;
+			}
+
+			.article-header {
+				margin-bottom: 2rem;
+			}
+
+			.eyebrow {
+				margin: 0 0 0.75rem;
+				font-size: 0.78rem;
+				font-weight: 700;
+				text-transform: uppercase;
+				letter-spacing: 0.08em;
+				color: #5e2cff;
+			}
+
+			h1 {
+				margin: 0;
+				font-size: clamp(2.6rem, 8vw, 5.5rem);
+				line-height: 0.95;
+				letter-spacing: 0;
+			}
+
+			.lead {
+				margin: 1.2rem 0 0;
+				font-size: 1.25rem;
+				line-height: 1.65;
+				color: rgba(26, 22, 64, 0.72);
+			}
+
+			article p {
+				margin: 1rem 0 0;
+				font-size: 1.08rem;
+				line-height: 1.75;
+				color: rgba(26, 22, 64, 0.76);
+			}
+
+			article h2 {
+				margin: 2.25rem 0 0;
+				font-size: clamp(1.55rem, 4vw, 2.05rem);
+				line-height: 1.15;
+				letter-spacing: 0;
+			}
+
+			article a {
+				color: #5e2cff;
+				font-weight: 700;
+			}
+
+			article p code {
+				background: rgba(94, 44, 255, 0.1);
+				color: #5e2cff;
+				padding: 0.12em 0.4em;
+				border-radius: 4px;
+				font-size: 0.92em;
+			}
+
+			.code-block {
+				margin: 1rem 0 0;
+				padding: 1.25rem 1.4rem;
+				overflow-x: auto;
+				background: #0e1528;
+				color: #e7ecff;
+				font-size: 0.88rem;
+				line-height: 1.65;
+				white-space: pre;
+				-webkit-font-smoothing: antialiased;
+			}
+
+			:global(.code-block .ln) {
+				color: rgba(255, 255, 255, 0.25);
+				display: inline-block;
+				width: 1.4rem;
+				text-align: right;
+				margin-right: 0.85rem;
+				user-select: none;
+			}
+
+			:global(.code-block .kw) {
+				color: #569cd6;
+			}
+			:global(.code-block .kw-export) {
+				color: #c586c0;
+			}
+			:global(.code-block .kw-ctrl) {
+				color: #c586c0;
+			}
+			:global(.code-block .fn) {
+				color: #dcdcaa;
+			}
+			:global(.code-block .type) {
+				color: #4ec9b0;
+			}
+			:global(.code-block .prop) {
+				color: #9cdcfe;
+			}
+			:global(.code-block .str) {
+				color: #ce9178;
+			}
+			:global(.code-block .val) {
+				color: #b5cea8;
+			}
+			:global(.code-block .el) {
+				color: #569cd6;
+			}
+			:global(.code-block .tag) {
+				color: #808080;
+			}
+			:global(.code-block .attr) {
+				color: #92c5f8;
+			}
+			:global(.code-block .br) {
+				color: #ffd700;
+			}
+			:global(.code-block .tbr) {
+				color: #ffd700;
+			}
+			:global(.code-block .css-sel) {
+				color: #d7ba7d;
+			}
+			:global(.code-block .css-br) {
+				color: #d4d4d4;
+			}
+			:global(.code-block .cmt) {
+				color: #6a9955;
+			}
+
+			.site-footer {
+				margin-top: 4rem;
+				padding: 2rem 0;
+				border-top: 1px solid rgba(26, 22, 64, 0.1);
+				text-align: center;
+			}
+
+			.site-footer p {
+				margin: 0;
+				font-size: 0.88rem;
+				line-height: 1.6;
+				color: rgba(26, 22, 64, 0.5);
+			}
+
+			@media (max-width: 720px) {
+				.page-shell {
+					width: calc(100vw - 1.5rem);
+					padding: 0.5rem 0 2rem;
+				}
+
+				.masthead {
+					padding: 0.75rem 0 1rem;
+					align-items: flex-start;
+					gap: 0.85rem;
+				}
+
+				.brand-lockup {
+					width: 100%;
+					justify-content: center;
+				}
+
+				.masthead-nav {
+					display: flex;
+					width: 100%;
+					flex-wrap: wrap;
+					justify-content: center;
+					gap: 0.5rem;
+					font-size: 0.82rem;
+				}
+
+				.masthead-nav a {
+					display: inline-flex;
+					align-items: center;
+					min-height: 2rem;
+					padding: 0.35rem 0.7rem;
+					border: 1px solid rgba(94, 44, 255, 0.1);
+					border-radius: 999px;
+					background: rgba(94, 44, 255, 0.06);
+					line-height: 1.1;
+				}
+
+				.masthead-nav a[aria-current='page'] {
+					background: rgba(94, 44, 255, 0.12);
+					border-color: rgba(94, 44, 255, 0.18);
+				}
+
+				.header-logo {
+					width: 3.6rem;
+					height: 3.6rem;
+				}
+
+				.article-shell {
+					padding-top: 2rem;
+				}
+
+				.lead,
+				article p {
+					font-size: 1rem;
+				}
+
+				.code-block {
+					padding: 1rem 0.75rem;
+					font-size: 0.75rem;
+					line-height: 1.55;
+				}
+			}
+		</style>
+	</>;
+}

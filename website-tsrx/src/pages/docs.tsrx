@@ -281,6 +281,7 @@ export function DocsPage() {
 						<a href="/getting-started">{'Getting Started'}</a>
 						<a href="/docs" aria-current="page">{'Docs'}</a>
 						<a href="/playground">{'Playground'}</a>
+						<a href="/blog">{'Blog'}</a>
 						<a href="https://discord.gg/HCYpT5QHQR" target="_blank" rel="noopener noreferrer">
 							{'Discord'}
 						</a>

@@ -105,6 +105,7 @@ export function IndexPage() {
 						<a href="/features">{'Features'}</a>
 						<a href="/specification">{'Specification'}</a>
 						<a href="/playground">{'Playground'}</a>
+						<a href="/blog">{'Blog'}</a>
 						<a href="https://discord.gg/HCYpT5QHQR" target="_blank" rel="noopener noreferrer">
 							{'Discord'}
 						</a>
