@@ -4,6 +4,13 @@ title: Components in Ripple
 
 # Components
 
+## Detection
+
+Direct calls keep ordinary helper semantics. A PascalCase helper such as
+`StatusCode()` or `FormatName()` is left as a normal function when called
+directly; component compilation applies to functions used as components or render
+entries, and to functions that return native TSRX without being directly called.
+
 ## Lifecycle
 
 ::: details Glossary
@@ -30,24 +37,33 @@ if you destructured your props).
 ```ripple
 import type { Children } from 'ripple';
 
-component Card(props: { children: Children }) {
+function Card(props: { children: Children }) {
+  return <>
   <div class="card">
     {props.children}
   </div>
+
+  </>;
 }
 
-export component App() {
+export function App() {
+  return <>
   // Use implicitly...
   <Card>
     <p>"Card content here"</p>
   </Card>
 
   // or pass children explicitly as a prop.
-  component children() {
+  function children() {
+    return <>
     <p>"Card content here"</p>
+
+    </>;
   }
 
   <Card {children} />
+
+  </>;
 }
 ```
 
@@ -72,16 +88,25 @@ Define components in scope and pass them as explicit props:
 ```ripple
 import type { Component } from 'ripple';
 
-component Composite({ PropComp }: { PropComp: Component }) {
+function Composite({ PropComp }: { PropComp: Component }) {
+  return <>
   <PropComp />
+
+  </>;
 }
 
-component Separate() {
+function Separate() {
+  return <>
   <p>"I'm a separate component."</p>
+
+  </>;
 }
 
-export component App() {
+export function App() {
+  return <>
   <Composite PropComp={Separate} />
+
+  </>;
 }
 ```
 
@@ -97,7 +122,7 @@ props" from React, and "snippets" from Svelte.
 ```ripple
 import type { Children, Component } from 'ripple';
 
-component Card({
+function Card({
   children,
   Header,
   Footer,
@@ -106,6 +131,7 @@ component Card({
   Header?: Component;
   Footer?: Component;
 }) {
+  return <>
   <fieldset>
     if (Header) {
       <Header />
@@ -117,21 +143,32 @@ component Card({
       <Footer />
     }
   </fieldset>
+
+  </>;
 }
 
-component CustomHeader() {
+function CustomHeader() {
+  return <>
   <h1>"Card Title"</h1>
+
+  </>;
 }
 
-component CustomFooter() {
+function CustomFooter() {
+  return <>
   <button>"Cancel"</button>
   <button>"OK"</button>
+
+  </>;
 }
 
-export component App() {
+export function App() {
+  return <>
   <Card Header={CustomHeader} Footer={CustomFooter}>
     <p>"Card content here"</p>
   </Card>
+
+  </>;
 }
 ```
 
@@ -153,27 +190,39 @@ Components declared inside a composite component element can be passed as props 
 ```ripple
 import type { Component } from 'ripple';
 
-component Inner({ Greeting }: { Greeting: Component }) {
+function Inner({ Greeting }: { Greeting: Component }) {
+  return <>
   <div class="inner">
     <Greeting />
   </div>
+
+  </>;
 }
 
-component Outer({ children }: { children: Children }) {
+function Outer({ children }: { children: Children }) {
+  return <>
   <div class="outer">
     {children}
   </div>
+
+  </>;
 }
 
-export component App() {
+export function App() {
+  return <>
   <Outer>
-    component HelloGreeting() {
+    function HelloGreeting() {
+      return <>
       <p>"Hello from inside!"</p>
+
+      </>;
     }
 
     // It can be passed as a prop to <Inner>, which is also in this scope
     <Inner Greeting={HelloGreeting} />
   </Outer>
+
+  </>;
 }
 ```
 
@@ -187,28 +236,40 @@ the parent component itself — it only exists in the child scope:
 ```ripple
 import type { Component } from 'ripple';
 
-component Outer({ Footer }: { Footer: Component }) {
+function Outer({ Footer }: { Footer: Component }) {
+  return <>
   // Outer expects Footer as a prop
   <div class="outer">
     <Footer />
   </div>
+
+  </>;
 }
 
-export component App() {
+export function App() {
+  return <>
   // ❌ WRONG — Footer is declared inside Outer's children,
   // but Outer cannot see it. Footer is not in scope for the
   // <Outer> component call.
   <Outer {Footer}>
-    component Footer() {
+    function Footer() {
+      return <>
       <button>"OK"</button>
+
+      </>;
     }
   </Outer>
 
-  component Footer() {
+  function Footer() {
+    return <>
     <button>"OK"</button>
+
+    </>;
   }
 
   <Outer {Footer} />
+
+  </>;
 }
 ```
 
@@ -238,7 +299,8 @@ for modals, tooltips, and notifications.
 ```ripple
 import { Portal } from 'ripple';
 
-export component App() {
+export function App() {
+  return <>
   <div class="app">
     <h1>"My App"</h1>
 
@@ -250,5 +312,7 @@ export component App() {
       </div>
     </Portal>
   </div>
+
+  </>;
 }
 ```

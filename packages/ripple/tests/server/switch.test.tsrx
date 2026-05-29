@@ -1,21 +1,22 @@
 describe('SSR: switch statements', () => {
 	it('renders simple switch with literal cases', async () => {
-		component App() {
-			let value = 'b';
-
-			switch (value) {
-				case 'a':
-					<div>{'Case A'}</div>
-					break;
-				case 'b':
-					<div>{'Case B'}</div>
-					break;
-				case 'c':
-					<div>{'Case C'}</div>
-					break;
-				default:
-					<div>{'Default Case'}</div>
-			}
+		function App() {
+			return <>
+				let value = 'b';
+				switch (value) {
+					case 'a':
+						<div>{'Case A'}</div>
+						break;
+					case 'b':
+						<div>{'Case B'}</div>
+						break;
+					case 'c':
+						<div>{'Case C'}</div>
+						break;
+					default:
+						<div>{'Default Case'}</div>
+				}
+			</>;
 		}
 
 		const { body } = await render(App);
@@ -23,20 +24,21 @@ describe('SSR: switch statements', () => {
 	});
 
 	it('renders a fall-through with an empty switch case', async () => {
-		component App() {
-			let value = 'b';
-
-			switch (value) {
-				case 'a':
-					<div>{'Case A'}</div>
-					break;
-				case 'b':
-				case 'c':
-					<div>{'Case B or C'}</div>
-					break;
-				default:
-					<div>{'Default Case'}</div>
-			}
+		function App() {
+			return <>
+				let value = 'b';
+				switch (value) {
+					case 'a':
+						<div>{'Case A'}</div>
+						break;
+					case 'b':
+					case 'c':
+						<div>{'Case B or C'}</div>
+						break;
+					default:
+						<div>{'Default Case'}</div>
+				}
+			</>;
 		}
 
 		const { body } = await render(App);
@@ -44,20 +46,21 @@ describe('SSR: switch statements', () => {
 	});
 
 	it('renders a fall-through with a case that has elements', async () => {
-		component App() {
-			let value = 'a';
-
-			switch (value) {
-				case 'a':
-					<div>{'Case A'}</div>
-				case 'b':
-					<div>{'Case B'}</div>
-				case 'c':
-					<div>{'Case C'}</div>
-					break;
-				default:
-					<div>{'Default Case'}</div>
-			}
+		function App() {
+			return <>
+				let value = 'a';
+				switch (value) {
+					case 'a':
+						<div>{'Case A'}</div>
+					case 'b':
+						<div>{'Case B'}</div>
+					case 'c':
+						<div>{'Case C'}</div>
+						break;
+					default:
+						<div>{'Default Case'}</div>
+				}
+			</>;
 		}
 
 		const { body } = await render(App);
@@ -65,21 +68,22 @@ describe('SSR: switch statements', () => {
 	});
 
 	it('renders a fall-through with a default case in the middle', async () => {
-		component App() {
-			let value = 'x';
-
-			switch (value) {
-				case 'a':
-					<div>{'Case A'}</div>
-				default:
-					<div>{'Default Case'}</div>
-				case 'b':
-					<div>{'Case B'}</div>
-					break;
-				case 'c':
-					<div>{'Case C'}</div>
-					break;
-			}
+		function App() {
+			return <>
+				let value = 'x';
+				switch (value) {
+					case 'a':
+						<div>{'Case A'}</div>
+					default:
+						<div>{'Default Case'}</div>
+					case 'b':
+						<div>{'Case B'}</div>
+						break;
+					case 'c':
+						<div>{'Case C'}</div>
+						break;
+				}
+			</>;
 		}
 
 		const { body } = await render(App);
@@ -87,18 +91,19 @@ describe('SSR: switch statements', () => {
 	});
 
 	it('renders bare text nodes in switch fall-through cases without element wrappers', async () => {
-		component App() {
-			let value = 'a';
-
-			<div>
-				<span>{'before'}</span>
-				switch (value) {
-					case 'a':
-						{'Case A'}
-					case 'b':
-						{'Case B'}
-				}
-			</div>
+		function App() {
+			return <>
+				let value = 'a';
+				<div>
+					<span>{'before'}</span>
+					switch (value) {
+						case 'a':
+							{'Case A'}
+						case 'b':
+							{'Case B'}
+					}
+				</div>
+			</>;
 		}
 
 		const { body } = await render(App);
@@ -106,20 +111,21 @@ describe('SSR: switch statements', () => {
 	});
 
 	it('renders bare text nodes in switch cases without element wrappers', async () => {
-		component App() {
-			let value = 'a';
-
-			<div>
-				<span>{'before'}</span>
-				switch (value) {
-					case 'a':
-						{'Case A'}
-						break;
-					case 'b':
-						{'Case B'}
-						break;
-				}
-			</div>
+		function App() {
+			return <>
+				let value = 'a';
+				<div>
+					<span>{'before'}</span>
+					switch (value) {
+						case 'a':
+							{'Case A'}
+							break;
+						case 'b':
+							{'Case B'}
+							break;
+					}
+				</div>
+			</>;
 		}
 
 		const { body } = await render(App);

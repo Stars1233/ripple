@@ -18,9 +18,7 @@ describe('@tsrx/mcp documentation index', () => {
 	});
 
 	it('includes generated specification grammar in language sections', () => {
-		expect(find_documentation_section('components')?.content ?? '').toContain(
-			'ComponentDeclaration',
-		);
+		expect(find_documentation_section('components')?.content ?? '').toContain('function Button');
 		expect(find_documentation_section('tsx-expression-values')?.content ?? '').toContain(
 			'TsxElement',
 		);
@@ -33,7 +31,8 @@ describe('@tsrx/mcp documentation index', () => {
 		const content = find_documentation_section('control-flow')?.content ?? '';
 
 		expect(content).toContain('continue');
-		expect(content).toContain('Top-level `return` and `break` are invalid');
+		expect(content).toContain('`return` statements are invalid anywhere');
+		expect(content).toContain('`break` is invalid inside TSRX `for...of` loops');
 		expect(content).toContain('Regular `for`, `for...in`, `while`, and `do...while`');
 	});
 

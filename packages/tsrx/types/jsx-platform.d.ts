@@ -36,11 +36,12 @@ export interface JsxTransformContext {
 	needs_error_boundary: boolean;
 	needs_suspense: boolean;
 	needs_merge_refs: boolean;
-	needs_ref_prop: boolean;
 	needs_normalize_spread_props: boolean;
+	needs_normalize_spread_props_for_ref_attr: boolean;
 	needs_fragment: boolean;
 	needs_for_of_iterable: boolean;
 	needs_iteration_value_type: boolean;
+	stylesheets: AST.CSS.StyleSheet[];
 	module_scoped_hook_components: boolean;
 	helper_state: {
 		base_name: string;
@@ -48,10 +49,12 @@ export interface JsxTransformContext {
 		helpers: any[];
 		statics: any[];
 	} | null;
+	hook_helpers_enabled: boolean;
 	available_bindings: Map<string, AST.Identifier>;
 	lazy_next_id: number;
-	current_css_hash: string | null;
 	inside_element_child?: boolean;
+	/** Full source text for source-aware diagnostics. */
+	source: string;
 	/** Source filename for diagnostics; null when the caller did not supply one. */
 	filename: string | null;
 	/** True when recoverable errors should be collected onto `errors` instead of thrown. */
@@ -145,18 +148,6 @@ export interface JsxPlatformHooks {
 	 */
 	isTopLevelSetupCall?: (callExpression: any, ctx: any) => boolean;
 	/**
-	 * Lower a `component` declaration to the replacement node for its current
-	 * position. React / Preact use the default helper and return a
-	 * `FunctionDeclaration`. Other targets may return a variable declaration or
-	 * an expression that wraps the shared lowered function body (for example,
-	 * `defineVaporComponent(...)`).
-	 *
-	 * The default lowering is exported as `componentToFunctionDeclaration()` so
-	 * platform hooks can build on it instead of reimplementing component body
-	 * handling.
-	 */
-	componentToFunction?: (component: any, ctx: any, helperState?: any) => any;
-	/**
 	 * Wrap a hoisted helper component declaration emitted by the shared control-
 	 * flow splitter. The default is the plain function declaration; Vue uses
 	 * this to wrap helpers in `defineVaporComponent(...)` so branch-local setup
@@ -164,12 +155,24 @@ export interface JsxPlatformHooks {
 	 */
 	wrapHelperComponent?: (helperFn: any, helperId: any, ctx: any, sourceNode: any) => any;
 	/**
+	 * Wrap an uppercase JavaScript function that returns native TSRX as a target
+	 * component. Vue uses this to turn `function App() { return <></>; }` into a
+	 * `defineVaporComponent(function App() { ... })` binding while lowercase
+	 * TSRX-returning callbacks stay plain functions.
+	 */
+	wrapNativeFunctionComponent?: (fn: any, ctx: any, path: any[]) => any;
+	/**
 	 * Emit hook-isolation helper components as unique module-scope declarations
 	 * instead of lazily creating and caching them from the parent component body.
 	 * React enables this so generated branches stay compatible with the React
 	 * Compiler's Rules of Hooks validation.
 	 */
 	moduleScopedHookComponents?: boolean;
+	/**
+	 * Split ordinary uppercase function component bodies when an early
+	 * conditional return would make later React/Preact hooks conditional.
+	 */
+	componentBodyHookHelpers?: boolean;
 	/**
 	 * Inject module-level imports after the main walk. Default: import
 	 * `Suspense` from `platform.imports.suspense` and `TsrxErrorBoundary`
@@ -188,9 +191,7 @@ export interface JsxPlatformHooks {
 	transformElementAttributes?: (attrs: any[], ctx: any, element: any) => any[];
 	/**
 	 * Rewrite or normalize raw Ripple attributes before the shared
-	 * `to_jsx_attribute()` mapping runs. Targets can use this to merge multiple
-	 * keyword attributes, such as collapsing repeated `{ref ...}` entries into a
-	 * single `RefAttribute` backed by an array expression.
+	 * `to_jsx_attribute()` mapping runs.
 	 */
 	preprocessElementAttributes?: (attrs: any[], ctx: any, element: any) => any[];
 	/**
@@ -260,7 +261,7 @@ export interface JsxPlatformHooks {
 	 * default child-to-JSX conversion runs.
 	 *
 	 * This lets a target support target-native DOM content props such as
-	 * `textContent` / `innerHTML` without forking the whole element lowering.
+	 * `textContent` without forking the whole element lowering.
 	 * The hook may mutate `attrs` directly and either return a replacement
 	 * `children` array (plus optional `selfClosing` override) or `null` to fall
 	 * back to the default child handling.
@@ -336,8 +337,7 @@ export interface JsxPlatform {
 		 */
 		mergeRefs?: string;
 		/**
-		 * Module to import named-ref-prop helpers from when compiling
-		 * `prop={ref expr}` or normalizing host spreads containing named refs.
+		 * Module to import host-spread normalization helpers from.
 		 */
 		refProp?: string;
 		/**
@@ -383,8 +383,6 @@ export interface JsxPlatform {
 		 * explicit `ref={normalized.ref}` attribute.
 		 */
 		hostSpreadRefStrategy?: 'explicit-ref-attr';
-		/** Native host prop used when lowering a sole child `{html ...}`. */
-		htmlProp?: 'dangerouslySetInnerHTML' | 'innerHTML';
 	};
 
 	validation: {
@@ -442,9 +440,3 @@ export function createJsxTransform(
 	filename?: string,
 	options?: JsxTransformOptions,
 ) => JsxTransformResult;
-
-export function componentToFunctionDeclaration(
-	component: any,
-	ctx: any,
-	helperState?: any,
-): AST.FunctionDeclaration | AST.FunctionExpression | AST.ArrowFunctionExpression;

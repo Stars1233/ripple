@@ -8,16 +8,14 @@ import {
 	clone_expression_node,
 	clone_identifier,
 	contains_component_jsx,
-	CREATE_REF_PROP_INTERNAL_NAME,
 	createHookSafeHelper,
 	create_generated_identifier,
-	componentToFunctionDeclaration,
 	createJsxTransform,
 	error,
 	is_component_like_element,
 	MERGE_REFS_INTERNAL_NAME,
+	NORMALIZE_SPREAD_PROPS_FOR_REF_ATTR_INTERNAL_NAME,
 	NORMALIZE_SPREAD_PROPS_INTERNAL_NAME,
-	rewriteHostHtmlChildren as rewrite_host_html_children,
 	setLocation,
 	toJsxAttribute,
 } from '@tsrx/core';
@@ -68,11 +66,14 @@ const vue_platform = {
 			ctx.needs_define_vapor_component = true;
 			return wrap_helper_component(helper_fn, helper_id, source_node);
 		},
+		wrapNativeFunctionComponent(fn, ctx, path) {
+			return wrap_native_function_component(fn, ctx, path);
+		},
 		canHoistStaticNode(node) {
 			return !contains_component_jsx(node);
 		},
-		preprocessElementAttributes(attrs, ctx, element) {
-			return preprocess_ref_attributes(attrs, element, ctx);
+		preprocessElementAttributes(attrs, ctx) {
+			return preprocess_ref_attributes(attrs, ctx);
 		},
 		transformElementAttributes(attrs, ctx, element) {
 			const result = attrs.map((attr) => toJsxAttribute(attr, ctx));
@@ -130,13 +131,7 @@ const vue_platform = {
 			return builders.arrow([], jsx_child_to_expression(try_content));
 		},
 		transformElementChildren(node, walked_children, raw_children, attributes, ctx) {
-			return rewrite_host_text_or_html_children(
-				node,
-				walked_children,
-				raw_children,
-				attributes,
-				ctx,
-			);
+			return rewrite_host_text_children(node, walked_children, raw_children, attributes);
 		},
 		validateComponentAwait(await_expression, _component, ctx) {
 			error(
@@ -146,10 +141,6 @@ const vue_platform = {
 				ctx?.errors,
 				ctx?.comments,
 			);
-		},
-		componentToFunction(component, ctx, helper_state) {
-			ctx.needs_define_vapor_component = true;
-			return component_to_vapor_component_declaration(component, ctx, helper_state);
 		},
 		injectImports(program, ctx) {
 			inject_vue_imports(program, ctx);
@@ -389,43 +380,6 @@ function mark_type_only_host_ref_attribute(attr) {
 }
 
 /**
- * @param {any} component
- * @param {any} transform_context
- * @param {any} helper_state
- * @returns {any}
- */
-function component_to_vapor_component_declaration(component, transform_context, helper_state) {
-	const fn = componentToFunctionDeclaration(component, transform_context, helper_state);
-	const generated_helpers = helper_state?.helpers || [];
-	const generated_statics = helper_state?.statics || [];
-	const call = create_define_vapor_component_call(
-		function_declaration_to_expression(fn),
-		generated_helpers,
-		generated_statics,
-	);
-
-	if (component.default || !component.id) {
-		return call;
-	}
-
-	const component_id = create_generated_identifier(component.id.name);
-	const fn_id = fn.type === 'FunctionDeclaration' ? fn.id : null;
-	component_id.metadata = {
-		...component_id.metadata,
-		...(fn_id?.metadata || {}),
-		path: component_id.metadata?.path || [],
-	};
-	/** @type {any} */ (component_id.metadata).hover = create_component_hover_replacement(fn.params);
-
-	const declaration = builders.declaration('const', [builders.declarator(component_id, call)]);
-	Object.assign(/** @type {any} */ (declaration.metadata), {
-		generated_helpers,
-		generated_statics,
-	});
-	return declaration;
-}
-
-/**
  * @param {any} helper_fn
  * @param {any} helper_id
  * @param {any} source_node
@@ -441,6 +395,91 @@ function wrap_helper_component(helper_fn, helper_id, source_node) {
 		]),
 		source_node,
 	);
+}
+
+/**
+ * @param {any} fn
+ * @param {any} ctx
+ * @param {any[]} path
+ * @returns {any | null}
+ */
+function wrap_native_function_component(fn, ctx, path) {
+	const name = get_function_component_name(fn, path);
+	if (!name || !/^[A-Z]/.test(name)) {
+		return null;
+	}
+
+	ctx.needs_define_vapor_component = true;
+
+	const call = create_define_vapor_component_call(
+		function_declaration_to_expression(fn),
+		fn.metadata?.generated_helpers || [],
+		fn.metadata?.generated_statics || [],
+	);
+
+	if (fn.type !== 'FunctionDeclaration') {
+		return call;
+	}
+
+	const parent = path.at(-1);
+	if (parent?.type === 'ExportDefaultDeclaration' && parent.declaration === fn) {
+		return setLocation(call, fn, true);
+	}
+
+	if (!fn.id) {
+		return call;
+	}
+
+	return setLocation(
+		builders.declaration('const', [
+			builders.declarator(create_generated_identifier(fn.id.name), setLocation(call, fn, true)),
+		]),
+		fn,
+		true,
+	);
+}
+
+/**
+ * @param {any} fn
+ * @param {any[]} path
+ * @returns {string | null}
+ */
+function get_function_component_name(fn, path) {
+	if (fn.id?.type === 'Identifier') {
+		return fn.id.name;
+	}
+
+	const parent = path.at(-1);
+	if (parent?.type === 'VariableDeclarator' && parent.init === fn) {
+		return get_static_name(parent.id);
+	}
+
+	if (parent?.type === 'Property' && parent.value === fn) {
+		return get_static_name(parent.key);
+	}
+
+	if (parent?.type === 'AssignmentExpression' && parent.right === fn) {
+		return get_static_name(parent.left);
+	}
+
+	return null;
+}
+
+/**
+ * @param {any} node
+ * @returns {string | null}
+ */
+function get_static_name(node) {
+	if (node?.type === 'Identifier') {
+		return node.name;
+	}
+	if (node?.type === 'Literal' && typeof node.value === 'string') {
+		return node.value;
+	}
+	if (node?.type === 'MemberExpression' && !node.computed) {
+		return get_static_name(node.property);
+	}
+	return null;
 }
 
 /**
@@ -1026,29 +1065,6 @@ function function_declaration_to_expression(fn) {
 	};
 }
 
-const VUE_COMPONENT_HOVER_LABEL_REGEX = /(function|\((property|method)\))/;
-
-/**
- * @param {any[]} [params]
- * @returns {(content: string) => string}
- */
-function create_component_hover_replacement(params) {
-	const lazy_param_regexes = (params || [])
-		.filter((param) => param.type === 'Identifier' && /^__lazy\d+$/.test(param.name))
-		.map((param) => new RegExp(`\\b${param.name}\\s*:\\s*`, 'g'));
-
-	return (content) => {
-		let next = content.replace(VUE_COMPONENT_HOVER_LABEL_REGEX, (_, fn, kind) => {
-			if (fn === 'function') return 'component';
-			return `(component ${kind})`;
-		});
-		for (const regex of lazy_param_regexes) {
-			next = next.replace(regex, '&');
-		}
-		return next;
-	};
-}
-
 const VUE_SETUP_CALLS = new Set([
 	'ref',
 	'shallowRef',
@@ -1085,32 +1101,19 @@ function is_vue_setup_call(call_expression) {
 }
 
 /**
- * Reject `{ref expr}` on composite (component-like) elements: Vue component
- * refs resolve to the component instance, not the rendered DOM node, so
- * Ripple-style component refs don't have a meaningful DOM target. Multi-ref
- * merging itself is handled by the shared `merge_duplicate_refs` pass via
- * the platform's `multiRefStrategy: 'merge-refs'` config.
+ * Vue's JSX transform treats some prop names ending in `ref` as template-ref
+ * sugar on components. Keep those as ordinary runtime props by hiding the
+ * static prop name behind an object spread before Vue sees the JSX. Type-only
+ * virtual TSX skips that spread so Volar can offer completions on the real
+ * component prop name.
  *
  * @param {any[]} attrs
- * @param {any} element
  * @param {any} transform_context
  * @returns {any[]}
  */
-function preprocess_ref_attributes(attrs, element, transform_context) {
-	if (!is_component_like_element(element)) {
-		return attrs;
-	}
+function preprocess_ref_attributes(attrs, transform_context) {
 	const result = [];
 	for (const attr of attrs) {
-		if (attr?.type === 'RefAttribute') {
-			error(
-				'`{ref ...}` on the Vue target is only supported on host elements. Vue component refs resolve to component instances rather than the rendered DOM node, so Ripple-style component refs are not supported here.',
-				transform_context?.filename ?? null,
-				attr,
-				transform_context?.errors,
-				transform_context?.comments,
-			);
-		}
 		if (!transform_context.typeOnly && is_vue_named_ref_attribute(attr)) {
 			result.push(create_vue_named_ref_spread(attr));
 			continue;
@@ -1121,12 +1124,6 @@ function preprocess_ref_attributes(attrs, element, transform_context) {
 }
 
 /**
- * Vue's JSX transform treats prop names ending in `ref` as template-ref
- * sugar on components. Keep named TSRX refs as ordinary runtime props by
- * hiding the static prop name behind an object spread before Vue sees the JSX.
- * Type-only virtual TSX skips that spread so Volar can offer completions on
- * the real component prop name.
- *
  * @param {any} attr
  * @returns {boolean}
  */
@@ -1137,11 +1134,17 @@ function is_vue_named_ref_attribute(attr) {
 		attr_name &&
 		attr_name !== 'ref' &&
 		(attr?.type === 'Attribute' || attr?.type === 'JSXAttribute') &&
-		(value?.type === 'RefExpression' ||
-			(value?.type === 'CallExpression' &&
-				value.callee?.type === 'Identifier' &&
-				value.callee.name === CREATE_REF_PROP_INTERNAL_NAME))
+		value &&
+		is_vue_ref_prop_name(attr_name)
 	);
+}
+
+/**
+ * @param {string} name
+ * @returns {boolean}
+ */
+function is_vue_ref_prop_name(name) {
+	return /(?:^|[-_])ref$/i.test(name) || /Ref$/.test(name);
 }
 
 /**
@@ -1152,7 +1155,13 @@ function create_vue_named_ref_spread(attr) {
 	const attr_name = get_vue_attribute_name(attr);
 	const value = get_vue_attribute_expression(attr);
 	if (attr_name === null) return attr;
-	const prop = builders.prop('init', builders.key(attr_name), value, false, false);
+	const prop = builders.prop(
+		'init',
+		builders.key(attr_name),
+		value ?? builders.literal(true),
+		false,
+		false,
+	);
 	return builders.jsx_spread_attribute(builders.object([prop], attr), attr);
 }
 
@@ -1184,29 +1193,11 @@ function get_vue_attribute_expression(attr) {
  * @param {any[]} walked_children
  * @param {any[]} raw_children
  * @param {any[]} attributes
- * @param {any} [transform_context]
  * @returns {{ children: any[]; selfClosing?: boolean } | null}
  */
-function rewrite_host_text_or_html_children(
-	node,
-	walked_children,
-	raw_children,
-	attributes,
-	transform_context,
-) {
+function rewrite_host_text_children(node, walked_children, raw_children, attributes) {
 	const source_children = raw_children || walked_children;
 	const is_composite = is_component_like_element(node);
-
-	const html_child_transform = rewrite_host_html_children(
-		node,
-		walked_children,
-		raw_children,
-		attributes,
-		transform_context,
-	);
-	if (html_child_transform) {
-		return html_child_transform;
-	}
 
 	if (!is_composite && source_children.length === 1 && source_children[0]?.type === 'Text') {
 		return null;
@@ -1250,16 +1241,21 @@ function inject_vue_imports(program, transform_context) {
 		ensure_named_import(program, '@tsrx/vue/ref', 'mergeRefs', MERGE_REFS_INTERNAL_NAME);
 	}
 
-	if (transform_context.needs_ref_prop) {
-		ensure_named_import(program, '@tsrx/vue/ref', 'create_ref_prop', CREATE_REF_PROP_INTERNAL_NAME);
-	}
-
 	if (transform_context.needs_normalize_spread_props) {
 		ensure_named_import(
 			program,
 			'@tsrx/vue/ref',
 			'normalize_spread_props',
 			NORMALIZE_SPREAD_PROPS_INTERNAL_NAME,
+		);
+	}
+
+	if (transform_context.needs_normalize_spread_props_for_ref_attr) {
+		ensure_named_import(
+			program,
+			'@tsrx/vue/ref',
+			'normalize_spread_props_for_ref_attr',
+			NORMALIZE_SPREAD_PROPS_FOR_REF_ATTR_INTERNAL_NAME,
 		);
 	}
 }

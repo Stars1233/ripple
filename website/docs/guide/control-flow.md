@@ -13,7 +13,8 @@ with.
 <Code>
 
 ```ripple
-export component Truthy({ x }) {
+export function Truthy({ x }) {
+  return <>
   <div>
     if (x) {
       <span>"x is truthy"</span>
@@ -21,38 +22,42 @@ export component Truthy({ x }) {
       <span>"x is falsy"</span>
     }
   </div>
+
+  </>;
 }
 ```
 
 </Code>
 
-## Early return (guard clauses)
+## Guard returns
 
-You can pair `if` blocks with `return;` to short-circuit the rest of the component
-body once a guard branch is hit.
+Use normal JavaScript guard clauses before returning TSRX when a component should
+render nothing or return another value.
 
 <Code>
 
 ```ripple
 import { track } from 'ripple';
 
-export component AuthGate() {
+export function AuthGate() {
   let &[is_logged_in] = track(false);
 
   if (!is_logged_in) {
-    <p>"Please sign in."</p>
-    return;
+    return <p>"Please sign in."</p>;
   }
 
+  return <>
   <h1>"Dashboard"</h1>
   <p>"Private content"</p>
+
+  </>;
 }
 ```
 
 </Code>
 
-`return` in components is only valid as `return;`. Returning a value (including
-templates) is invalid.
+`return` is not valid inside a TSRX element or fragment body. Use `if`, `else`,
+ternaries, or extracted helper functions inside the template instead.
 
 ## Switch statements
 
@@ -62,7 +67,8 @@ with both static and reactive values.
 <Code>
 
 ```ripple
-export component StatusIndicator({ status }) {
+export function StatusIndicator({ status }) {
+  return <>
   <div>
     switch (status) {
       case: 'init':
@@ -80,6 +86,8 @@ export component StatusIndicator({ status }) {
         <p>"Unknown status"</p>
     }
   </div>
+
+  </>;
 }
 ```
 
@@ -92,7 +100,8 @@ You can also use reactive values with switch statements.
 ```ripple
 import { track } from 'ripple';
 
-export component InteractiveStatus() {
+export function InteractiveStatus() {
+  return <>
   let &[status] = track('loading');
 
   <button onClick={() => (status = 'success')}>"Success"</button>
@@ -116,6 +125,8 @@ export component InteractiveStatus() {
         <p>"Unknown status"</p>
     }
   </div>
+
+  </>;
 }
 ```
 
@@ -128,17 +139,21 @@ You can render collections using a `for...of` loop.
 <Code>
 
 ```ripple
-component ListView({ title, items }) {
+function ListView({ title, items }) {
+  return <>
   <h2>{title}</h2>
   <ul>
     for (const item of items) {
       <li>{item.text}</li>
     }
   </ul>
+
+  </>;
 }
 
 // usage
-export default component App() {
+export default function App() {
+  return <>
   <ListView
     title="My List"
     items={[
@@ -147,6 +162,8 @@ export default component App() {
       { text: 'Item 3' },
     ]}
   />
+
+  </>;
 }
 ```
 
@@ -193,7 +210,8 @@ You can use Ripple's reactive arrays to easily compose contents of an array.
 ```ripple
 import { RippleArray } from 'ripple';
 
-export component Numbers() {
+export function Numbers() {
+  return <>
   const array = new RippleArray(1, 2, 3);
 
   for (const item of array; index i) {
@@ -205,6 +223,8 @@ export component Numbers() {
   }
 
   <button onClick={() => array.push(array.length + 1)}>"Add Item"</button>
+
+  </>;
 }
 ```
 
@@ -225,7 +245,8 @@ encounters an error in the `try` block, you can easily render a fallback in the
 ```ripple
 import { reportError } from 'some-library';
 
-export component ErrorBoundary() {
+export function ErrorBoundary() {
+  return <>
   <div>
     try {
       <ComponentThatFails />
@@ -235,6 +256,8 @@ export component ErrorBoundary() {
       <div>"An error occurred! "{e.message}</div>
     }
   </div>
+
+  </>;
 }
 ```
 
@@ -246,13 +269,16 @@ and using the `<@tagName>` syntax:
 ```ripple
 import { track } from 'ripple';
 
-export component App() {
+export function App() {
+  return <>
   let &[tag] = track('div');
 
   <@tag class="dynamic">"Hello World"</@tag>
   <button onClick={() => (tag = tag === 'div' ? 'span' : 'div')}>
     "Toggle Element"
   </button>
+
+  </>;
 }
 ```
 
@@ -263,7 +289,8 @@ Everything before the first `await` renders immediately; everything after suspen
 until the promise resolves.
 
 ```ripple
-component UserProfile({ id }: { id: number }) {
+function UserProfile({ id }: { id: number }) {
+  return <>
   // Renders immediately
   <h1>"Loading profile..."</h1>
 
@@ -273,13 +300,16 @@ component UserProfile({ id }: { id: number }) {
   // Renders after resolution
   <h1>{user.name}</h1>
   <p>{user.email}</p>
+
+  </>;
 }
 ```
 
 Wrap the component in a `try/pending` block to handle the suspended state:
 
 ```ripple
-export component App() {
+export function App() {
+  return <>
   try {
     <UserProfile id={1} />
   } pending {
@@ -290,6 +320,8 @@ export component App() {
       {e.message}
     </p>
   }
+
+  </>;
 }
 ```
 
@@ -307,7 +339,8 @@ nearest `try/pending` boundary.
 ```ripple
 import { track } from 'ripple';
 
-export component CitySearch() {
+export function CitySearch() {
+  return <>
   let &[query] = track('');
 
   // Renders immediately, never suspended
@@ -322,6 +355,8 @@ export component CitySearch() {
     {query}
   </p>
   <CityCard {city} />
+
+  </>;
 }
 ```
 

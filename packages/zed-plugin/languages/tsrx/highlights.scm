@@ -1,5 +1,4 @@
 ; Keywords
-(component_declaration "component" @keyword)
 (fragment_declaration "fragment" @keyword)
 (module_declaration
   "module" @keyword
@@ -9,12 +8,6 @@
 (lazy_object_pattern "&" @operator)
 (lazy_array_pattern "&" @operator)
 
-(style_directive
-  "style" @keyword
-  (string) @string)
-
-(jsx_expression "html" @keyword)
-
 ; Reserved identifiers
 [
   "track"
@@ -22,9 +15,6 @@
 ] @function.builtin
 
 ; Functions
-(component_declaration
-  name: (identifier) @function)
-
 (fragment_declaration
   name: (identifier) @function)
 

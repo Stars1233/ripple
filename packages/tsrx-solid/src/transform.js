@@ -4,22 +4,17 @@
 
 import {
 	createJsxTransform,
-	createElementRefTargetType,
 	error,
-	addRefTargetTypeToRefPropAttributes as add_ref_target_type_to_ref_prop_attributes,
 	mergeDuplicateRefs,
 	toJsxAttribute,
 	validateAtMostOneRefAttribute,
-	setLocation,
 	addJsxSetupDeclaration as add_jsx_setup_declaration,
-	applyLazyTransforms as apply_lazy_transforms,
 	extractJsxSetupDeclarations as extract_jsx_setup_declarations,
 	rewriteLoopContinuesToBareReturns as rewrite_loop_continues_to_bare_returns,
-	isRefPropExpression as is_ref_prop_expression,
 	isInterleavedBody as is_interleaved_body_core,
 	isCapturableJsxChild as is_capturable_jsx_child,
 	captureJsxChild,
-	CREATE_REF_PROP_INTERNAL_NAME,
+	NORMALIZE_SPREAD_PROPS_FOR_REF_ATTR_INTERNAL_NAME,
 	NORMALIZE_SPREAD_PROPS_INTERNAL_NAME,
 	returnValueBodyToExpression as return_value_body_to_expression,
 	tsxNodeToJsxExpression as tsx_node_to_jsx_expression,
@@ -28,8 +23,6 @@ import {
 	clone_identifier,
 	clone_jsx_name,
 	cloneSwitchHelperInvocation as clone_switch_helper_invocation,
-	collectParamBindings as collect_param_bindings,
-	collectStatementBindings as collect_statement_bindings,
 	contains_component_jsx,
 	create_generated_identifier,
 	create_null_literal,
@@ -40,8 +33,6 @@ import {
 	is_bare_render_expression,
 	is_dynamic_element_id,
 	is_jsx_child,
-	recoverInvalidHtmlChild as recover_invalid_html_child,
-	rewriteHostHtmlChildren as rewrite_host_html_children,
 	set_loc,
 	to_text_expression,
 } from '@tsrx/core';
@@ -63,6 +54,7 @@ import { builders as b } from '@tsrx/core';
  *   needs_errored: boolean,
  *   needs_loading: boolean,
  *   needs_normalize_spread_props: boolean,
+ *   needs_normalize_spread_props_for_ref_attr: boolean,
  * }} TransformContext
  */
 
@@ -76,10 +68,10 @@ import { builders as b } from '@tsrx/core';
  * - Component-level `await` is rejected outright (no `"use server"` escape).
  * - Control-flow statements become Solid's `<Show>` / `<For>` /
  *   `<Switch>/<Match>` / `<Errored>/<Loading>` instead of inline JSX.
- * - `component` declarations run once at setup, with early-return JSX
- *   hoisted into a reactive `<Show when={!cond}>`.
- * - Element attributes support composite elements and lift a lone
- *   `{text ...}` child into a `textContent` attribute.
+ * - Uppercase native TSRX functions use Solid render-time control flow, so
+ *   branches stay reactive without reintroducing a TSRX-specific declaration.
+ * - Element attributes support composite elements and lift a lone direct text
+ *   child into a `textContent` attribute.
  * - `needs_show` / `needs_for` / etc. flags track which runtime
  *   primitives must be imported, injected by `inject_solid_imports`.
  *
@@ -158,8 +150,6 @@ const solid_platform = {
 			switchStatement: switch_statement_to_jsx_child,
 			tryStatement: try_statement_to_jsx_child,
 		},
-		componentToFunction: (component, ctx, helper_state) =>
-			component_to_function_declaration(component, /** @type {any} */ (ctx), helper_state),
 		injectImports: (program, ctx) => inject_solid_imports(program, /** @type {any} */ (ctx)),
 		// `transformElementAttributes` is intentionally omitted: the
 		// `transformElement` hook below short-circuits core's element walker
@@ -167,6 +157,15 @@ const solid_platform = {
 		// `transformElementAttributes` is never reached for Solid. Attribute
 		// lowering happens in Solid's local `transform_element_attributes`,
 		// which `to_jsx_element` and `create_dynamic_jsx_element` call directly.
+		transformElementChildren(node, walked_children, raw_children, attributes, ctx) {
+			return rewrite_solid_host_children(
+				node,
+				walked_children,
+				raw_children,
+				attributes,
+				/** @type {any} */ (ctx),
+			);
+		},
 		transformElement: (inner, ctx, raw_children) =>
 			to_jsx_element(/** @type {any} */ (inner), /** @type {any} */ (ctx), raw_children),
 	},
@@ -198,230 +197,6 @@ function get_await_keyword_start(await_node, source) {
 	return await_node?.start ?? 0;
 }
 // =====================================================================
-// Component → FunctionDeclaration / FunctionExpression / ArrowFunctionExpression
-// =====================================================================
-
-/**
- * @param {any} component
- * @param {TransformContext} transform_context
- * @param {any} [walk_helper_state]
- *   The helper_state owned by the walker for this component. Solid's local
- *   body lowering happens *after* the walker has restored `helper_state` to
- *   the outer scope's value, so we re-install the walker's helper_state here
- *   for the duration of the body lowering. That way `to_jsx_child` calls into
- *   `switch_statement_to_jsx_child` (and any other lift path that goes
- *   through `create_hook_safe_helper`) see the same module-scoped helper
- *   bucket the React / Vue paths see, and `moduleScopedHookComponents: true`
- *   actually hoists Solid's `<StatementBodyHook/>` helpers out of the
- *   component body.
- * @returns {AST.FunctionDeclaration | AST.FunctionExpression | AST.ArrowFunctionExpression}
- */
-function component_to_function_declaration(component, transform_context, walk_helper_state) {
-	const params = component.params || [];
-	const body = /** @type {any[]} */ (component.body || []);
-
-	const saved_helper_state = transform_context.helper_state;
-	if (walk_helper_state) {
-		transform_context.helper_state = walk_helper_state;
-	}
-
-	// Re-install the component's body bindings before lowering the body. The
-	// walker sets `state.available_bindings` to the component-scope bindings
-	// during `next()` and restores them before calling the platform's
-	// `componentToFunction` hook — but Solid's body lowering happens *here*,
-	// after that restore, so `to_jsx_child` (and any `create_hook_safe_helper`
-	// it triggers via `switch_statement_to_jsx_child` / the if / try / for-of
-	// lifts) wouldn't otherwise see component-scope locals like `const obj =
-	// {...}` and would emit helpers that close over undefined references.
-	const saved_bindings = transform_context.available_bindings;
-	const body_bindings = collect_param_bindings(params);
-	for (const node of body) {
-		collect_statement_bindings(node, body_bindings);
-	}
-	transform_context.available_bindings = body_bindings;
-
-	// Detect top-level early-return patterns such as `if (cond) { return; }`
-	// and `if (cond) { <p />; return; }`.
-	// Solid components run their body once at setup, so an early `return` would
-	// make subsequent statements and JSX permanently inert. To preserve
-	// React-like "stop rendering the rest when cond becomes true" semantics,
-	// keep JSX before the guard outside and lift the guarded/continuation JSX
-	// into `<Show>` branches whose function-children re-run when `cond` changes.
-	// Non-JSX statements on either side stay in the outer body so setup code
-	// (signal creation, resource declarations, etc.) runs exactly once at
-	// component setup — putting them inside the `<Show>` arrow would re-run
-	// them on every toggle, creating fresh signals and losing state.
-	//
-	// The `if` node itself is elided: its `test` expression lives on in the
-	// `<Show>` attribute and is evaluated reactively by Solid's runtime, so
-	// any side effects or reactive reads in `cond` are preserved.
-	// Non-JSX statements after the guard run unconditionally rather than being
-	// gated by it; this is an intentional divergence from imperative `return`
-	// semantics required by the setup-once component model.
-	const early_idx = body.findIndex((node) => get_returning_if_info(node) !== null);
-	/** @type {any[]} */
-	let effective_body = body;
-	if (early_idx !== -1) {
-		const early_if = /** @type {any} */ (body[early_idx]);
-		const early_info = /** @type {{ consequent_body: any[], return_index: number }} */ (
-			get_returning_if_info(early_if)
-		);
-		const before = body.slice(0, early_idx);
-		const after = body.slice(early_idx + 1);
-		const branch_has_content_before_return = early_info.return_index > 0;
-
-		// If mutations are interleaved with JSX children, the mutation and the
-		// JSX it affects can't both be hoisted out of order — that is the same
-		// bug `body_to_jsx_child` avoids. Capture each JSX child into a const
-		// at its source position so later mutations in the outer body don't
-		// retroactively change what earlier children rendered.
-		const early_interleaved = is_interleaved_body([...before, ...after]);
-
-		/** @type {any[]} */
-		const before_non_jsx = [];
-		/** @type {any[]} */
-		const before_jsx = [];
-		/** @type {any[]} */
-		const after_non_jsx = [];
-		/** @type {any[]} */
-		const after_jsx = [];
-		let early_capture_index = 0;
-
-		/**
-		 * @param {any[]} nodes
-		 * @param {any[]} outer
-		 * @param {any[]} jsx_bucket
-		 */
-		const collect = (nodes, outer, jsx_bucket) => {
-			for (const child of nodes) {
-				if (is_jsx_child(child)) {
-					if (get_returning_if_info(child) !== null) {
-						jsx_bucket.push(child);
-						continue;
-					}
-					if (early_interleaved) {
-						const jsx = to_jsx_child(child, transform_context);
-						outer.push(...extract_jsx_setup_declarations(jsx));
-						if (is_capturable_jsx_child(jsx)) {
-							const { declaration, reference } = captureJsxChild(jsx, early_capture_index++);
-							outer.push(declaration);
-							jsx_bucket.push(reference);
-						} else {
-							jsx_bucket.push(jsx);
-						}
-					} else {
-						jsx_bucket.push(child);
-					}
-				} else {
-					outer.push(child);
-				}
-			}
-		};
-
-		collect(before, before_non_jsx, before_jsx);
-		collect(after, after_non_jsx, after_jsx);
-
-		const next_body = [...before_non_jsx, ...before_jsx, ...after_non_jsx];
-
-		if (branch_has_content_before_return) {
-			transform_context.needs_show = true;
-			const branch_body = body_to_jsx_child(early_info.consequent_body, transform_context);
-			const fallback_body =
-				after_jsx.length > 0 ? body_to_early_return_jsx_child(after_jsx, transform_context) : null;
-			next_body.push(build_show_element(early_if.test, branch_body, fallback_body));
-		} else if (after_jsx.length > 0) {
-			transform_context.needs_show = true;
-			const show_body = body_to_early_return_jsx_child(after_jsx, transform_context);
-			next_body.push(build_show_element(negate_expression(early_if.test), show_body, null));
-		}
-
-		effective_body = next_body;
-	}
-
-	const statements = [];
-	const render_nodes = [];
-	const interleaved = is_interleaved_body(effective_body);
-	let capture_index = 0;
-
-	for (const child of effective_body) {
-		if (is_jsx_child(child)) {
-			const jsx = to_jsx_child(child, transform_context);
-			statements.push(...extract_jsx_setup_declarations(jsx));
-			if (interleaved && is_capturable_jsx_child(jsx)) {
-				const { declaration, reference } = captureJsxChild(jsx, capture_index++);
-				statements.push(declaration);
-				render_nodes.push(reference);
-			} else {
-				render_nodes.push(jsx);
-			}
-		} else if (is_bare_render_expression(child)) {
-			render_nodes.push(to_jsx_expression_container(child, child));
-		} else {
-			statements.push(child);
-		}
-	}
-
-	if (render_nodes.length > 0) {
-		statements.push(b.return(build_return_expression(render_nodes) || b.literal(null)));
-	}
-
-	const body_block = b.block(statements);
-
-	/** @type {AST.FunctionDeclaration | AST.FunctionExpression | AST.ArrowFunctionExpression} */
-	let fn;
-
-	if (component.id) {
-		fn = b.function_declaration(component.id, params, body_block, false, component.typeParameters);
-	} else if (component.metadata?.arrow) {
-		fn = b.arrow(params, body_block, false, component.typeParameters);
-	} else {
-		fn = b.function(null, params, body_block, false, component.typeParameters);
-	}
-	fn.metadata.is_component = true;
-
-	// `preallocate_lazy_ids` stamped `has_lazy_descendants` on the source
-	// `Component` node; the freshly-built `fn` shares the same params/body
-	// subtree, so propagate the flag so the function-handler's early-return
-	// path can fire for non-lazy components.
-	if (/** @type {any} */ (component).metadata?.has_lazy_descendants) {
-		/** @type {any} */ (fn.metadata).has_lazy_descendants = true;
-	}
-
-	// Apply lazy `&{}` / `&[]` rewrites end-to-end via the function-handler in
-	// `apply_lazy_transforms`. Constant-time fast-path for functions whose
-	// subtrees contain no lazy patterns (flagged ahead of time by
-	// `preallocate_lazy_ids`). In type-only mode the rewrite is skipped so
-	// destructuring patterns survive into the virtual TSX.
-	if (!transform_context.typeOnly) {
-		fn = /** @type {typeof fn} */ (apply_lazy_transforms(fn, new Map()));
-	}
-
-	if (fn.type === 'FunctionDeclaration' && fn.id) {
-		fn.id.metadata = /** @type {AST.Identifier['metadata']} */ ({
-			...fn.id.metadata,
-			is_component: true,
-		});
-	}
-
-	setLocation(fn, /** @type {any} */ (component), true);
-
-	// Restore the outer helper_state and bindings, then surface this
-	// component's generated helpers / statics so the downstream Program-level
-	// lift can hoist them (`moduleScopedHookComponents: true` registers
-	// helpers into `helper_state.helpers`; the React/Vue post-pass reads them
-	// off `fn.metadata.generated_helpers`).
-	transform_context.helper_state = saved_helper_state;
-	transform_context.available_bindings = saved_bindings;
-	if (walk_helper_state) {
-		const fn_metadata = /** @type {any} */ (fn.metadata);
-		fn_metadata.generated_helpers = walk_helper_state.helpers;
-		fn_metadata.generated_statics = walk_helper_state.statics;
-	}
-
-	return fn;
-}
-
-// =====================================================================
 // Control flow → Solid JSX components
 // =====================================================================
 
@@ -447,8 +222,6 @@ function to_jsx_child(node, transform_context) {
 			return to_jsx_expression_container(to_text_expression(node.expression, node), node);
 		case 'TSRXExpression':
 			return to_jsx_expression_container(node.expression, node);
-		case 'Html':
-			return recover_invalid_html_child(node, transform_context);
 		case 'IfStatement':
 			return if_statement_to_jsx_child(node, transform_context);
 		case 'ForOfStatement':
@@ -463,7 +236,7 @@ function to_jsx_child(node, transform_context) {
 }
 
 /**
- * Lower a `<tsrx>` node's native TSRX template body to a Solid JSX expression.
+ * Lower a native TSRX fragment body to a Solid JSX expression.
  *
  * @param {any} node
  * @param {TransformContext} transform_context
@@ -550,18 +323,6 @@ function body_to_jsx_child(body_nodes, transform_context) {
 	let has_terminal_return = false;
 	let capture_index = 0;
 	for (const child of body_nodes) {
-		if (is_bare_return_statement(child)) {
-			statements.push(
-				set_loc(
-					b.return(children.length > 0 ? build_return_expression(children) : create_null_literal()),
-					child,
-				),
-			);
-			children.length = 0;
-			has_terminal_return = true;
-			continue;
-		}
-
 		if (child?.type === 'ReturnStatement' && child.argument != null) {
 			statements.push(child);
 			has_terminal_return = true;
@@ -611,50 +372,15 @@ function body_to_jsx_child(body_nodes, transform_context) {
 }
 
 /**
- * Lower render-continuation bodies that may contain additional early-return
- * guards. Sequential guards need to nest the remaining continuation instead
- * of rendering later children beside a `<Show>` for the guard itself.
- *
- * @param {any[]} body_nodes
- * @param {TransformContext} transform_context
- * @returns {any}
- */
-function body_to_early_return_jsx_child(body_nodes, transform_context) {
-	const early_idx = body_nodes.findIndex((node) => get_returning_if_info(node) !== null);
-	if (early_idx === -1) {
-		return body_to_jsx_child(body_nodes, transform_context);
-	}
-
-	const early_if = /** @type {any} */ (body_nodes[early_idx]);
-	const early_info = /** @type {{ consequent_body: any[], return_index: number }} */ (
-		get_returning_if_info(early_if)
-	);
-	const before = body_nodes.slice(0, early_idx);
-	const after = body_nodes.slice(early_idx + 1);
-	const branch_has_content_before_return = early_info.return_index > 0;
-	const children = [...before];
-
-	if (branch_has_content_before_return) {
-		transform_context.needs_show = true;
-		const branch_body = body_to_jsx_child(early_info.consequent_body, transform_context);
-		const fallback_body =
-			after.length > 0 ? body_to_early_return_jsx_child(after, transform_context) : null;
-		children.push(build_show_element(early_if.test, branch_body, fallback_body));
-	} else if (after.length > 0) {
-		transform_context.needs_show = true;
-		const show_body = body_to_early_return_jsx_child(after, transform_context);
-		children.push(build_show_element(negate_expression(early_if.test), show_body, null));
-	}
-
-	return body_to_jsx_child(children, transform_context);
-}
-
-/**
  * @param {any} node
  * @returns {boolean}
  */
 function is_bare_return_statement(node) {
-	return node?.type === 'ReturnStatement' && node.argument == null;
+	return (
+		node?.type === 'ReturnStatement' &&
+		node.argument == null &&
+		node.metadata?.generated_loop_continue_return === true
+	);
 }
 
 /**
@@ -927,20 +653,6 @@ function get_returning_if_info(node) {
 	}
 
 	return null;
-}
-
-/**
- * Build a logical-negation (`!expr`) expression.
- *
- * @param {any} expr
- * @returns {any}
- */
-function negate_expression(expr) {
-	if (expr?.type === 'UnaryExpression' && expr.operator === '!') {
-		return clone_expression_node(expr.argument);
-	}
-
-	return b.unary('!', clone_expression_node(expr));
 }
 
 /**
@@ -1291,7 +1003,7 @@ function try_statement_to_jsx_child(node, transform_context) {
 
 	if (!pending && !handler) {
 		error(
-			'Component try statements must have a `pending` or `catch` block.',
+			'Solid try statements must have a `pending` or `catch` block.',
 			transform_context.filename,
 			node,
 			transform_context.errors,
@@ -1405,20 +1117,27 @@ const TEMPLATE_FRAGMENT_ERROR =
  * @param {TransformContext} transform_context
  */
 function inject_solid_imports(program, transform_context) {
-	if (transform_context.needs_ref_prop || transform_context.needs_normalize_spread_props) {
-		const specifiers = [];
+	if (transform_context.needs_normalize_spread_props) {
+		program.body.unshift(
+			b.import_declaration(
+				[b.import_specifier('normalize_spread_props', NORMALIZE_SPREAD_PROPS_INTERNAL_NAME)],
+				'@tsrx/solid/ref',
+			),
+		);
+	}
 
-		if (transform_context.needs_ref_prop) {
-			specifiers.push(b.import_specifier('create_ref_prop', CREATE_REF_PROP_INTERNAL_NAME));
-		}
-
-		if (transform_context.needs_normalize_spread_props) {
-			specifiers.push(
-				b.import_specifier('normalize_spread_props', NORMALIZE_SPREAD_PROPS_INTERNAL_NAME),
-			);
-		}
-
-		program.body.unshift(b.import_declaration(specifiers, '@tsrx/solid/ref'));
+	if (transform_context.needs_normalize_spread_props_for_ref_attr) {
+		program.body.unshift(
+			b.import_declaration(
+				[
+					b.import_specifier(
+						'normalize_spread_props_for_ref_attr',
+						NORMALIZE_SPREAD_PROPS_FOR_REF_ATTR_INTERNAL_NAME,
+					),
+				],
+				'@tsrx/solid/ref',
+			),
+		);
 	}
 
 	const needed = [];
@@ -1442,6 +1161,57 @@ function inject_solid_imports(program, transform_context) {
 // =====================================================================
 // Element → JSX (with Solid-specific attribute handling)
 // =====================================================================
+
+/**
+ * @param {any} node
+ * @param {any[]} walked_children
+ * @param {any[]} raw_children
+ * @param {any[]} attributes
+ * @param {TransformContext} transform_context
+ * @returns {{ children: any[], selfClosing?: boolean } | null}
+ */
+function rewrite_solid_host_children(
+	node,
+	walked_children,
+	raw_children,
+	attributes,
+	transform_context,
+) {
+	const source_children = raw_children ?? walked_children;
+	if (
+		!is_component_like_element(node) &&
+		source_children.length === 1 &&
+		source_children[0]?.type === 'Text' &&
+		!has_text_content_attribute(attributes)
+	) {
+		const text_child = source_children[0];
+		attributes.push(
+			set_loc(
+				/** @type {any} */ ({
+					type: 'JSXAttribute',
+					name: {
+						type: 'JSXIdentifier',
+						name: 'textContent',
+						metadata: { path: [] },
+					},
+					value:
+						walked_children[0] && walked_children[0].type === 'JSXExpressionContainer'
+							? walked_children[0]
+							: to_jsx_expression_container(
+									to_text_expression(text_child.expression, text_child),
+									text_child,
+								),
+					shorthand: false,
+					metadata: { path: [] },
+				}),
+				text_child,
+			),
+		);
+		return { children: [], selfClosing: true };
+	}
+
+	return null;
+}
 
 /**
  * @param {any} node - walker-transformed Element whose `children` have
@@ -1495,27 +1265,11 @@ function to_jsx_element(node, transform_context, pre_walk_children) {
 		node,
 	);
 
-	const html_child_transform = rewrite_host_html_children(
-		node,
-		walked_children,
-		pre_walk_children ?? walked_children,
-		attributes,
-		transform_context,
-	);
-	if (html_child_transform) {
-		const openingElement = set_loc(
-			b.jsx_opening_element(name, attributes, true, node.openingElement?.typeArguments),
-			node.openingElement || node,
-		);
-
-		return set_loc(b.jsx_element_fresh(openingElement, null, []), node);
-	}
-
-	// Optimization: `<el>{text expr}</el>` with a single `{text ...}` child
-	// on a host (DOM) element lowers to `<el textContent={expr} />`. Solid
+	// Optimization: `<el>"text"</el>` with a single direct text child on a host
+	// (DOM) element lowers to `<el textContent={expr} />`. Solid
 	// writes `textContent` as a direct DOM property, which is cheaper than
 	// the `insert()`-based text node binding it would otherwise emit for
-	// child expressions. Only safe when `{text ...}` is the sole child and
+	// child expressions. Only safe when the direct text child is the sole child and
 	// the parent is a host element (composite components receive
 	// `textContent` as an opaque prop with no DOM semantics), and when the
 	// user hasn't already set `textContent` themselves.
@@ -1622,7 +1376,7 @@ function create_element_children(children, transform_context) {
 /**
  * Check if the user already supplied a `textContent` attribute on the
  * element, or if a spread attribute could supply one. If either is true the
- * compiler mustn't emit another `textContent` — the `{text expr}` →
+ * compiler mustn't emit another `textContent` — the direct-text →
  * `textContent={...}` optimization bails out. Spreads are treated as
  * potentially setting `textContent` because the spread's runtime shape
  * isn't knowable at compile time; emitting a second `textContent` attribute
@@ -1646,15 +1400,11 @@ function has_text_content_attribute(attributes) {
 /**
  * Transform a list of raw attributes into JSX attributes.
  *
- * Per-attribute conversion (RefAttribute → `ref={expr}`, SpreadAttribute →
- * `{...expr}`, plain Attribute → JSXAttribute, JSXAttribute pass-through)
+ * Per-attribute conversion (SpreadAttribute → `{...expr}`, plain Attribute →
+ * JSXAttribute, JSXAttribute pass-through)
  * is delegated to `@tsrx/core`'s shared {@link toJsxAttribute}. The list
- * is then run through {@link mergeDuplicateRefs} so multiple ref attributes
- * on the same element — whether from `{ref expr}` or TSX-style `ref={expr}` —
- * collapse to a single `ref={[a, b, ...]}` array (the strategy chosen by
- * Solid's `multiRefStrategy: 'array'`). Solid's runtime iterates array refs
- * natively, so this works on both DOM elements and composite components
- * (when the child spreads `props` or forwards `props.ref`).
+ * is then run through {@link mergeDuplicateRefs} so compiler-synthesized
+ * host-spread refs can compose with an explicit `ref={...}`.
  *
  * @param {any[]} raw_attrs
  * @param {boolean} is_composite
@@ -1667,66 +1417,14 @@ function transform_element_attributes(raw_attrs, is_composite, transform_context
 	/** @type {any[]} */
 	const result = [];
 
-	for (const attr of normalize_solid_named_ref_attributes(
-		raw_attrs,
-		!is_composite,
-		transform_context,
-	)) {
+	for (const attr of raw_attrs) {
 		if (!attr) continue;
 		result.push(toJsxAttribute(attr, /** @type {any} */ (transform_context)));
-	}
-	if (transform_context.typeOnly) {
-		add_ref_target_type_to_ref_prop_attributes(
-			result,
-			!is_composite ? createElementRefTargetType(element) : null,
-		);
 	}
 	return mergeDuplicateRefs(
 		normalize_solid_host_ref_spreads(result, !is_composite, transform_context),
 		/** @type {any} */ (transform_context),
 	);
-}
-
-/**
- * @param {any[]} attrs
- * @param {boolean} is_host
- * @param {TransformContext} transform_context
- * @returns {any[]}
- */
-function normalize_solid_named_ref_attributes(attrs, is_host, transform_context) {
-	if (!is_host) return attrs;
-
-	return attrs.map((attr) => {
-		if (
-			!attr ||
-			attr.type !== 'Attribute' ||
-			attr.name?.type !== 'Identifier' ||
-			attr.name.name === 'ref' ||
-			!(
-				attr.value?.type === 'RefExpression' ||
-				is_ref_prop_expression(attr.value) ||
-				(attr.value?.type === 'JSXExpressionContainer' &&
-					is_ref_prop_expression(attr.value.expression))
-			)
-		) {
-			return attr;
-		}
-
-		if (transform_context.typeOnly) {
-			return {
-				...attr,
-				name: {
-					...attr.name,
-					metadata: { ...(attr.name.metadata || {}), disable_verification: true },
-				},
-			};
-		}
-
-		return {
-			...attr,
-			name: { ...attr.name, name: 'ref' },
-		};
-	});
 }
 
 /**
@@ -1766,7 +1464,7 @@ function normalize_solid_host_ref_spreads(attrs, is_host, transform_context) {
 				attr,
 			);
 			ref_attr.metadata = { ...(ref_attr.metadata || {}) };
-			/** @type {any} */ (ref_attr.metadata).from_ref_keyword = true;
+			/** @type {any} */ (ref_attr.metadata).synthetic_ref = true;
 			add_jsx_setup_declaration(spread, b.let(clone_identifier(normalized_id), normalized));
 
 			return [spread, ref_attr];

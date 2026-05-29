@@ -177,16 +177,6 @@ function generateImportEdit(documentText, importName) {
  */
 const RIPPLE_SNIPPETS = [
 	{
-		label: '{style}',
-		kind: CompletionItemKind.Snippet,
-		detail: 'Scoped CSS class reference',
-		documentation:
-			'Produces a scoped CSS class string for passing to child components.\nThe class must be defined as a standalone selector in <style>.\n\nUsage: <Child cls={style "highlight"} />',
-		insertText: 'style "${1:className}"',
-		insertTextFormat: InsertTextFormat.Snippet,
-		sortText: '0-style',
-	},
-	{
 		label: 'module server',
 		kind: CompletionItemKind.Snippet,
 		detail: 'Server-only submodule (module level)',
@@ -197,13 +187,13 @@ const RIPPLE_SNIPPETS = [
 		sortText: '0-module-server',
 	},
 	{
-		label: 'component',
+		label: 'function component',
 		kind: CompletionItemKind.Snippet,
-		detail: 'Ripple Component',
+		detail: 'Ripple component function',
 		documentation: 'Create a new Ripple component',
-		insertText: 'component ${1:ComponentName}(${2:props}) {\n\t$0\n}',
+		insertText: 'function ${1:ComponentName}(${2:props}) {\n\treturn <>\n\t\t$0\n\t</>;\n}',
 		insertTextFormat: InsertTextFormat.Snippet,
-		sortText: '0-component',
+		sortText: '0-function-component',
 	},
 	{
 		label: 'track',
@@ -368,7 +358,7 @@ export function createCompletionPlugin() {
 			completionProvider: {
 				// Trigger on Ripple-specific syntax:
 				// '<' - JSX/HTML tags
-				// '{' - {style}, {ref}, and other TSRX directive snippets
+				// '{' - expression and statement snippets
 				triggerCharacters: ['<', '{'],
 				resolveProvider: false,
 			},

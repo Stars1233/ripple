@@ -13,23 +13,13 @@
   (expression) @injection.content
   (#set! injection.language "typescript"))
 
-; TSX expression islands. Shorthand fragments and <tsx> blocks use TSX syntax
-; rather than Ripple template statements.
-((jsx_fragment) @injection.content
-  (#set! injection.language "tsx"))
-
+; TSX expression islands. Bare fragments now use native TSRX syntax by default,
+; so only explicit <tsx> / <tsx:react> blocks inject TSX.
 ((jsx_element
   open_tag: (jsx_opening_element
     name: (jsx_element_name (identifier) @_tsx_name))) @injection.content
   (#eq? @_tsx_name "tsx")
   (#set! injection.language "tsx"))
-
-; TSRX islands keep Ripple syntax, including when nested inside a TSX island.
-((jsx_element
-  open_tag: (jsx_opening_element
-    name: (jsx_element_name (identifier) @_tsrx_name))) @injection.content
-  (#eq? @_tsrx_name "tsrx")
-  (#set! injection.language "ripple"))
 
 ((jsx_element
   open_tag: (jsx_opening_element

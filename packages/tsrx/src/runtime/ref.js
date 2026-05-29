@@ -2,6 +2,7 @@ import {
 	has_own_property,
 	get_descriptor,
 	has_prototype_accessor,
+	is_array,
 } from '@tsrx/core/runtime/language-helpers';
 
 const REF_VALUE = Symbol();
@@ -65,6 +66,25 @@ function is_ref_prop(value) {
  * @returns {void | (() => void)}
  */
 export function apply_ref_value(ref_value, node, set_ref_value) {
+	if (is_array(ref_value)) {
+		/** @type {Array<() => void>} */
+		const cleanups = [];
+		for (const item of ref_value) {
+			const cleanup = apply_ref_value(item, node);
+			if (typeof cleanup === 'function') {
+				cleanups.push(cleanup);
+			} else if (typeof item === 'function' && node !== null) {
+				cleanups.push(() => item(null));
+			}
+		}
+		if (cleanups.length > 0) {
+			return () => {
+				for (const cleanup of cleanups) cleanup();
+			};
+		}
+		return;
+	}
+
 	if (typeof ref_value === 'function') {
 		return ref_value(node);
 	}
@@ -215,6 +235,34 @@ export function normalize_spread_props(props, ...outer_refs) {
 	}
 
 	return next;
+}
+
+/**
+ * Normalize spread props for targets that read refs through an explicit
+ * `ref={normalized.ref}` attribute. The returned `ref` stays readable for that
+ * attribute but is non-enumerable so `{...normalized}` does not also pass it as
+ * a DOM prop.
+ *
+ * @param {Record<string | symbol, any> | null | undefined} props
+ * @param {...any} outer_refs
+ * @returns {Record<string | symbol, any> | null | undefined}
+ */
+export function normalize_spread_props_for_ref_attr(props, ...outer_refs) {
+	const next = normalize_spread_props(props, ...outer_refs);
+	if (next == null || !has_own_property.call(next, 'ref')) {
+		return next;
+	}
+
+	const ref = next.ref;
+	const without_ref = { ...next };
+	delete without_ref.ref;
+	Object.defineProperty(without_ref, 'ref', {
+		value: ref,
+		enumerable: false,
+		configurable: true,
+		writable: true,
+	});
+	return without_ref;
 }
 
 /**

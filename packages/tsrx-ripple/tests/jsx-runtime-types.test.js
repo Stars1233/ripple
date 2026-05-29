@@ -13,6 +13,8 @@ function get_variable_types(code) {
 		moduleResolution: ts.ModuleResolutionKind.Bundler,
 		target: ts.ScriptTarget.ESNext,
 		noEmit: true,
+		skipLibCheck: true,
+		skipDefaultLibCheck: true,
 		types: [],
 		baseUrl: root,
 		paths: {
@@ -32,13 +34,14 @@ function get_variable_types(code) {
 	host.readFile = (name) => (name === file ? code : ts.sys.readFile(name));
 
 	const program = ts.createProgram([file], options, host);
-	const diagnostics = ts
-		.getPreEmitDiagnostics(program)
+	const source_file = /** @type {ts.SourceFile} */ (program.getSourceFile(file));
+	const diagnostics = program
+		.getSyntacticDiagnostics(source_file)
+		.concat(program.getSemanticDiagnostics(source_file))
 		.map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'));
 	expect(diagnostics).toEqual([]);
 
 	const checker = program.getTypeChecker();
-	const source_file = /** @type {ts.SourceFile} */ (program.getSourceFile(file));
 	/** @type {Map<string, string>} */
 	const types = new Map();
 
@@ -57,23 +60,44 @@ function get_variable_types(code) {
 }
 
 describe('@tsrx/ripple Volar JSX expression types', () => {
-	it('types tsx and nested tsrx expression values as TSRXElement', () => {
+	it('types tsx and native expression values as TSRXElement', () => {
 		const source = `
-component App() {
+function App() { return <>
+	const nested = <div />;
 	const content = <tsx>
-		{<tsrx>
-			const nested = <tsx><span /></tsx>;
-			<div>{nested}</div>
-		</tsrx>}
+		<section>{nested}</section>
 	</tsx>;
 
 	{content}
-}
+</>; }
 `;
 		const { code } = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
 		const types = get_variable_types(`import 'ripple/jsx-runtime';\n${code}`);
 
 		expect(types.get('content')).toBe('TSRXElement');
 		expect(types.get('nested')).toBe('TSRXElement');
+	});
+
+	it('prints statement-bodied native fragments with typed child buckets', () => {
+		const source = `
+function ContentEditable(props: { placeholder: any }) {
+	return <>
+		const className = 'editable';
+		<article class={className}>
+			<div>{props.placeholder}</div>
+		</article>
+	</>;
+}
+
+function App() {
+	return <>
+		<ContentEditable placeholder={<><div>"Hello"</div></>} />
+	</>;
+}
+`;
+		const { code } = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
+
+		expect(code).toContain('children.push');
+		expect(code).toContain('const children = [] as Array<any>;');
 	});
 });

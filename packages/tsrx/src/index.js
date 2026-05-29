@@ -86,7 +86,6 @@ export {
 	build_fallback as buildFallback,
 	build_assignment_value as buildAssignmentValue,
 	is_class_node as isClassNode,
-	is_component_node as isComponentNode,
 	is_function_node as isFunctionNode,
 	is_function_or_component_node as isFunctionOrComponentNode,
 	is_inside_component as isInsideComponent,
@@ -142,35 +141,25 @@ export { escape, escape_script as escapeScript } from './utils/escaping.js';
 
 // Transform
 export {
-	add_ref_target_type_to_ref_prop_attributes as addRefTargetTypeToRefPropAttributes,
 	add_jsx_setup_declaration as addJsxSetupDeclaration,
 	clone_switch_helper_invocation as cloneSwitchHelperInvocation,
 	collect_param_bindings as collectParamBindings,
 	collect_statement_bindings as collectStatementBindings,
 	create_hook_safe_helper as createHookSafeHelper,
-	create_host_html_attribute as createHostHtmlAttribute,
-	create_host_html_conflict_error as createHostHtmlConflictError,
 	create_element_ref_target_type as createElementRefTargetType,
 	create_element_ref_target_type_for_name as createElementRefTargetTypeForName,
 	createJsxTransform,
-	CREATE_REF_PROP_INTERNAL_NAME,
 	extract_jsx_setup_declarations as extractJsxSetupDeclarations,
-	get_host_html_conflicting_attribute as getHostHtmlConflictingAttribute,
-	get_invalid_html_child_error_message as getInvalidHtmlChildErrorMessage,
 	is_component_like_element,
-	is_ref_expression_attribute_value as isRefExpressionAttributeValue,
-	is_ref_prop_expression as isRefPropExpression,
 	MERGE_REFS_INTERNAL_NAME,
 	merge_duplicate_refs as mergeDuplicateRefs,
+	NORMALIZE_SPREAD_PROPS_FOR_REF_ATTR_INTERNAL_NAME,
 	NORMALIZE_SPREAD_PROPS_INTERNAL_NAME,
 	plan_switch_lift as planSwitchLift,
-	recover_invalid_html_child as recoverInvalidHtmlChild,
-	rewrite_host_html_children as rewriteHostHtmlChildren,
 	return_value_body_to_expression as returnValueBodyToExpression,
 	rewrite_loop_continues_to_bare_returns as rewriteLoopContinuesToBareReturns,
 	to_jsx_attribute as toJsxAttribute,
 	validate_at_most_one_ref_attribute as validateAtMostOneRefAttribute,
-	component_to_function_declaration as componentToFunctionDeclaration,
 } from './transform/jsx/index.js';
 export {
 	ensure_function_metadata as ensureFunctionMetadata,
@@ -178,6 +167,11 @@ export {
 	tsx_node_to_jsx_expression as tsxNodeToJsxExpression,
 	tsx_with_ts_locations as tsxWithTsLocations,
 } from './transform/jsx/helpers.js';
+export {
+	collect_style_ref_attributes as collectStyleRefAttributes,
+	create_style_class_map as createStyleClassMap,
+	create_style_ref_setup_statements as createStyleRefSetupStatements,
+} from './transform/style-ref.js';
 export {
 	clone_expression_node,
 	clone_identifier,
@@ -224,7 +218,7 @@ export {
 } from './transform/lazy.js';
 export {
 	find_first_top_level_await as findFirstTopLevelAwait,
-	find_first_top_level_await_in_component_body as findFirstTopLevelAwaitInComponentBody,
+	find_first_top_level_await_in_tsrx_function_body as findFirstTopLevelAwaitInTsrxFunctionBody,
 } from './transform/await.js';
 export {
 	is_interleaved_body as isInterleavedBody,
@@ -243,22 +237,18 @@ export {
 export { analyze_css as analyzeCss } from './analyze/css-analyze.js';
 export { prune_css as pruneCss } from './analyze/prune.js';
 export {
-	CLASS_COMPONENT_AS_NON_ARROW_PROPERTY_ERROR,
-	COMPONENT_DO_WHILE_STATEMENT_ERROR,
-	COMPONENT_FOR_IN_STATEMENT_ERROR,
-	COMPONENT_FOR_STATEMENT_ERROR,
-	COMPONENT_LOOP_BREAK_ERROR,
-	COMPONENT_LOOP_RETURN_ERROR,
-	COMPONENT_MULTIPLE_PARAMS_ERROR,
-	COMPONENT_RETURN_VALUE_ERROR,
-	COMPONENT_WHILE_STATEMENT_ERROR,
+	TSRX_DO_WHILE_STATEMENT_ERROR,
+	TSRX_FOR_IN_STATEMENT_ERROR,
+	TSRX_FOR_STATEMENT_ERROR,
+	TSRX_LOOP_BREAK_ERROR,
+	TSRX_LOOP_RETURN_ERROR,
+	TSRX_RETURN_STATEMENT_ERROR,
+	TSRX_WHILE_STATEMENT_ERROR,
 	get_return_keyword_node as getReturnKeywordNode,
 	get_statement_keyword_node as getStatementKeywordNode,
-	validate_class_component_declarations as validateClassComponentDeclarations,
-	validate_component_loop_break_statement as validateComponentLoopBreakStatement,
-	validate_component_loop_return_statement as validateComponentLoopReturnStatement,
-	validate_component_params as validateComponentParams,
-	validate_component_return_statement as validateComponentReturnStatement,
-	validate_component_unsupported_loop_statement as validateComponentUnsupportedLoopStatement,
+	validate_tsrx_loop_break_statement as validateTsrxLoopBreakStatement,
+	validate_tsrx_loop_return_statement as validateTsrxLoopReturnStatement,
+	validate_tsrx_return_statement as validateTsrxReturnStatement,
+	validate_tsrx_unsupported_loop_statement as validateTsrxUnsupportedLoopStatement,
 	validate_nesting as validateNesting,
 } from './analyze/validation.js';

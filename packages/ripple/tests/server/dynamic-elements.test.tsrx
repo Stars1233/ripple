@@ -3,10 +3,11 @@ import { createRefKey, track } from 'ripple';
 
 describe('server dynamic DOM elements', () => {
 	it('renders static dynamic element', async () => {
-		component App() {
-			let tag = track('div');
-
-			<@tag>{'Hello World'}</@tag>
+		function App() {
+			return <>
+				let tag = track('div');
+				<@tag>{'Hello World'}</@tag>
+			</>;
 		}
 
 		const { body } = await render(App);
@@ -17,11 +18,12 @@ describe('server dynamic DOM elements', () => {
 	// The ts errors below are due to limitations in our current tsx generation for dynamic elements.
 	// They can be ignored for now. But we'll fix them via jsx() vs <jsx>
 	it('renders static dynamic element from a plain object with a tracked property', async () => {
-		component App() {
-			let obj = { tag: track('div') };
-			let tag = obj.tag;
-
-			<@tag>{'Hello World'}</@tag>
+		function App() {
+			return <>
+				let obj = { tag: track('div') };
+				let tag = obj.tag;
+				<@tag>{'Hello World'}</@tag>
+			</>;
 		}
 
 		const { body } = await render(App);
@@ -30,11 +32,12 @@ describe('server dynamic DOM elements', () => {
 	});
 
 	it('renders static dynamic element from a tracked object with a tracked property', async () => {
-		component App() {
-			let obj = track({ tag: track('div') });
-			let tag = obj.value.tag;
-
-			<@tag>{'Hello World'}</@tag>
+		function App() {
+			return <>
+				let obj = track({ tag: track('div') });
+				let tag = obj.value.tag;
+				<@tag>{'Hello World'}</@tag>
+			</>;
 		}
 
 		const { body } = await render(App);
@@ -45,11 +48,12 @@ describe('server dynamic DOM elements', () => {
 	it(
 		'renders static dynamic element from a tracked object with a computed tracked property',
 		async () => {
-			component App() {
-				let obj = track({ tag: track('div') });
-				let tag = obj.value['tag'];
-
-				<@tag>{'Hello World'}</@tag>
+			function App() {
+				return <>
+					let obj = track({ tag: track('div') });
+					let tag = obj.value['tag'];
+					<@tag>{'Hello World'}</@tag>
+				</>;
 			}
 
 			const { body } = await render(App);
@@ -59,10 +63,11 @@ describe('server dynamic DOM elements', () => {
 	);
 
 	it('renders self-closing dynamic element', async () => {
-		component App() {
-			let tag = track('input');
-
-			<@tag type="text" value="test" />
+		function App() {
+			return <>
+				let tag = track('input');
+				<@tag type="text" value="test" />
+			</>;
 		}
 
 		const { body } = await render(App);
@@ -71,11 +76,12 @@ describe('server dynamic DOM elements', () => {
 	});
 
 	it('handles dynamic element with attributes', async () => {
-		component App() {
-			let tag = track('div');
-			let &[className] = track('test-class');
-
-			<@tag class={className} id="test" data-testid="dynamic-element">{'Content'}</@tag>
+		function App() {
+			return <>
+				let tag = track('div');
+				let &[className] = track('test-class');
+				<@tag class={className} id="test" data-testid="dynamic-element">{'Content'}</@tag>
+			</>;
 		}
 		const { body } = await render(App);
 		const { document } = parseHtml(body);
@@ -89,13 +95,14 @@ describe('server dynamic DOM elements', () => {
 	});
 
 	it('handles nested dynamic elements', async () => {
-		component App() {
-			let outerTag = track('div');
-			let innerTag = track('span');
-
-			<@outerTag class="outer">
-				<@innerTag class="inner">{'Nested content'}</@innerTag>
-			</@outerTag>
+		function App() {
+			return <>
+				let outerTag = track('div');
+				let innerTag = track('span');
+				<@outerTag class="outer">
+					<@innerTag class="inner">{'Nested content'}</@innerTag>
+				</@outerTag>
+			</>;
 		}
 		const { body } = await render(App);
 		const { document } = parseHtml(body);
@@ -110,11 +117,14 @@ describe('server dynamic DOM elements', () => {
 	});
 
 	it('handles dynamic element with class object', async () => {
-		component App() {
-			let tag = track('div');
-			let &[active] = track(true);
-
-			<@tag class={{ active: active, 'dynamic-element': true }}>{'Element with class object'}</@tag>
+		function App() {
+			return <>
+				let tag = track('div');
+				let &[active] = track(true);
+				<@tag class={{ active: active, 'dynamic-element': true }}>
+					{'Element with class object'}
+				</@tag>
+			</>;
 		}
 
 		const { body } = await render(App);
@@ -127,18 +137,19 @@ describe('server dynamic DOM elements', () => {
 	});
 
 	it('handles dynamic element with style object', async () => {
-		component App() {
-			let tag = track('span');
-
-			<@tag
-				style={{
-					color: 'red',
-					fontSize: '16px',
-					fontWeight: 'bold',
-				}}
-			>
-				{'Styled dynamic element'}
-			</@tag>
+		function App() {
+			return <>
+				let tag = track('span');
+				<@tag
+					style={{
+						color: 'red',
+						fontSize: '16px',
+						fontWeight: 'bold',
+					}}
+				>
+					{'Styled dynamic element'}
+				</@tag>
+			</>;
 		}
 
 		const { body } = await render(App);
@@ -152,15 +163,16 @@ describe('server dynamic DOM elements', () => {
 	});
 
 	it('handles dynamic element with spread attributes', async () => {
-		component App() {
-			let tag = track('section');
-			const attrs = {
-				id: 'spread-section',
-				'data-testid': 'spread-test',
-				class: 'spread-class',
-			};
-
-			<@tag {...attrs} data-extra="additional">{'Element with spread attributes'}</@tag>
+		function App() {
+			return <>
+				let tag = track('section');
+				const attrs = {
+					id: 'spread-section',
+					'data-testid': 'spread-test',
+					class: 'spread-class',
+				};
+				<@tag {...attrs} data-extra="additional">{'Element with spread attributes'}</@tag>
+			</>;
 		}
 		const { body } = await render(App);
 		const { document } = parseHtml(body);
@@ -176,17 +188,18 @@ describe('server dynamic DOM elements', () => {
 	it('handles dynamic element with ref not rendered', async () => {
 		let capturedElement: HTMLElement | null = null;
 
-		component App() {
-			let tag = track('article');
-
-			<@tag
-				{ref (node: HTMLElement) => {
-					capturedElement = node;
-				}}
-				id="ref-test"
-			>
-				{'Element with ref'}
-			</@tag>
+		function App() {
+			return <>
+				let tag = track('article');
+				<@tag
+					ref={(node: HTMLElement) => {
+						capturedElement = node;
+					}}
+					id="ref-test"
+				>
+					{'Element with ref'}
+				</@tag>
+			</>;
 		}
 
 		const { body } = await render(App);
@@ -202,22 +215,21 @@ describe('server dynamic DOM elements', () => {
 	});
 
 	it('handles dynamic element with createRefKey in spread', async () => {
-		component App() {
-			let tag = track('header');
-
-			function elementRef(node: HTMLElement) {
-				// Set an attribute on the element to prove ref was called
-				node.setAttribute('data-spread-ref-called', 'true');
-				node.setAttribute('data-spread-ref-tag', node.tagName.toLowerCase());
-			}
-
-			const dynamicProps = {
-				id: 'spread-ref-test',
-				class: 'ref-element',
-				[createRefKey()]: elementRef,
-			};
-
-			<@tag {...dynamicProps}>{'Element with spread ref'}</@tag>
+		function App() {
+			return <>
+				let tag = track('header');
+				function elementRef(node: HTMLElement) {
+					// Set an attribute on the element to prove ref was called
+					node.setAttribute('data-spread-ref-called', 'true');
+					node.setAttribute('data-spread-ref-tag', node.tagName.toLowerCase());
+				}
+				const dynamicProps = {
+					id: 'spread-ref-test',
+					class: 'ref-element',
+					[createRefKey()]: elementRef,
+				};
+				<@tag {...dynamicProps}>{'Element with spread ref'}</@tag>
+			</>;
 		}
 
 		const { body } = await render(App);
@@ -233,16 +245,16 @@ describe('server dynamic DOM elements', () => {
 	});
 
 	it('applies scoped CSS to dynamic elements', async () => {
-		component App() {
-			let tag = track('div');
-
-			<@tag class="test-class">{'Dynamic element'}</@tag>
-
-			<style>
-				.test-class {
-					color: red;
-				}
-			</style>
+		function App() {
+			return <>
+				let tag = track('div');
+				<@tag class="test-class">{'Dynamic element'}</@tag>
+				<style>
+					.test-class {
+						color: red;
+					}
+				</style>
+			</>;
 		}
 
 		const { body } = await render(App);
@@ -258,26 +270,29 @@ describe('server dynamic DOM elements', () => {
 	});
 
 	it('handles spread attributes with class and CSS scoping', async () => {
-		component DynamicButton(&{ ...rest }: PropsWithExtras<{
+		function DynamicButton(&{ ...rest }: PropsWithExtras<{
 			class: string;
 			id: string;
 		}>) {
-			const tag = track('button');
-			<@tag {...rest}>{rest.class}</@tag>
-
-			<style>
-				.even {
-					background-color: green;
-				}
-				.odd {
-					background-color: red;
-				}
-			</style>
+			return <>
+				const tag = track('button');
+				<@tag {...rest}>{rest.class}</@tag>
+				<style>
+					.even {
+						background-color: green;
+					}
+					.odd {
+						background-color: red;
+					}
+				</style>
+			</>;
 		}
 
-		component App() {
-			let &[count] = track(0);
-			<DynamicButton class={count % 2 ? 'even' : 'odd'} id={count % 2 ? 'even' : 'odd'} />
+		function App() {
+			return <>
+				let &[count] = track(0);
+				<DynamicButton class={count % 2 ? 'even' : 'odd'} id={count % 2 ? 'even' : 'odd'} />
+			</>;
 		}
 
 		const { body } = await render(App);
@@ -297,18 +312,18 @@ describe('server dynamic DOM elements', () => {
 	});
 
 	it('adds scoping class to dynamic elements', async () => {
-		component App() {
-			let tag = track('div');
-
-			<@tag class="scoped">
-				<p>{'Scoped dynamic element'}</p>
-			</@tag>
-
-			<style>
-				.scoped {
-					color: blue;
-				}
-			</style>
+		function App() {
+			return <>
+				let tag = track('div');
+				<@tag class="scoped">
+					<p>{'Scoped dynamic element'}</p>
+				</@tag>
+				<style>
+					.scoped {
+						color: blue;
+					}
+				</style>
+			</>;
 		}
 
 		const { body } = await render(App);
@@ -326,18 +341,18 @@ describe('server dynamic DOM elements', () => {
 		async () => {
 			// NOTE: We always add the class scoping hash if there is css
 			// but the tag selector will be marked as unused if it's not explicitly seen in the template.
-			component App() {
-				let tag = track('div');
-
-				<@tag class="scoped">
-					<p>{'Scoped dynamic element'}</p>
-				</@tag>
-
-				<style>
-					div {
-						color: blue;
-					}
-				</style>
+			function App() {
+				return <>
+					let tag = track('div');
+					<@tag class="scoped">
+						<p>{'Scoped dynamic element'}</p>
+					</@tag>
+					<style>
+						div {
+							color: blue;
+						}
+					</style>
+				</>;
 			}
 
 			const { body } = await render(App);
@@ -352,31 +367,32 @@ describe('server dynamic DOM elements', () => {
 	);
 
 	it('doesn\'t add scoping class to components inside dynamic element', async () => {
-		component Child() {
-			<div class="child">
-				<p>{'I am a child component'}</p>
-			</div>
-
-			<style>
-				.child {
-					color: blue;
-				}
-			</style>
+		function Child() {
+			return <>
+				<div class="child">
+					<p>{'I am a child component'}</p>
+				</div>
+				<style>
+					.child {
+						color: blue;
+					}
+				</style>
+			</>;
 		}
 
-		component App() {
-			let tag = track('div');
-
-			<@tag class="scoped">
-				<p>{'Scoped dynamic element'}</p>
-				<Child />
-			</@tag>
-
-			<style>
-				div {
-					color: blue;
-				}
-			</style>
+		function App() {
+			return <>
+				let tag = track('div');
+				<@tag class="scoped">
+					<p>{'Scoped dynamic element'}</p>
+					<Child />
+				</@tag>
+				<style>
+					div {
+						color: blue;
+					}
+				</style>
+			</>;
 		}
 
 		const { body } = await render(App);
@@ -399,28 +415,29 @@ describe('server dynamic DOM elements', () => {
 	});
 
 	it('doesn\'t add scoping class to dynamically rendered component', async () => {
-		component Child() {
-			<div class="child">
-				<p>{'I am a child component'}</p>
-			</div>
-
-			<style>
-				.child {
-					color: green;
-				}
-			</style>
+		function Child() {
+			return <>
+				<div class="child">
+					<p>{'I am a child component'}</p>
+				</div>
+				<style>
+					.child {
+						color: green;
+					}
+				</style>
+			</>;
 		}
 
-		component App() {
-			let tag = track(() => Child);
-
-			<@tag />
-
-			<style>
-				.child {
-					color: red;
-				}
-			</style>
+		function App() {
+			return <>
+				let tag = track(() => Child);
+				<@tag />
+				<style>
+					.child {
+						color: red;
+					}
+				</style>
+			</>;
 		}
 
 		const { body } = await render(App);

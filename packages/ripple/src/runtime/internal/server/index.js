@@ -64,7 +64,7 @@ export { simple_hash, strong_hash } from '@tsrx/core/runtime/hash';
 export { context } from './context.js';
 export { try_block, component_block, regular_block } from './blocks.js';
 export { array_slice };
-export { tsrx_element, normalize_children };
+export { is_tsrx_element, tsrx_element, normalize_children };
 export { create_ref_prop };
 
 /** @extends Error */
@@ -96,12 +96,28 @@ function render_tsrx_collection(value) {
 		var item = value[i];
 
 		if (is_tsrx_element(item)) {
-			item.render({});
+			render_tsrx_element(item);
 		} else if (is_array(item)) {
 			render_tsrx_collection(item);
 		} else if (item != null) {
 			output_push(escape(item));
 		}
+	}
+}
+
+/**
+ * @param {import('../../element.js').TSRXElement} value
+ * @returns {void}
+ */
+export function render_tsrx_element(value) {
+	const result = value.render({});
+
+	if (is_tsrx_element(result)) {
+		render_tsrx_element(result);
+	} else if (is_array(result)) {
+		render_tsrx_collection(result);
+	} else if (result != null) {
+		output_push(escape(result));
 	}
 }
 
@@ -113,7 +129,7 @@ export function render_expression(value) {
 	output_push(BLOCK_OPEN);
 
 	if (is_tsrx_element(value)) {
-		value.render({});
+		render_tsrx_element(value);
 	} else if (is_array(value)) {
 		render_tsrx_collection(value);
 	} else {
@@ -121,6 +137,50 @@ export function render_expression(value) {
 	}
 
 	output_push(BLOCK_CLOSE);
+}
+
+/**
+ * @param {Function} fn
+ * @param {Props} props
+ * @returns {void}
+ */
+export function render_component(fn, props) {
+	if (typeof fn !== 'function' || is_tsrx_element(fn)) {
+		throw_invalid_component_type(fn);
+	}
+
+	run_component(fn, props);
+}
+
+/**
+ * @param {Function} fn
+ * @param {Props} props
+ * @returns {void}
+ */
+function run_component(fn, props) {
+	push_component();
+	try {
+		const value = fn(props);
+		if (is_tsrx_element(value)) {
+			render_tsrx_element(value);
+		} else {
+			render_expression(value);
+		}
+	} finally {
+		pop_component();
+	}
+}
+
+/**
+ * @param {any} value
+ * @returns {never}
+ */
+function throw_invalid_component_type(value) {
+	if (is_tsrx_element(value)) {
+		throw new TypeError('Invalid component type: received a TSRXElement value.');
+	}
+
+	throw new TypeError('Invalid component type: expected a component function.');
 }
 
 /**
@@ -532,7 +592,7 @@ export class Output {
 			// and append them into the head immediately
 			return;
 		}
-		this.#css.add(hash);
+		this.#root.#css.add(hash);
 	}
 
 	/**
@@ -685,7 +745,7 @@ export async function render(component, passed_in_options = {}) {
 			if (options.stream) {
 				output._setStream(options.stream);
 			}
-			component({});
+			render_component(component, {});
 			output._decrementPending();
 			output._finishSyncRun();
 
@@ -711,14 +771,14 @@ export async function render(component, passed_in_options = {}) {
 				output._finishSyncRun();
 			}
 			if (options.rootBoundary?.catch) {
-				options.rootBoundary.catch({ error, reset: noop });
+				render_component(options.rootBoundary.catch, { error, reset: noop });
 			} else {
 				console.error(error);
 			}
 		},
 		() => {
 			if (options.rootBoundary?.pending) {
-				options.rootBoundary.pending({});
+				render_component(options.rootBoundary.pending, {});
 			}
 		},
 	);
@@ -1193,7 +1253,13 @@ export function spread_attrs(attrs, css_hash) {
 	for (name in attrs) {
 		var value = attrs[name];
 
-		if (name === 'children' || typeof value === 'function' || is_tsrx_element(value)) continue;
+		if (
+			name === 'children' ||
+			name === 'innerHTML' ||
+			typeof value === 'function' ||
+			is_tsrx_element(value)
+		)
+			continue;
 
 		if (is_ripple_object(value)) {
 			value = get(value);
@@ -1207,6 +1273,24 @@ export function spread_attrs(attrs, css_hash) {
 	}
 
 	return attr_str;
+}
+
+/**
+ * @param {Record<string, any>} attrs
+ * @returns {string | undefined}
+ */
+export function spread_inner_html(attrs) {
+	if (!Object.prototype.hasOwnProperty.call(attrs, 'innerHTML')) {
+		return undefined;
+	}
+
+	var value = attrs.innerHTML;
+
+	if (is_ripple_object(value)) {
+		value = get(value);
+	}
+
+	return String(value ?? '');
 }
 
 var empty_get_set = { get: undefined, set: undefined };

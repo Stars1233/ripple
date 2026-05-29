@@ -16,7 +16,7 @@
 
 /** @typedef {Partial<Pick<ParserOptions, 'singleQuote' | 'jsxSingleQuote' | 'semi' | 'trailingComma' | 'useTabs' | 'tabWidth' | 'singleAttributePerLine' | 'bracketSameLine' | 'bracketSpacing' | 'arrowParens' | 'originalText' | 'printWidth'>> & { locStart: (node: AST.NodeWithLocation) => number, locEnd: (node: AST.NodeWithLocation) => number }} RippleFormatOptions */
 
-/** @typedef {{ isInAttribute?: boolean, isInArray?: boolean, allowInlineObject?: boolean, isConditionalTest?: boolean, isNestedConditional?: boolean, suppressLeadingComments?: boolean, suppressExpressionLeadingComments?: boolean, isInlineContext?: boolean, isStatement?: boolean, isLogicalAndOr?: boolean, allowShorthandProperty?: boolean, isFirstChild?: boolean, skipComponentLabel?: boolean, noBreakInside?: boolean, expandLastArg?: boolean, preferInlineSimpleUnionType?: boolean }} PrintArgs */
+/** @typedef {{ isInAttribute?: boolean, isInArray?: boolean, allowInlineObject?: boolean, isConditionalTest?: boolean, isNestedConditional?: boolean, suppressLeadingComments?: boolean, suppressExpressionLeadingComments?: boolean, isInlineContext?: boolean, isStatement?: boolean, isLogicalAndOr?: boolean, allowShorthandProperty?: boolean, isFirstChild?: boolean, noBreakInside?: boolean, expandLastArg?: boolean, preferInlineSimpleUnionType?: boolean }} PrintArgs */
 
 import { parseModule } from '@tsrx/core';
 import { doc } from 'prettier';
@@ -244,7 +244,7 @@ function hasComment(node) {
 }
 
 /**
- * @param {AST.FunctionDeclaration | AST.FunctionExpression | AST.ArrowFunctionExpression | AST.TSDeclareFunction | AST.Component} node - The function node
+ * @param {AST.FunctionDeclaration | AST.FunctionExpression | AST.ArrowFunctionExpression | AST.TSDeclareFunction} node - The function node
  * @returns {Array<AST.Pattern | AST.Parameter>} - Array of parameter patterns
  */
 function getFunctionParameters(node) {
@@ -261,12 +261,12 @@ function getFunctionParameters(node) {
 /**
  * Iterate over function parameters with path callbacks.
  * TypeScript/Ripple functions can have additional `this` and `rest` parameters.
- * @param {AstPath<AST.FunctionExpression | AST.ArrowFunctionExpression | AST.TSDeclareFunction | AST.FunctionDeclaration | AST.Component>} path - The function path
- * @param {(paramPath: AstPath<AST.FunctionExpression | AST.ArrowFunctionExpression | AST.TSDeclareFunction | AST.FunctionDeclaration | AST.Component>, index: number) => void} iteratee - Callback for each parameter
+ * @param {AstPath<AST.FunctionExpression | AST.ArrowFunctionExpression | AST.TSDeclareFunction | AST.FunctionDeclaration>} path - The function path
+ * @param {(paramPath: AstPath<AST.FunctionExpression | AST.ArrowFunctionExpression | AST.TSDeclareFunction | AST.FunctionDeclaration>, index: number) => void} iteratee - Callback for each parameter
  * @returns {void}
  */
 function iterateFunctionParametersPath(path, iteratee) {
-	/** @type {AST.FunctionExpression | AST.ArrowFunctionExpression | AST.TSDeclareFunction | AST.FunctionDeclaration | AST.Component} */
+	/** @type {AST.FunctionExpression | AST.ArrowFunctionExpression | AST.TSDeclareFunction | AST.FunctionDeclaration} */
 	const node = path.node;
 	let index = 0;
 	/** @type {(paramPath: AstPath) => void} */
@@ -615,7 +615,7 @@ function isNextLineEmpty(node, options) {
 
 /**
  * Check if a function has a rest parameter
- * @param {AST.FunctionDeclaration | AST.FunctionExpression | AST.ArrowFunctionExpression | AST.TSDeclareFunction | AST.Component} node - The function node
+ * @param {AST.FunctionDeclaration | AST.FunctionExpression | AST.ArrowFunctionExpression | AST.TSDeclareFunction} node - The function node
  * @returns {boolean}
  */
 function hasRestParameter(node) {
@@ -764,11 +764,10 @@ function printRippleNode(node, path, options, print, args) {
 	const suppressExpressionLeadingComments = args && args.suppressExpressionLeadingComments;
 	const parentNode = /** @type {AST.Node | null} */ (path.getParentNode());
 
-	// For TSRXExpression, Text, and Html nodes, don't add leading comments here - they should be handled
+	// For TSRXExpression and Text nodes, don't add leading comments here - they should be handled
 	// as separate children within elements, not as part of the expression.
 	const shouldSkipLeadingComments =
-		parentNode?.type === 'Element' &&
-		(node.type === 'TSRXExpression' || node.type === 'Text' || node.type === 'Html');
+		parentNode?.type === 'Element' && (node.type === 'TSRXExpression' || node.type === 'Text');
 
 	// Handle leading comments
 	if (node.leadingComments && !shouldSkipLeadingComments && !suppressLeadingComments) {
@@ -882,10 +881,6 @@ function printRippleNode(node, path, options, print, args) {
 
 		case 'ImportDeclaration':
 			nodeContent = printImportDeclaration(node, path, options, print);
-			break;
-
-		case 'Component':
-			nodeContent = printComponent(node, path, options, print, innerCommentParts, args);
 			break;
 
 		case 'ExportNamedDeclaration':
@@ -1477,11 +1472,6 @@ function printRippleNode(node, path, options, print, args) {
 			break;
 		}
 
-		case 'Style': {
-			nodeContent = ['style ', path.call(print, 'value')];
-			break;
-		}
-
 		case 'StyleSheet': {
 			// StyleSheet nodes inside <style> elements. When CSS is empty/whitespace-only,
 			// return empty string so the element collapses to <style></style>.
@@ -1695,14 +1685,6 @@ function printRippleNode(node, path, options, print, args) {
 			}
 			break;
 		}
-		case 'RefAttribute':
-			nodeContent = ['{ref ', path.call(print, 'argument'), '}'];
-			break;
-
-		case 'RefExpression':
-			nodeContent = ['ref ', path.call(print, 'argument')];
-			break;
-
 		case 'SpreadAttribute': {
 			/** @type {Doc[]} */
 			const parts = ['{...', path.call(print, 'argument'), '}'];
@@ -1763,7 +1745,7 @@ function printRippleNode(node, path, options, print, args) {
 
 		case 'TSModuleBlock':
 		case 'BlockStatement': {
-			// Apply the same block formatting pattern as component bodies
+			// Apply the same block formatting pattern throughout TSRX.
 			if (!node.body || node.body.length === 0) {
 				// Handle innerComments for empty blocks
 				if (innerCommentParts.length > 0) {
@@ -2322,15 +2304,7 @@ function printRippleNode(node, path, options, print, args) {
 			const expressionDoc = suppressExpressionLeadingComments
 				? path.call((exprPath) => print(exprPath, { suppressLeadingComments: true }), 'expression')
 				: path.call(print, 'expression');
-			nodeContent = ['{text ', expressionDoc, '}'];
-			break;
-		}
-
-		case 'Html': {
-			const expressionDoc = suppressExpressionLeadingComments
-				? path.call((exprPath) => print(exprPath, { suppressLeadingComments: true }), 'expression')
-				: path.call(print, 'expression');
-			nodeContent = ['{html ', expressionDoc, '}'];
+			nodeContent = ['{', expressionDoc, '}'];
 			break;
 		}
 
@@ -2537,173 +2511,6 @@ function printExportNamedDeclaration(node, path, options, print) {
 	}
 
 	return 'export';
-}
-
-/**
- * Print a Ripple component declaration
- * @param {AST.Component} node - The component node
- * @param {AstPath<AST.Component>} path - The AST path
- * @param {RippleFormatOptions} options - Prettier options
- * @param {PrintFn} print - Print callback
- * @param {Doc[]} [innerCommentParts=[]] - Inner comment docs
- * @param {{ skipComponentLabel?: boolean }} [args] - Additional args
- * @returns {Doc[]}
- */
-function printComponent(
-	node,
-	path,
-	options,
-	print,
-	innerCommentParts = [],
-	args = { skipComponentLabel: false },
-) {
-	// Use arrays instead of string concatenation
-	/** @type {Doc[]} */
-	const signatureParts = args.skipComponentLabel
-		? []
-		: node.id
-			? ['component ', node.id.name]
-			: ['component'];
-
-	// Add TypeScript generics if present
-	if (node.typeParameters) {
-		const typeParams = path.call(print, 'typeParameters');
-		if (Array.isArray(typeParams)) {
-			signatureParts.push(...typeParams);
-		} else {
-			signatureParts.push(typeParams);
-		}
-	}
-
-	// Print parameters using shared function
-	const paramsPart = printFunctionParameters(path, options, print);
-	signatureParts.push(group(paramsPart)); // Build body content using the same pattern as BlockStatement
-	/** @type {Doc[]} */
-	const statements = [];
-
-	for (let i = 0; i < node.body.length; i++) {
-		const statement = path.call(print, 'body', i);
-		statements.push(statement);
-
-		// Handle blank lines between statements
-		if (i < node.body.length - 1) {
-			const currentStmt = node.body[i];
-			const nextStmt = node.body[i + 1];
-
-			// Use shouldAddBlankLine to determine spacing
-			if (shouldAddBlankLine(currentStmt, nextStmt)) {
-				statements.push(hardline, hardline); // Blank line = two hardlines
-			} else {
-				statements.push(hardline); // Normal line break
-			}
-		}
-	}
-
-	// Process statements to add them to contentParts
-	/** @type {Doc[]} */
-	const contentParts = [];
-	if (statements.length > 0) {
-		contentParts.push(statements);
-	}
-
-	const isArrowComponent = node.metadata?.arrow === true && !node.id && !args.skipComponentLabel;
-
-	// Use Prettier's standard block statement pattern
-	/** @type {Doc[]} */
-	const parts = [signatureParts, isArrowComponent ? ' => {' : ' {'];
-
-	if (statements.length > 0) {
-		// Build content manually with proper spacing
-		/** @type {Doc[]} */
-		let contentParts = [];
-
-		// Add statements
-		if (statements.length > 0) {
-			// The statements array contains statements separated by line breaks
-			// We need to use join to properly handle the line breaks
-			contentParts.push(statements);
-		}
-
-		// Join content parts
-		/** @type {Doc[] | ''} */
-		const joinedContent = contentParts.length > 0 ? contentParts : '';
-
-		// Apply component-level indentation
-		const indentedContent = joinedContent ? indent([hardline, joinedContent]) : indent([hardline]);
-
-		// Add the body and closing brace
-		parts.push(indentedContent, hardline, '}');
-	} else {
-		// Empty component body - check for inner comments or trailing comments on id
-		// When a component body is empty with only comments, the parser attaches them
-		// as trailingComments on the id node (component name)
-		/** @type {{ doc: Doc, hasBlankLineBefore: boolean }[]} */
-		const commentDocs = [];
-
-		// Check innerComments first (standard case for empty blocks)
-		if (innerCommentParts.length > 0) {
-			for (const part of innerCommentParts) {
-				commentDocs.push({ doc: part, hasBlankLineBefore: false });
-			}
-		}
-
-		// Check for trailing comments on the id (component name)
-		// These are comments that appear inside an empty component body
-		if (node.id && node.id.trailingComments && node.id.trailingComments.length > 0) {
-			const comments = node.id.trailingComments;
-
-			for (let i = 0; i < comments.length; i++) {
-				const comment = comments[i];
-				const prevComment = i > 0 ? comments[i - 1] : null;
-
-				// Check if there's a blank line before this comment
-				const hasBlankLineBefore =
-					!!prevComment && getBlankLinesBetweenNodes(prevComment, comment) > 0;
-
-				/** @type {Doc | undefined} */
-				let commentDoc;
-				if (comment.type === 'Line') {
-					commentDoc = '//' + comment.value;
-				} else if (comment.type === 'Block') {
-					commentDoc = '/*' + comment.value + '*/';
-				}
-
-				if (commentDoc !== undefined) {
-					commentDocs.push({ doc: commentDoc, hasBlankLineBefore });
-				}
-			}
-		}
-
-		if (commentDocs.length > 0) {
-			// Build the content with proper spacing
-			/** @type {Doc[]} */
-			const contentParts = [];
-			for (let i = 0; i < commentDocs.length; i++) {
-				const { doc, hasBlankLineBefore } = commentDocs[i];
-
-				if (i > 0) {
-					// Add blank line if needed (two hardlines = one blank line)
-					if (hasBlankLineBefore) {
-						contentParts.push(hardline);
-						contentParts.push(hardline);
-					} else {
-						contentParts.push(hardline);
-					}
-				}
-
-				contentParts.push(doc);
-			}
-
-			return [
-				signatureParts,
-				isArrowComponent ? ' => ' : ' ',
-				group(['{', indent([hardline, contentParts]), hardline, '}']),
-			];
-		}
-
-		parts[1] = isArrowComponent ? ' => {}' : ' {}';
-	}
-	return parts;
 }
 
 /**
@@ -2922,7 +2729,7 @@ function printExportDefaultDeclaration(node, path, options, print) {
 
 /**
  * Check if the only function parameter should be hugged (no extra parens)
- * @param {AST.FunctionDeclaration | AST.FunctionExpression | AST.ArrowFunctionExpression | AST.TSDeclareFunction | AST.Component} node - The function node
+ * @param {AST.FunctionDeclaration | AST.FunctionExpression | AST.ArrowFunctionExpression | AST.TSDeclareFunction} node - The function node
  * @returns {boolean}
  */
 function shouldHugTheOnlyFunctionParameter(node) {
@@ -2946,7 +2753,7 @@ function shouldHugTheOnlyFunctionParameter(node) {
 
 /**
  * Print function parameters with proper formatting
- * @param {AstPath<AST.FunctionExpression | AST.ArrowFunctionExpression | AST.TSDeclareFunction | AST.FunctionDeclaration | AST.Component>} path - The function path
+ * @param {AstPath<AST.FunctionExpression | AST.ArrowFunctionExpression | AST.TSDeclareFunction | AST.FunctionDeclaration>} path - The function path
  * @param {RippleFormatOptions} options - Prettier options
  * @param {PrintFn} print - Print callback
  * @returns {Doc[]}
@@ -5029,8 +4836,6 @@ function printProperty(node, path, options, print) {
 		return path.call(print, 'key');
 	}
 
-	const is_component = /** @type {AST.TSRXProperty} */ (node).value?.type === 'Component';
-
 	// Handle getter/setter methods
 	if (node.kind === 'get' || node.kind === 'set') {
 		const methodParts = [];
@@ -5063,17 +4868,13 @@ function printProperty(node, path, options, print) {
 	}
 
 	// Handle method shorthand: increment() {} instead of increment: function() {}
-	if (node.method && (node.value.type === 'FunctionExpression' || is_component)) {
+	if (node.method && node.value.type === 'FunctionExpression') {
 		const methodParts = [];
 		const funcValue = /** @type {AST.FunctionExpression} */ (node.value);
 
 		// Handle async and generator
 		if (funcValue.async) {
 			methodParts.push('async ');
-		}
-
-		if (is_component) {
-			methodParts.push('component ');
 		}
 
 		if (funcValue.generator) {
@@ -5085,13 +4886,6 @@ function printProperty(node, path, options, print) {
 		// Handle type parameters (generics)
 		if (funcValue.typeParameters) {
 			methodParts.push(path.call(print, 'value', 'typeParameters'));
-		}
-
-		if (is_component) {
-			methodParts.push(
-				path.call((childPath) => print(childPath, { skipComponentLabel: true }), 'value'),
-			);
-			return methodParts;
 		}
 
 		// Print parameters by calling into the value path
@@ -5687,8 +5481,8 @@ function shouldInlineSingleChild(parentNode, firstChild, childDoc) {
 		return false;
 	}
 
-	// Always inline Html and Text nodes — they are explicit text/raw-markup child forms.
-	if (firstChild.type === 'Text' || firstChild.type === 'Html') {
+	// Always inline Text nodes — they are explicit text child forms.
+	if (firstChild.type === 'Text') {
 		return true;
 	}
 
@@ -5847,8 +5641,7 @@ function printTsx(node, path, options, print) {
 }
 
 /**
- * Print a Tsrx node - renders native TSRX template children inside
- * <tsrx>...</tsrx>.
+ * Print a Tsrx node - renders native TSRX template children inside a fragment.
  * @param {AST.Tsrx} node - The Tsrx node
  * @param {AstPath<AST.Tsrx>} path - The AST path
  * @param {RippleFormatOptions} options - Prettier options
@@ -5856,8 +5649,8 @@ function printTsx(node, path, options, print) {
  * @returns {Doc}
  */
 function printTsrx(node, path, options, print) {
-	const tagName = '<tsrx>';
-	const closingTagName = '</tsrx>';
+	const tagName = '<>';
+	const closingTagName = '</>';
 	const hasChildren = Array.isArray(node.children) && node.children.length > 0;
 
 	if (!hasChildren) {
@@ -5881,6 +5674,13 @@ function printTsrx(node, path, options, print) {
 
 	if (printedChildren.length === 0) {
 		return [tagName, closingTagName];
+	}
+
+	if (
+		printedChildren.length === 1 &&
+		['Element', 'Text', 'TSRXExpression'].includes(node.children[0]?.type)
+	) {
+		return group([tagName, indent([softline, printedChildren[0]]), softline, closingTagName]);
 	}
 
 	return group([
@@ -6378,7 +6178,7 @@ function printElement(element, path, options, print) {
 		const openingEnd = /** @type {AST.NodeWithLocation} */ (node.openingElement).end;
 		for (const child of node.children) {
 			if (
-				(child.type === 'TSRXExpression' || child.type === 'Text' || child.type === 'Html') &&
+				(child.type === 'TSRXExpression' || child.type === 'Text') &&
 				Array.isArray(child.leadingComments)
 			) {
 				for (const comment of child.leadingComments) {
@@ -6567,10 +6367,7 @@ function printElement(element, path, options, print) {
 			}
 		}
 
-		const isTextLikeChild =
-			currentChild.type === 'TSRXExpression' ||
-			currentChild.type === 'Text' ||
-			currentChild.type === 'Html';
+		const isTextLikeChild = currentChild.type === 'TSRXExpression' || currentChild.type === 'Text';
 		const hasTextLeadingComments =
 			shouldLiftTextLevelComments &&
 			isTextLikeChild &&
@@ -6683,18 +6480,16 @@ function printElement(element, path, options, print) {
 					? nextChild.leadingComments[0]
 					: nextChild;
 			const whitespaceLinesCount = getBlankLinesBetweenNodes(currentChild, whitespaceTarget);
-			const isTextOrHtmlChild =
+			const isTextOrExpressionChild =
 				currentChild.type === 'TSRXExpression' ||
 				currentChild.type === 'Text' ||
-				currentChild.type === 'Html' ||
 				nextChild.type === 'TSRXExpression' ||
-				nextChild.type === 'Text' ||
-				nextChild.type === 'Html';
+				nextChild.type === 'Text';
 
 			if (whitespaceLinesCount > 0) {
 				finalChildren.push(hardline);
 				finalChildren.push(hardline);
-			} else if (!isTextOrHtmlChild && shouldAddBlankLine(currentChild, nextChild)) {
+			} else if (!isTextOrExpressionChild && shouldAddBlankLine(currentChild, nextChild)) {
 				finalChildren.push(hardline);
 				finalChildren.push(hardline);
 			} else {
@@ -6741,10 +6536,7 @@ function printElement(element, path, options, print) {
 	const closingTag = ['</', tagName, '>'];
 	let elementOutput;
 
-	const hasComponentChild =
-		node.children && node.children.some((child) => child.type === 'Component');
-
-	if (finalChildren.length === 1 && !hasComponentChild) {
+	if (finalChildren.length === 1) {
 		const child = finalChildren[0];
 		const firstChild = node.children[0];
 		const isNonSelfClosingElement =

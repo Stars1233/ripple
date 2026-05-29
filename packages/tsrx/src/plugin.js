@@ -16,11 +16,7 @@ import {
 import { regex_newline_characters } from './utils/patterns.js';
 import { error } from './errors.js';
 import { DIAGNOSTIC_CODES } from './diagnostics.js';
-
-const JSX_EXPRESSION_VALUE_ERROR =
-	'JSX elements cannot be used as expressions. Wrap JSX with `<>...</>` or `<tsx>...</tsx>`, wrap TSRX templates with `<tsrx>...</tsrx>`, or use elements as statements within a component.';
-const HTML_ATTRIBUTE_VALUE_ERROR =
-	'`{html ...}` is not supported as an attribute value. Use a string literal or expression without `html`.';
+import { TSRX_RETURN_STATEMENT_ERROR } from './analyze/validation.js';
 const DYNAMIC_ELEMENT_IN_TSX_ERROR =
 	'Dynamic element syntax (`<@...>`) is only supported in native TSRX templates.';
 const DYNAMIC_ATTRIBUTE_NAME_ERROR =
@@ -206,43 +202,8 @@ function looks_like_generic_arrow(input, pos) {
 }
 
 /**
- * @param {AST.Node | null | undefined} node
- * @returns {boolean}
- */
-function is_pascal_case_function(node) {
-	if (node && 'id' in node && node.id && node.id.type === 'Identifier') {
-		return /^[A-Z]/.test(node.id.name);
-	}
-	return false;
-}
-
-/**
- * @param {string} input
- * @param {number} pos
- */
-function previous_word_before(input, pos) {
-	let i = pos - 1;
-	while (i >= 0) {
-		const ch = input.charCodeAt(i);
-		if (
-			ch !== CharCode.space &&
-			ch !== CharCode.tab &&
-			ch !== CharCode.lineFeed &&
-			ch !== CharCode.carriageReturn
-		)
-			break;
-		i--;
-	}
-	const end = i + 1;
-	while (i >= 0 && /[$_\p{ID_Continue}]/u.test(input[i])) {
-		i--;
-	}
-	return input.slice(i + 1, end);
-}
-
-/**
  * Acorn parser plugin for Ripple syntax extensions.
- * Adds support for: component declarations, &[]/&{} lazy destructuring,
+ * Adds support for: native TSRX templates, &[]/&{} lazy destructuring,
  * submodule imports, TSRX directives, and enhanced JSX handling.
  *
  * @param {import('../types/index').TSRXPluginConfig} [config] - Plugin configuration
@@ -268,18 +229,14 @@ export function TSRXPlugin(config) {
 			#commentContextId = 0;
 			#collect = false;
 			#loose = false;
-			/** @type {AST.Node[]} */
-			#functionStack = [];
-			/** @type {Array<{ parentContext: any[], canRestore: boolean, restore: boolean }>} */
-			#functionBodyContextRestoreStack = [];
 			/** @type {import('../types/index').CompileError[] | undefined} */
 			#errors = undefined;
 			/** @type {string | null} */
 			#filename = null;
-			#componentDepth = 0;
 			#functionBodyDepth = 0;
 			#allowExpressionContainerTrailingSemicolon = false;
 			#tsxIslandExpressionDepth = 0;
+			#jsxAttributeValueExpressionDepth = 0;
 
 			/**
 			 * @type {Parse.Parser['finishNode']}
@@ -334,16 +291,8 @@ export function TSRXPlugin(config) {
 				return null;
 			}
 
-			#isInsideComponent() {
-				return this.#componentDepth > 0;
-			}
-
-			#isInsideComponentTemplate() {
-				return this.#isInsideComponent() && this.#functionBodyDepth === 0;
-			}
-
 			/**
-			 * Component bodies and native TSRX element bodies share the same grammar.
+			 * Native TSRX template bodies share one grammar across elements and fragments.
 			 * This helper keeps the parser-state setup in one place while callers keep
 			 * ownership of their distinct closing delimiter handling (`}` vs `</tag>`).
 			 *
@@ -352,19 +301,13 @@ export function TSRXPlugin(config) {
 			 * @param {{
 			 *   enterScope?: boolean,
 			 *   pushPath?: boolean,
-			 *   trackComponentDepth?: boolean,
 			 *   resetFunctionBodyDepth?: boolean,
 			 * }} [options]
 			 */
 			#parseNativeTemplateBody(
 				node,
 				body,
-				{
-					enterScope = false,
-					pushPath = false,
-					trackComponentDepth = false,
-					resetFunctionBodyDepth = false,
-				} = {},
+				{ enterScope = false, pushPath = false, resetFunctionBodyDepth = false } = {},
 			) {
 				const parent_function_body_depth = this.#functionBodyDepth;
 
@@ -377,16 +320,10 @@ export function TSRXPlugin(config) {
 				if (pushPath) {
 					this.#path.push(node);
 				}
-				if (trackComponentDepth) {
-					this.#componentDepth++;
-				}
 
 				try {
 					this.parseTemplateBody(body);
 				} finally {
-					if (trackComponentDepth) {
-						this.#componentDepth--;
-					}
 					if (pushPath) {
 						this.#path.pop();
 					}
@@ -404,7 +341,6 @@ export function TSRXPlugin(config) {
 			 */
 			#isNativeTemplateNode(node) {
 				return (
-					node?.type === 'Component' ||
 					node?.type === 'Element' ||
 					node?.type === 'Tsx' ||
 					node?.type === 'Tsrx' ||
@@ -417,14 +353,8 @@ export function TSRXPlugin(config) {
 			 */
 			#reportDynamicJsxElementsInTsx(children) {
 				for (const child of children) {
-					if (child?.type === 'Tsrx') {
-						continue;
-					}
 					if (child?.type === 'JSXElement') {
 						const name = child.openingElement?.name;
-						if (name?.type === 'JSXIdentifier' && name.name === 'tsrx') {
-							continue;
-						}
 						const is_dynamic_name =
 							(name?.type === 'JSXIdentifier' && name.tracked) ||
 							(name?.type === 'JSXMemberExpression' &&
@@ -456,26 +386,11 @@ export function TSRXPlugin(config) {
 				// Keep JSXEmptyExpression as-is (for prettier to handle comments)
 				// but convert other expressions to native TSRX child nodes.
 				if (node.expression.type !== 'JSXEmptyExpression') {
-					/** @type {AST.TSRXExpression | AST.Html | AST.TextNode | AST.Style} */ (
-						/** @type {unknown} */ (node)
-					).type = node.html
-						? 'Html'
-						: node.text
-							? 'Text'
-							: node.style
-								? 'Style'
-								: 'TSRXExpression';
-					if (node.style) {
-						/** @type {AST.Style} */ (/** @type {unknown} */ (node)).value =
-							/** @type {AST.Literal} */ (node.expression);
-						delete (/** @type {any} */ (node).expression);
-					}
-					delete node.html;
-					delete node.text;
-					delete node.style;
+					/** @type {AST.TSRXExpression | AST.TextNode} */ (/** @type {unknown} */ (node)).type =
+						'TSRXExpression';
 				}
 
-				return /** @type {ESTreeJSX.JSXEmptyExpression | AST.TSRXExpression | AST.Html | AST.TextNode | AST.Style | ESTreeJSX.JSXExpressionContainer} */ (
+				return /** @type {ESTreeJSX.JSXEmptyExpression | AST.TSRXExpression | AST.TextNode | ESTreeJSX.JSXExpressionContainer} */ (
 					/** @type {unknown} */ (node)
 				);
 			}
@@ -499,7 +414,7 @@ export function TSRXPlugin(config) {
 						const displayTag = tagName || '';
 						this.#report_broken_markup_error(
 							this.start,
-							`Unclosed tag '<${displayTag}>'. Expected '</${displayTag}>' before end of component.`,
+							`Unclosed tag '<${displayTag}>'. Expected '</${displayTag}>' before end of template.`,
 						);
 						island.unclosed = true;
 						/** @type {AST.NodeWithLocation} */ (island).loc.end = {
@@ -585,25 +500,16 @@ export function TSRXPlugin(config) {
 			 */
 			#isReservedTemplateTagNameStart(index) {
 				const char_after_tsx = this.input.charCodeAt(index + 3);
-				const char_after_tsrx = this.input.charCodeAt(index + 4);
 				return (
-					(this.input.startsWith('tsx', index) &&
-						(index + 3 >= this.input.length ||
-							char_after_tsx === CharCode.greaterThan ||
-							char_after_tsx === CharCode.slash ||
-							char_after_tsx === CharCode.space ||
-							char_after_tsx === CharCode.tab ||
-							char_after_tsx === CharCode.lineFeed ||
-							char_after_tsx === CharCode.carriageReturn ||
-							char_after_tsx === CharCode.colon)) ||
-					(this.input.startsWith('tsrx', index) &&
-						(index + 4 >= this.input.length ||
-							char_after_tsrx === CharCode.greaterThan ||
-							char_after_tsrx === CharCode.slash ||
-							char_after_tsrx === CharCode.space ||
-							char_after_tsrx === CharCode.tab ||
-							char_after_tsrx === CharCode.lineFeed ||
-							char_after_tsrx === CharCode.carriageReturn))
+					this.input.startsWith('tsx', index) &&
+					(index + 3 >= this.input.length ||
+						char_after_tsx === CharCode.greaterThan ||
+						char_after_tsx === CharCode.slash ||
+						char_after_tsx === CharCode.space ||
+						char_after_tsx === CharCode.tab ||
+						char_after_tsx === CharCode.lineFeed ||
+						char_after_tsx === CharCode.carriageReturn ||
+						char_after_tsx === CharCode.colon)
 				);
 			}
 
@@ -635,7 +541,7 @@ export function TSRXPlugin(config) {
 				while (this.pos < this.input.length) {
 					const ch = this.input.charCodeAt(this.pos);
 
-					// Stop at opening tag, expression, or the component-closing brace
+					// Stop at opening tag, expression, or the template-closing brace
 					if (ch === CharCode.lessThan || ch === CharCode.openBrace || ch === CharCode.closeBrace) {
 						break;
 					}
@@ -827,13 +733,13 @@ export function TSRXPlugin(config) {
 					}
 				}
 
-				// Inside `{<tsrx>...</tsrx>}` JSX expression container — strip
+				// Inside a native template JSX expression container — strip
 				// both the leaked `b_stat` and the container's `tc_expr`.
 				if (top === b_stat && second === tstc.tc_expr) {
 					ctx.length = ci - 1;
 					return;
 				}
-				// Statement-bodied `<tsrx>` attributes can leave the attribute's
+				// Statement-bodied native template attributes can leave the attribute's
 				// expression contexts above the still-open JSX tag context. Strip
 				// those so a following `/>` stays in JSX opening-tag mode.
 				if (
@@ -871,10 +777,7 @@ export function TSRXPlugin(config) {
 				}
 
 				const parent = this.#path.at(-1);
-				if (
-					!parent ||
-					(parent.type !== 'Component' && parent.type !== 'Element' && parent.type !== 'Tsrx')
-				) {
+				if (!parent || (parent.type !== 'Element' && parent.type !== 'Tsrx')) {
 					return false;
 				}
 
@@ -982,6 +885,75 @@ export function TSRXPlugin(config) {
 			}
 
 			/**
+			 * @param {AST.Node | AST.Node[] | unknown} maybe_node
+			 * @param {boolean} [inside_nested_function]
+			 * @param {boolean} [inside_loop]
+			 */
+			#report_invalid_template_return_statements(
+				maybe_node,
+				inside_nested_function = false,
+				inside_loop = false,
+			) {
+				if (!maybe_node || typeof maybe_node !== 'object') {
+					return;
+				}
+
+				let node = /** @type {AST.Node} */ (maybe_node);
+				if (
+					node.type === 'FunctionDeclaration' ||
+					node.type === 'FunctionExpression' ||
+					node.type === 'ArrowFunctionExpression'
+				) {
+					inside_nested_function = true;
+				}
+
+				if (
+					node.type === 'ForStatement' ||
+					node.type === 'ForInStatement' ||
+					node.type === 'ForOfStatement' ||
+					node.type === 'WhileStatement' ||
+					node.type === 'DoWhileStatement'
+				) {
+					inside_loop = true;
+				}
+
+				if (!inside_nested_function && !inside_loop && node.type === 'ReturnStatement') {
+					node.metadata = {
+						...node.metadata,
+						invalid_tsrx_template_return: true,
+					};
+					this.#report_recoverable_error(
+						/** @type {AST.NodeWithLocation} */ (node).start ?? this.start,
+						TSRX_RETURN_STATEMENT_ERROR,
+						DIAGNOSTIC_CODES.TEMPLATE_RETURN_STATEMENT,
+					);
+					return;
+				}
+
+				if (Array.isArray(node)) {
+					for (const child of /** @type {AST.Node[]} */ (node)) {
+						this.#report_invalid_template_return_statements(
+							child,
+							inside_nested_function,
+							inside_loop,
+						);
+					}
+					return;
+				}
+
+				for (const key of Object.keys(node)) {
+					if (key === 'loc' || key === 'start' || key === 'end' || key === 'metadata') {
+						continue;
+					}
+					this.#report_invalid_template_return_statements(
+						/** @type {Record<string, unknown>} */ (node)[key],
+						inside_nested_function,
+						inside_loop,
+					);
+				}
+			}
+
+			/**
 			 * When collecting, keep parsing after duplicate declaration diagnostics so
 			 * editor tooling can continue producing AST and mappings.
 			 * @param {number} position
@@ -1048,64 +1020,6 @@ export function TSRXPlugin(config) {
 						this.#errors,
 					);
 				}
-			}
-
-			/**
-			 * Override parseProperty to support component methods in object literals.
-			 * Handles syntax like `{ component something() { <div /> } }`
-			 * Also supports computed names: `{ component ['something']() { <div /> } }`
-			 * @type {Parse.Parser['parseProperty']}
-			 */
-			parseProperty(isPattern, refDestructuringErrors) {
-				// Check if this is a component method: component name( ... ) { ... }
-				if (!isPattern && this.type === tt.name && this.value === 'component') {
-					// Look ahead to see if this is "component identifier(", "component identifier<", "component [", or "component 'string'"
-					const lookahead = this.input.slice(this.pos).match(/^\s*(?:(\w+)\s*[(<]|\[|['"])/);
-					if (lookahead) {
-						// This is a component method definition
-						const prop = /** @type {AST.Property} */ (this.startNode());
-						const isComputed = lookahead[0].trim().startsWith('[');
-						const isStringLiteral = /^['"]/.test(lookahead[0].trim());
-
-						if (isComputed) {
-							// For computed names, consume 'component'
-							// parse the key, then parse component without name
-							this.next(); // consume 'component'
-							this.next(); // consume '['
-							prop.key = this.parseExpression();
-							this.expect(tt.bracketR);
-							prop.computed = true;
-
-							// Parse component without name (skipName: true)
-							const component_node = this.parseComponent({ skipName: true });
-							/** @type {AST.TSRXProperty} */ (prop).value = component_node;
-						} else if (isStringLiteral) {
-							// For string literal names, consume 'component'
-							// parse the string key, then parse component without name
-							this.next(); // consume 'component'
-							prop.key = /** @type {AST.Literal} */ (this.parseExprAtom());
-							prop.computed = false;
-
-							// Parse component without name (skipName: true)
-							const component_node = this.parseComponent({ skipName: true });
-							/** @type {AST.TSRXProperty} */ (prop).value = component_node;
-						} else {
-							const component_node = this.parseComponent({ requireName: true });
-
-							prop.key = /** @type {AST.Identifier} */ (component_node.id);
-							/** @type {AST.TSRXProperty} */ (prop).value = component_node;
-							prop.computed = false;
-						}
-
-						prop.shorthand = false;
-						prop.method = true;
-						prop.kind = 'init';
-
-						return this.finishNode(prop, 'Property');
-					}
-				}
-
-				return super.parseProperty(isPattern, refDestructuringErrors);
 			}
 
 			/**
@@ -1247,16 +1161,17 @@ export function TSRXPlugin(config) {
 			 * @type {Parse.Parser['getTokenFromCode']}
 			 */
 			getTokenFromCode(code) {
-				// Callback props that return `<tsrx>...</tsrx>` without a semicolon can
+				// Callback props that return native templates without a semicolon can
 				// leave the attribute expression context above the still-open tag. Drop
 				// it before tokenizing `/>`, otherwise Acorn treats `/` as a regexp.
 				if (
 					code === CharCode.slash &&
 					this.input.charCodeAt(this.pos + 1) === CharCode.greaterThan &&
-					this.curContext() === b_expr &&
-					this.context[this.context.length - 2] === tstc.tc_oTag
+					this.context.includes(tstc.tc_oTag)
 				) {
-					this.context.pop();
+					while (this.context.length > 0 && this.curContext() !== tstc.tc_oTag) {
+						this.context.pop();
+					}
 					this.exprAllowed = false;
 				}
 				if (code === CharCode.doubleQuote) {
@@ -1275,7 +1190,10 @@ export function TSRXPlugin(config) {
 
 				if (code === CharCode.lessThan) {
 					// < character
-					const inComponent = this.#isInsideComponentTemplate();
+					const parent = this.#path.at(-1);
+					const inNativeTemplate =
+						this.#functionBodyDepth === 0 &&
+						(parent?.type === 'Element' || parent?.type === 'Tsrx');
 					/** @type {number | null} */
 					let prevNonWhitespaceChar = null;
 
@@ -1314,7 +1232,7 @@ export function TSRXPlugin(config) {
 						}
 					}
 
-					// Support parsing standalone template markup at the top-level (outside `component`)
+					// Support parsing standalone template markup at the top-level
 					// for tooling like Prettier, e.g.:
 					// <Something>...</Something>\n\n<Child />
 					// <head><style>...</style></head>
@@ -1343,13 +1261,13 @@ export function TSRXPlugin(config) {
 						prevNonWhitespaceChar === CharCode.closeBrace ||
 						prevNonWhitespaceChar === CharCode.greaterThan;
 
-					if (!inComponent && prevAllowsTagStart && isTagLikeAfterLt) {
+					if (!inNativeTemplate && prevAllowsTagStart && isTagLikeAfterLt) {
 						++this.pos;
 						return this.finishToken(tstt.jsxTagStart);
 					}
 
-					if (inComponent) {
-						// Inside component template bodies, allow adjacent tags without requiring
+					if (inNativeTemplate) {
+						// Inside native template bodies, allow adjacent tags without requiring
 						// a newline/indentation before the next '<'. This is important for inputs
 						// like `<div />` and `</div><style>...</style>` which Prettier formats.
 						if (
@@ -1489,36 +1407,6 @@ export function TSRXPlugin(config) {
 			}
 
 			/**
-			 * Components do not use Acorn's normal function-body parser, but they
-			 * should still report duplicate parameter names like functions do. Keep
-			 * this validation on `BIND_OUTSIDE` so params are checked without being
-			 * declared in the component template scope, preserving existing shadowing
-			 * behavior.
-			 *
-			 * @param {AST.Pattern[]} params
-			 */
-			checkComponentParams(params) {
-				/** @type {Record<string, boolean>} */
-				const name_hash = Object.create(null);
-				for (const param of params || []) {
-					this.checkLValInnerPattern(param, BINDING_TYPES.BIND_OUTSIDE, name_hash);
-				}
-			}
-
-			/**
-			 * Parse expression atom - handles RippleArray and RippleObject literals
-			 * @type {Parse.Parser['parseExprAtom']}
-			 */
-			parseExprAtom(refDestructuringErrors, forNew, forInit) {
-				// Check if this is a component expression (e.g., in object literal values)
-				if (this.type === tt.name && this.value === 'component') {
-					return this.parseComponent();
-				}
-
-				return super.parseExprAtom(refDestructuringErrors, forNew, forInit);
-			}
-
-			/**
 			 * Override to track parenthesized expressions in metadata
 			 * This allows the prettier plugin to preserve parentheses where they existed
 			 * @type {Parse.Parser['parseParenAndDistinguishExpression']}
@@ -1558,108 +1446,6 @@ export function TSRXPlugin(config) {
 				}
 				// Not found in any scope, add to undefinedExports for later error
 				this.undefinedExports[name] = id;
-			}
-
-			/**
-			 * Parse a component - common implementation used by statements, expressions, and export defaults
-			 * @type {Parse.Parser['parseComponent']}
-			 */
-			parseComponent({
-				requireName = false,
-				isDefault = false,
-				declareName = false,
-				skipName = false,
-			} = {}) {
-				const node = /** @type {AST.Component} */ (this.startNode());
-				const parent_context = [...this.context];
-				const restore_parent_context =
-					!requireName &&
-					this.#isInsideComponent() &&
-					this.context.some((context) => context === tstc.tc_oTag || context === tstc.tc_cTag);
-				node.type = 'Component';
-				node.css = null;
-				node.default = isDefault;
-
-				// skipName is used for computed property names where 'component' and the key
-				// have already been consumed before calling parseComponent
-				if (!skipName) {
-					this.next(); // consume 'component'
-				}
-				this.enterScope(0);
-
-				if (skipName) {
-					// For computed names, the key is parsed separately, so id is null
-					node.id = null;
-				} else if (requireName) {
-					node.id = this.parseIdent();
-					if (declareName) {
-						this.declareName(
-							node.id.name,
-							BINDING_TYPES.BIND_FUNCTION,
-							/** @type {AST.NodeWithLocation} */ (node.id).start,
-						);
-					}
-				} else {
-					node.id = this.type.label === 'name' ? this.parseIdent() : null;
-					if (declareName && node.id) {
-						this.declareName(
-							node.id.name,
-							BINDING_TYPES.BIND_FUNCTION,
-							/** @type {AST.NodeWithLocation} */ (node.id).start,
-						);
-					}
-				}
-
-				this.parseFunctionParams(node);
-				this.checkComponentParams(node.params);
-
-				const is_arrow_component = this.type === tt.arrow;
-				if (is_arrow_component) {
-					if (node.id || requireName || skipName) {
-						this.raise(
-							this.start,
-							'Arrow component syntax is only supported for anonymous component expressions.',
-						);
-					}
-					node.metadata ??= { path: [] };
-					node.metadata.arrow = true;
-					this.next();
-				}
-
-				if (this.type === tt.braceL) {
-					this.#allowDoubleQuotedTextChildAfterBrace = true;
-				}
-				this.eat(tt.braceL);
-				node.body = [];
-				this.#parseNativeTemplateBody(node, node.body, {
-					pushPath: true,
-					trackComponentDepth: true,
-					resetFunctionBodyDepth: true,
-				});
-				this.exitScope();
-
-				this.next();
-				skipWhitespace(this);
-				if (restore_parent_context) {
-					this.context = this.type === tt.braceR ? parent_context.slice(0, -1) : parent_context;
-					this.exprAllowed = false;
-				}
-				this.finishNode(node, 'Component');
-				this.awaitPos = 0;
-
-				return node;
-			}
-
-			/**
-			 * @type {Parse.Parser['parseExportDefaultDeclaration']}
-			 */
-			parseExportDefaultDeclaration() {
-				// Check if this is "export default component"
-				if (this.value === 'component') {
-					return this.parseComponent({ isDefault: true });
-				}
-
-				return super.parseExportDefaultDeclaration();
 			}
 
 			/** @type {Parse.Parser['parseForStatement']} */
@@ -1860,75 +1646,11 @@ export function TSRXPlugin(config) {
 			 */
 			parseFunctionBody(node, isArrowFunction, isMethod, forInit, ...args) {
 				this.#functionBodyDepth++;
-				this.#functionStack.push(node);
-				const context_restore = {
-					parentContext: [...this.context],
-					canRestore:
-						this.#isInsideComponent() &&
-						this.context.some((context) => context === tstc.tc_oTag || context === tstc.tc_cTag),
-					restore: false,
-				};
-				this.#functionBodyContextRestoreStack.push(context_restore);
-				// Inside a component, nested JS function bodies should parse like
-				// ordinary functions, not component template bodies.
-				if (
-					// Only adjust functions declared while parsing a component body.
-					this.#isInsideComponent() &&
-					// A stale JSX expression context means the surrounding template
-					// tokenizer can still treat `<` as template markup.
-					this.context.some((context) => context === tstc.tc_expr) &&
-					// Keep callback props on their surrounding JSX attribute path until
-					// statement-position TSRX needs to suspend it.
-					!context_restore.canRestore &&
-					// Only reset statement-level function bodies, not expression
-					// contexts that are actively parsing JSX.
-					this.curContext() === b_stat
-				) {
-					this.context = [b_stat];
-				}
-
 				try {
 					return super.parseFunctionBody(node, isArrowFunction, isMethod, forInit, ...args);
 				} finally {
-					if (context_restore.restore) {
-						this.context = context_restore.parentContext.slice(0, -1);
-						this.exprAllowed = false;
-					}
-					this.#functionBodyContextRestoreStack.pop();
-					this.#functionStack.pop();
 					this.#functionBodyDepth--;
 				}
-			}
-
-			/**
-			 * @type {Parse.Parser['checkUnreserved']}
-			 */
-			checkUnreserved(ref) {
-				if (ref.name === 'component') {
-					// Allow 'component' when it's followed by an identifier and '(' or '<' (component method in object literal)
-					// e.g., { component something() { ... } }
-					// Also allow computed names: { component ['name']() { ... } }
-					// Also allow string literal names: { component 'name'() { ... } }
-					const nextChars = this.input.slice(this.pos).match(/^\s*(?:(\w+)\s*[(<]|\[|['"])/);
-					if (!nextChars) {
-						this.raise(
-							ref.start,
-							'"component" is a TSRX keyword and cannot be used as an identifier',
-						);
-					}
-				}
-				return super.checkUnreserved(ref);
-			}
-
-			/** @type {Parse.Parser['shouldParseExportStatement']} */
-			shouldParseExportStatement() {
-				if (super.shouldParseExportStatement()) {
-					return true;
-				}
-				if (this.value === 'component') {
-					return true;
-				}
-				return this.type.keyword === 'var';
 			}
 
 			/**
@@ -1938,59 +1660,8 @@ export function TSRXPlugin(config) {
 				let node = /** @type {ESTreeJSX.JSXExpressionContainer} */ (this.startNode());
 				this.next();
 
-				if (this.type === tt.name && this.value === 'ref') {
-					const ref_node = /** @type {AST.RefExpression} */ (this.startNode());
-					this.next();
-					if (this.type === tt.braceR) {
-						this.raise(
-							this.start,
-							'"ref" is a TSRX keyword and must be used in the form {ref item}',
-						);
-					}
-					ref_node.argument = this.parseMaybeAssign();
-					node.expression = /** @type {any} */ (this.finishNode(ref_node, 'RefExpression'));
-					this.expect(tt.braceR);
-					return this.finishNode(node, 'JSXExpressionContainer');
-				}
-
-				if (this.type === tt.name && this.value === 'html') {
-					node.html = true;
-					this.next();
-					if (this.type === tt.braceR) {
-						this.raise(
-							this.start,
-							'"html" is a TSRX keyword and must be used in the form {html some_content}',
-						);
-					}
-				} else if (this.type === tt.name && this.value === 'text') {
-					node.text = true;
-					this.next();
-					if (this.type === tt.braceR) {
-						this.raise(
-							this.start,
-							'"text" is a TSRX keyword and must be used in the form {text some_value}',
-						);
-					}
-				} else if (
-					this.type === tt.name &&
-					this.value === 'style' &&
-					this.lookahead().type === tt.string
-				) {
-					node.style = true;
-					this.next();
-				}
-
 				node.expression =
 					this.type === tt.braceR ? this.jsx_parseEmptyExpression() : this.parseExpression();
-				if (
-					node.style &&
-					(node.expression.type !== 'Literal' || typeof node.expression.value !== 'string')
-				) {
-					this.raise(
-						/** @type {number} */ (node.expression.start),
-						'"style" is a TSRX keyword and must be used in the form {style "class_name"}',
-					);
-				}
 				if (this.#allowExpressionContainerTrailingSemicolon && this.type === tt.semi) {
 					if (this.#collect) {
 						this.#report_recoverable_error(
@@ -2088,39 +1759,7 @@ export function TSRXPlugin(config) {
 						this.unexpected();
 					}
 
-					if (this.value === 'ref') {
-						this.next();
-						if (this.type === tt.braceR) {
-							this.raise(
-								this.start,
-								'"ref" is a Ripple keyword and must be used in the form {ref fn}',
-							);
-						}
-						/** @type {AST.RefAttribute} */ (node).argument = this.parseMaybeAssign();
-						this.expect(tt.braceR);
-						return /** @type {AST.RefAttribute} */ (this.finishNode(node, 'RefAttribute'));
-					} else if (this.type === tt.name && this.value === 'html') {
-						// {html ...}
-						// The support is purely for better error messages to avoid
-						// the parser throw an unexpected token error
-						const id = /** @type {AST.Identifier} */ (this.parseIdentNode());
-						id.tracked = false;
-						this.finishNode(id, 'Identifier');
-						this.next();
-						const value = this.type === tt.braceR ? id : this.parseMaybeAssign();
-						const report_end = this.type === tt.braceR ? this.end : (value.end ?? this.end);
-						this.#report_recoverable_error_range(
-							node.start ?? id.start ?? this.start,
-							report_end,
-							HTML_ATTRIBUTE_VALUE_ERROR,
-							DIAGNOSTIC_CODES.HTML_DIRECTIVE_AS_ATTRIBUTE_VALUE,
-						);
-						/** @type {AST.Attribute} */ (node).name = id;
-						/** @type {AST.Attribute} */ (node).value = value;
-						/** @type {AST.Attribute} */ (node).shorthand = false;
-						this.expect(tt.braceR);
-						return this.finishNode(node, 'Attribute');
-					} else if (this.type === tt.ellipsis) {
+					if (this.type === tt.ellipsis) {
 						this.expect(tt.ellipsis);
 						/** @type {AST.SpreadAttribute} */ (node).argument = this.parseMaybeAssign();
 						this.expect(tt.braceR);
@@ -2160,14 +1799,6 @@ export function TSRXPlugin(config) {
 				const value = /** @type {ESTreeJSX.JSXAttribute['value'] | null} */ (
 					this.eat(tt.eq) ? this.jsx_parseAttributeValue() : null
 				);
-				if (value?.type === 'JSXExpressionContainer' && value.html) {
-					this.#report_recoverable_error_range(
-						value.start ?? node.start ?? this.start,
-						value.end ?? node.end ?? this.end,
-						HTML_ATTRIBUTE_VALUE_ERROR,
-						DIAGNOSTIC_CODES.HTML_DIRECTIVE_AS_ATTRIBUTE_VALUE,
-					);
-				}
 				/** @type {ESTreeJSX.JSXAttribute} */ (node).value = value;
 				return this.finishNode(node, 'JSXAttribute');
 			}
@@ -2263,7 +1894,12 @@ export function TSRXPlugin(config) {
 			jsx_parseAttributeValue() {
 				switch (this.type) {
 					case tt.braceL:
-						return this.jsx_parseExpressionContainer();
+						this.#jsxAttributeValueExpressionDepth++;
+						try {
+							return this.jsx_parseExpressionContainer();
+						} finally {
+							this.#jsxAttributeValueExpressionDepth--;
+						}
 					case tstt.jsxTagStart:
 					case tt.string:
 						return this.parseExprAtom();
@@ -2480,7 +2116,6 @@ export function TSRXPlugin(config) {
 							if (
 								ch === CharCode.closeBrace &&
 								(this.#path.length === 0 ||
-									this.#path.at(-1)?.type === 'Component' ||
 									this.#path.at(-1)?.type === 'Element' ||
 									this.#path.at(-1)?.type === 'Tsrx')
 							) {
@@ -2519,49 +2154,21 @@ export function TSRXPlugin(config) {
 			}
 
 			/**
-			 * Override jsx_parseElement to intercept expression-level JSX.
-			 * This is called by acorn-jsx's parseExprAtom when it encounters <
-			 * in expression position. Bare fragments are treated as shorthand
-			 * for <tsx>...</tsx>. <tsrx>...</tsrx> admits native TSRX
-			 * template syntax as an expression value. Other tags must still use
-			 * <tsx>, <tsrx>, or <tsx:*>.
+			 * Override jsx_parseElement to parse tags and bare fragments as native TSRX
+			 * by default. Explicit <tsx> and <tsx:*> islands keep ordinary TSX parsing
+			 * for their children.
 			 * @type {Parse.Parser['jsx_parseElement']}
 			 */
 			jsx_parseElement() {
-				// Check if the element being parsed IS a <tsx>, <tsrx>, or <tsx:*> tag
 				// Current token is jsxTagStart, this.end is position after '<'
 				const tag_name_start = this.end;
-				const is_fragment_tag = this.input.charCodeAt(tag_name_start) === CharCode.greaterThan;
-				const char_after_tsx = this.input.charCodeAt(tag_name_start + 3);
-				const char_after_tsrx = this.input.charCodeAt(tag_name_start + 4);
-				const is_tsx_tag =
-					this.input.startsWith('tsx', tag_name_start) &&
-					(tag_name_start + 3 >= this.input.length ||
-						char_after_tsx === CharCode.greaterThan ||
-						char_after_tsx === CharCode.slash ||
-						char_after_tsx === CharCode.space ||
-						char_after_tsx === CharCode.tab ||
-						char_after_tsx === CharCode.lineFeed ||
-						char_after_tsx === CharCode.carriageReturn ||
-						char_after_tsx === CharCode.colon);
-				const is_tsrx_tag =
-					this.input.startsWith('tsrx', tag_name_start) &&
-					(tag_name_start + 4 >= this.input.length ||
-						char_after_tsrx === CharCode.greaterThan ||
-						char_after_tsrx === CharCode.slash ||
-						char_after_tsrx === CharCode.space ||
-						char_after_tsrx === CharCode.tab ||
-						char_after_tsrx === CharCode.lineFeed ||
-						char_after_tsrx === CharCode.carriageReturn);
-
 				const current_template_node = this.#path.findLast(
 					(n) =>
 						n.type === 'Element' || n.type === 'Tsx' || n.type === 'Tsrx' || n.type === 'TsxCompat',
 				);
-				if (
-					(current_template_node?.type === 'TsxCompat' || current_template_node?.type === 'Tsx') &&
-					!is_tsrx_tag
-				) {
+				const inside_tsx_island =
+					current_template_node?.type === 'Tsx' || current_template_node?.type === 'TsxCompat';
+				if (inside_tsx_island) {
 					if (this.input.charCodeAt(tag_name_start) === CharCode.at) {
 						this.#report_recoverable_error_range(
 							this.start,
@@ -2570,53 +2177,26 @@ export function TSRXPlugin(config) {
 						);
 					}
 					// Inside tsx/tsx:*, let acorn-jsx handle regular TSX tags normally.
-					// Nested <tsrx> still needs Ripple's native template parser so it
-					// can lower through the same path as <tsrx> in component bodies.
 					return super.jsx_parseElement();
 				}
 
-				if (is_fragment_tag || is_tsx_tag || is_tsrx_tag) {
-					// Use Ripple's parseElement to create a Tsx/Tsrx/TsxCompat node.
-					// Bare fragments (<></>) are shorthand for <tsx>...</tsx>.
-					this.next();
-					const parsed = /** @type {import('estree-jsx').JSXElement} */ (
-						/** @type {unknown} */ (this.parseElement())
+				this.next();
+				const parsed = /** @type {import('estree-jsx').JSXElement} */ (
+					/** @type {unknown} */ (this.parseElement())
+				);
+				if (!inside_tsx_island) {
+					this.#popTokenContextsAfterTemplateExpressionElement(
+						/** @type {AST.Tsx | AST.Tsrx | AST.TsxCompat} */ (/** @type {unknown} */ (parsed)),
 					);
-					if (
-						current_template_node?.type !== 'Tsx' &&
-						current_template_node?.type !== 'TsxCompat'
-					) {
-						this.#popTokenContextsAfterTemplateExpressionElement(
-							/** @type {AST.Tsx | AST.Tsrx | AST.TsxCompat} */ (/** @type {unknown} */ (parsed)),
-						);
-					} else if (this.type === tt.braceR && this.curContext() === tstc.tc_expr) {
-						if (this.#tsxIslandExpressionDepth === 0) {
-							// Acorn still owns the surrounding JSX expression container.
-							// Keep a block-expression context for its closing `}` so the
-							// parent TSX tag continues tokenizing as JSX afterward.
-							this.context.push(b_expr);
-						}
+				} else if (this.type === tt.braceR && this.curContext() === tstc.tc_expr) {
+					if (this.#tsxIslandExpressionDepth === 0) {
+						// Acorn still owns the surrounding JSX expression container.
+						// Keep a block-expression context for its closing `}` so the
+						// parent TSX tag continues tokenizing as JSX afterward.
+						this.context.push(b_expr);
 					}
-					return parsed;
 				}
-
-				if (
-					!this.#path.findLast((node) => node.type === 'Component') &&
-					!this.#functionStack.findLast(is_pascal_case_function)
-				) {
-					return super.jsx_parseElement();
-				}
-
-				const code = this.#functionStack.findLast(is_pascal_case_function)
-					? DIAGNOSTIC_CODES.FUNCTION_COMPONENT_SYNTAX
-					: this.#path.findLast((node) => node.type === 'Component') &&
-						  this.#functionStack.length === 0 &&
-						  previous_word_before(this.input, this.start) === 'return'
-						? DIAGNOSTIC_CODES.JSX_RETURN_IN_COMPONENT
-						: DIAGNOSTIC_CODES.JSX_EXPRESSION_VALUE;
-
-				this.#report_recoverable_error(this.start, JSX_EXPRESSION_VALUE_ERROR, code);
-				return super.jsx_parseElement();
+				return parsed;
 			}
 
 			/**
@@ -2655,11 +2235,6 @@ export function TSRXPlugin(config) {
 					!is_tsx_compat &&
 					open.name.type === 'JSXIdentifier' &&
 					open.name.name === 'tsx';
-				const is_tsrx =
-					!is_fragment &&
-					!is_tsx_compat &&
-					open.name.type === 'JSXIdentifier' &&
-					open.name.name === 'tsrx';
 				const is_dynamic_name =
 					!is_fragment &&
 					((open.name.type === 'JSXIdentifier' && open.name.tracked) ||
@@ -2688,22 +2263,13 @@ export function TSRXPlugin(config) {
 							`TSX elements cannot be self-closing. '<tsx />' must have a closing tag '</tsx>'.`,
 						);
 					}
-				} else if (is_tsrx) {
-					/** @type {AST.Tsrx} */ (element).type = 'Tsrx';
-
-					if (open.selfClosing) {
-						this.raise(
-							open.start,
-							`TSRX elements cannot be self-closing. '<tsrx />' must have a closing tag '</tsrx>'.`,
-						);
-					}
 				} else if (is_fragment) {
-					/** @type {AST.Tsx} */ (element).type = 'Tsx';
+					/** @type {AST.Tsrx} */ (element).type = 'Tsrx';
 				} else {
 					element.type = 'Element';
 				}
 
-				if ((is_tsx || is_fragment) && is_dynamic_name) {
+				if (is_tsx && is_dynamic_name) {
 					this.#report_recoverable_error_range(
 						open.name.start ?? open.start,
 						open.name.end ?? open.end,
@@ -2721,14 +2287,6 @@ export function TSRXPlugin(config) {
 						if (attr.value !== null) {
 							if (attr.value.type === 'JSXExpressionContainer') {
 								const expression = attr.value.expression;
-								if (attr.value.style) {
-									/** @type {AST.Style} */ (/** @type {unknown} */ (attr.value)).type = 'Style';
-									/** @type {AST.Style} */ (/** @type {unknown} */ (attr.value)).value =
-										/** @type {AST.Literal} */ (expression);
-									delete (/** @type {any} */ (attr.value).expression);
-									delete (/** @type {any} */ (attr.value).style);
-									continue;
-								}
 								if (expression.type === 'Literal') {
 									expression.was_expression = true;
 								}
@@ -2740,7 +2298,7 @@ export function TSRXPlugin(config) {
 					}
 				}
 
-				if (!is_tsx_compat && !is_tsx && !is_tsrx && !is_fragment) {
+				if (!is_tsx_compat && !is_tsx && !is_fragment) {
 					/** @type {AST.Element} */ (element).id = /** @type {AST.Identifier} */ (
 						convert_from_jsx(/** @type {ESTreeJSX.JSXIdentifier} */ (open.name))
 					);
@@ -2768,28 +2326,26 @@ export function TSRXPlugin(config) {
 				} else if (is_fragment) {
 					this.#parseNativeTemplateBody(element, /** @type {AST.Element} */ (element).children, {
 						enterScope: true,
+						resetFunctionBodyDepth: true,
 					});
-					this.#reportDynamicJsxElementsInTsx(/** @type {AST.Element} */ (element).children);
 
-					if (/** @type {AST.Tsx} */ (element).type === 'Tsx') {
-						this.#path.pop();
+					this.#path.pop();
 
-						if (!element.unclosed) {
-							const raise_error = () => {
-								this.raise(this.start, `Expected closing tag '</>'`);
-							};
+					if (!element.unclosed) {
+						const raise_error = () => {
+							this.raise(this.start, `Expected closing tag '</>'`);
+						};
 
-							this.next();
-							if (this.value !== '/') {
-								raise_error();
-							}
-							this.next();
-							if (this.type !== tstt.jsxTagEnd) {
-								raise_error();
-							}
-							this.#popTsxTokenContextBeforeTemplateExpressionChild();
-							this.next();
+						this.next();
+						if (this.value !== '/') {
+							raise_error();
 						}
+						this.next();
+						if (this.type !== tstt.jsxTagEnd) {
+							raise_error();
+						}
+						this.#popTsxTokenContextBeforeTemplateExpressionChild();
+						this.next();
 					}
 				} else {
 					if (/** @type {ESTreeJSX.JSXIdentifier} */ (open.name).name === 'script') {
@@ -2862,7 +2418,7 @@ export function TSRXPlugin(config) {
 							// No closing tag
 							this.#report_broken_markup_error(
 								open.end,
-								"Unclosed tag '<script>'. Expected '</script>' before end of component.",
+								"Unclosed tag '<script>'. Expected '</script>' before end of template.",
 							);
 							/** @type {AST.Element} */ (element).unclosed = true;
 							this.#path.pop();
@@ -2875,16 +2431,8 @@ export function TSRXPlugin(config) {
 						const end = input.indexOf('</style>');
 						const content = end === -1 ? input : input.slice(0, end);
 
-						const component = /** @type {AST.Component} */ (
-							this.#path.findLast((n) => n.type === 'Component')
-						);
 						const parsed_css = parse_style(content, { loose: this.#loose });
-
 						if (!inside_head) {
-							if (component.css !== null) {
-								throw new Error('Components can only have one style tag');
-							}
-							component.css = parsed_css;
 							/** @type {AST.Element} */ (element).metadata.styleScopeHash = parsed_css.hash;
 						}
 
@@ -2922,7 +2470,7 @@ export function TSRXPlugin(config) {
 						} else {
 							this.#report_broken_markup_error(
 								open.end,
-								"Unclosed tag '<style>'. Expected '</style>' before end of component.",
+								"Unclosed tag '<style>'. Expected '</style>' before end of template.",
 							);
 							/** @type {AST.Element} */ (element).unclosed = true;
 							this.#path.pop();
@@ -2946,6 +2494,7 @@ export function TSRXPlugin(config) {
 					} else {
 						this.#parseNativeTemplateBody(element, /** @type {AST.Element} */ (element).children, {
 							enterScope: true,
+							resetFunctionBodyDepth: true,
 						});
 						if (/** @type {AST.Tsx} */ (element).type === 'Tsx') {
 							this.#reportDynamicJsxElementsInTsx(/** @type {AST.Element} */ (element).children);
@@ -3014,9 +2563,10 @@ export function TSRXPlugin(config) {
 							/** @type {AST.Tsrx} */ (element).type === 'Tsrx' &&
 							this.#path[this.#path.length - 1] === element
 						) {
+							const displayTag = element.openingElement.name ? 'tsrx' : '';
 							this.#report_broken_markup_error(
 								this.start,
-								"Unclosed tag '<tsrx>'. Expected '</tsrx>' before end of component.",
+								`Unclosed tag '<${displayTag}>'. Expected '</${displayTag}>' before end of template.`,
 							);
 							element.unclosed = true;
 							/** @type {AST.SourceLocation} */ (element.loc).end = {
@@ -3032,7 +2582,7 @@ export function TSRXPlugin(config) {
 							const tagName = this.getElementName(element.id);
 							this.#report_broken_markup_error(
 								this.start,
-								`Unclosed tag '<${tagName}>'. Expected '</${tagName}>' before end of component.`,
+								`Unclosed tag '<${tagName}>'. Expected '</${tagName}>' before end of template.`,
 							);
 							element.unclosed = true;
 							/** @type {AST.SourceLocation} */ (element.loc).end = {
@@ -3053,13 +2603,7 @@ export function TSRXPlugin(config) {
 					}
 				}
 
-				if (
-					element.closingElement &&
-					!is_tsx_compat &&
-					!is_tsx &&
-					!is_tsrx &&
-					element.closingElement.name
-				) {
+				if (element.closingElement && !is_tsx_compat && !is_tsx && element.closingElement.name) {
 					/** @type {unknown} */ (element.closingElement.name) = convert_from_jsx(
 						element.closingElement.name,
 					);
@@ -3096,10 +2640,10 @@ export function TSRXPlugin(config) {
 
 				if (!inside_func) {
 					if (this.type.label === 'continue') {
-						throw new Error('`continue` statements are not allowed in components');
+						throw new Error('`continue` statements are not allowed in native templates');
 					}
 					if (this.type.label === 'break') {
-						throw new Error('`break` statements are not allowed in components');
+						throw new Error('`break` statements are not allowed in native templates');
 					}
 				}
 
@@ -3110,6 +2654,16 @@ export function TSRXPlugin(config) {
 					);
 					return;
 				}
+				if (
+					current_template_node?.type === 'Tsrx' &&
+					!current_template_node.openingElement.name &&
+					((this.type === tstt.jsxTagStart && this.input.slice(this.pos, this.pos + 2) === '/>') ||
+						(this.input.charCodeAt(this.start) === CharCode.lessThan &&
+							this.input.slice(this.start + 1, this.start + 3) === '/>'))
+				) {
+					this.exprAllowed = false;
+					return;
+				}
 				if (this.type === tt.braceL) {
 					body.push(this.#parseNativeTemplateExpressionContainer());
 				} else if (
@@ -3118,7 +2672,7 @@ export function TSRXPlugin(config) {
 				) {
 					body.push(this.parseDoubleQuotedTextChild());
 				} else if (this.type === tt.braceR) {
-					// Leaving a component/template body. We may still be in TSX/JSX tokenization
+					// Leaving a native template body. We may still be in TSX/JSX tokenization
 					// context (e.g. after parsing markup), but the closing `}` is a JS token.
 					// If we don't reset this here, the following `next()` can read EOF using
 					// `jsx_readToken()` and throw "Unterminated JSX contents".
@@ -3136,8 +2690,8 @@ export function TSRXPlugin(config) {
 					if (this.type === tstt.jsxTagStart) {
 						this.next();
 					} else {
-						// A control-flow block inside <tsrx> can leave the tokenizer
-						// in normal JS mode, so `</tsrx>` may arrive as a relational
+						// A control-flow block inside a native template can leave the tokenizer
+						// in normal JS mode, so a closing tag may arrive as a relational
 						// `<` token. Re-enter JSX closing-tag parsing manually.
 						this.pos = startPos + 1;
 						this.type = tstt.jsxTagStart;
@@ -3186,7 +2740,7 @@ export function TSRXPlugin(config) {
 									? closingElement.name.namespace.name + ':' + closingElement.name.name.name
 									: this.getElementName(closingElement.name);
 						} else if (currentElement.type === 'Tsrx') {
-							openingTagName = 'tsrx';
+							openingTagName = '';
 							closingTagName =
 								closingElement.name?.type === 'JSXNamespacedName'
 									? closingElement.name.namespace.name + ':' + closingElement.name.name.name
@@ -3212,7 +2766,7 @@ export function TSRXPlugin(config) {
 							while (this.#path.length > 0) {
 								const elem = this.#path[this.#path.length - 1];
 
-								// Stop at non-Element boundaries (Component, etc.)
+								// Stop at non-template boundaries.
 								if (
 									elem.type !== 'Element' &&
 									elem.type !== 'Tsx' &&
@@ -3230,7 +2784,7 @@ export function TSRXPlugin(config) {
 												? 'tsx'
 												: null
 											: elem.type === 'Tsrx'
-												? 'tsrx'
+												? ''
 												: elem.id
 													? this.getElementName(elem.id)
 													: null;
@@ -3258,7 +2812,7 @@ export function TSRXPlugin(config) {
 						) {
 							const elementToCloseName =
 								elementToClose.type === 'Tsrx'
-									? 'tsrx'
+									? ''
 									: /** @type {AST.Element} */ (elementToClose).id
 										? this.getElementName(/** @type {AST.Element} */ (elementToClose).id)
 										: null;
@@ -3279,6 +2833,7 @@ export function TSRXPlugin(config) {
 				} else {
 					skipWhitespace(this);
 					const node = this.parseStatement(null);
+					this.#report_invalid_template_return_statements(node);
 					body.push(node);
 
 					// Ensure we're not in JSX context before recursing
@@ -3363,14 +2918,9 @@ export function TSRXPlugin(config) {
 					this.type === tt.braceL &&
 					this.context.some((c) => c === tstc.tc_expr)
 				) {
-					return /** @type {ESTreeJSX.JSXEmptyExpression | AST.TSRXExpression | AST.Html | AST.TextNode | ESTreeJSX.JSXExpressionContainer} */ (
+					return /** @type {ESTreeJSX.JSXEmptyExpression | AST.TSRXExpression | AST.TextNode | ESTreeJSX.JSXExpressionContainer} */ (
 						/** @type {unknown} */ (this.#parseNativeTemplateExpressionContainer())
 					);
-				}
-
-				if (this.value === 'component') {
-					this.awaitPos = 0;
-					return this.parseComponent({ requireName: true, declareName: true });
 				}
 
 				if (this.type === tstt.jsxTagStart) {
@@ -3392,18 +2942,6 @@ export function TSRXPlugin(config) {
 							this.context.pop();
 						}
 					}
-					const context_restore = this.#functionBodyContextRestoreStack.at(-1);
-					if (
-						this.#functionBodyDepth > 0 &&
-						node.type === 'Tsrx' &&
-						context_restore?.canRestore &&
-						this.type !== tt.braceR &&
-						this.type !== tt.comma
-					) {
-						context_restore.restore = true;
-						this.context = [b_stat];
-						this.exprAllowed = true;
-					}
 					return node;
 				}
 
@@ -3411,7 +2949,7 @@ export function TSRXPlugin(config) {
 					this.#functionBodyDepth === 0 &&
 					this.type === tt.string &&
 					this.input.charCodeAt(this.start) === CharCode.doubleQuote &&
-					(this.#path.at(-1)?.type === 'Component' || this.#path.at(-1)?.type === 'Element')
+					(this.#path.at(-1)?.type === 'Element' || this.#path.at(-1)?.type === 'Tsrx')
 				) {
 					this.pos = this.start;
 					this.#readDoubleQuotedTextChildToken();
@@ -3461,11 +2999,11 @@ export function TSRXPlugin(config) {
 				const parent = this.#path.at(-1);
 
 				// Inside a JS function body, parse `{...}` as a regular block statement,
-				// even if the nearest `#path` entry is a Component/Element — we're in a
+				// even if the nearest `#path` entry is a native template — we're in a
 				// nested function callable, not in a template.
 				if (
 					this.#functionBodyDepth === 0 &&
-					(parent?.type === 'Component' || parent?.type === 'Element')
+					(parent?.type === 'Element' || parent?.type === 'Tsrx')
 				) {
 					if (createNewLexicalScope === void 0) createNewLexicalScope = true;
 					if (node === void 0) node = /** @type {AST.BlockStatement} */ (this.startNode());

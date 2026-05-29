@@ -930,7 +930,7 @@ export namespace Parse {
 			refDestructuringErrors?: DestructuringErrors,
 			forInit?: ForInit,
 			forNew?: boolean,
-		): AST.Component | AST.Identifier | AST.Literal;
+		): AST.Expression;
 
 		/** Default handler for parseExprAtom when no other case matches */
 		parseExprAtomDefault(): AST.Expression;
@@ -1180,17 +1180,6 @@ export namespace Parse {
 			body: (AST.Statement | AST.Node | ESTreeJSX.JSXText | ESTreeJSX.JSXElement['children'])[],
 		): void;
 
-		parseComponent(
-			params?:
-				| {
-						requireName?: boolean;
-						isDefault?: boolean;
-						declareName?: boolean;
-						skipName?: boolean;
-				  }
-				| undefined,
-		): AST.Component;
-
 		/**
 		 * Parse a statement
 		 * @param context Statement context ("for", "if", "label", etc.)
@@ -1204,11 +1193,9 @@ export namespace Parse {
 			exports?: AST.ExportSpecifier,
 		):
 			| AST.TSRXExpression
-			| AST.Html
 			| AST.TextNode
 			| ESTreeJSX.JSXEmptyExpression
 			| ESTreeJSX.JSXExpressionContainer
-			| AST.Component
 			| AST.ExpressionStatement
 			| ReturnType<Parser['parseElement']>
 			| AST.Statement;
@@ -1469,7 +1456,7 @@ export namespace Parse {
 		parseExportSpecifiers(exports?: Exports): AST.ExportSpecifier[];
 
 		/** Parse export default declaration */
-		parseExportDefaultDeclaration(): AST.Declaration | AST.Expression | AST.Component;
+		parseExportDefaultDeclaration(): AST.Declaration | AST.Expression;
 
 		/** Check if export statement should be parsed */
 		shouldParseExportStatement(): boolean;

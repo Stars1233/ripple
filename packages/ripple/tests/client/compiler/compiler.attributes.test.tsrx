@@ -3,13 +3,13 @@ import { parse, compile } from '@tsrx/ripple';
 describe('compiler > attributes', () => {
 	it('generates valid JavaScript for component props with hyphenated attributes', () => {
 		const source = `
-			component Child(props) {
+			function Child(props) { return <>
 				<div />
-			}
+			</>; }
 
-			export default component App() {
+			export default function App() { return <>
 				<Child data-scope="test" aria-label="accessible" class="valid" />
-			}`;
+			</>; }`;
 
 		const result = compile(source, 'test.tsrx', { mode: 'client' });
 
@@ -29,8 +29,8 @@ describe('compiler > attributes', () => {
 
 		testCases.forEach(({ attr, expected }) => {
 			const source = `
-				component Child(props) { <div /> }
-				export default component App() { <Child ${attr} /> }`;
+				function Child(props) { return <> <div /> </>; }
+				export default function App() { return <> <Child ${attr} /> </>; }`;
 
 			const result = compile(source, 'test.tsrx', { mode: 'client' });
 			expect(result.code).toMatch(expected);
@@ -39,11 +39,11 @@ describe('compiler > attributes', () => {
 
 	it('handles mixed valid and invalid attribute identifiers correctly', () => {
 		const source = `
-			component Child(props) {
+			function Child(props) { return <>
 				<div />
-			}
+			</>; }
 
-			export default component App() {
+			export default function App() { return <>
 				<Child
 					validProp="valid"
 					class="valid"
@@ -52,7 +52,7 @@ describe('compiler > attributes', () => {
 					aria-invalid="invalid"
 					custom-prop="invalid"
 				/>
-			}`;
+			</>; }`;
 
 		const result = compile(source, 'test.tsrx', { mode: 'client' });
 
@@ -69,18 +69,18 @@ describe('compiler > attributes', () => {
 
 	it('ensures generated code is syntactically valid JavaScript', () => {
 		const source = `
-			component Child(props) {
+			function Child(props) { return <>
 				<div />
-			}
+			</>; }
 
-			export default component App() {
+			export default function App() { return <>
 				<Child data-scope="test" />
-			}`;
+			</>; }`;
 
 		const result = compile(source, 'test.tsrx', { mode: 'client' });
 
 		// Extract the props object from the generated code and test it's valid JavaScript
-		const match = result.code.match(/Child\([^,]+,\s*(\{[^}]+\})/);
+		const match = result.code.match(/_\$_.render_component\(Child,\s*[^,]+,\s*(\{[^}]+\})/);
 		expect(match).toBeTruthy();
 
 		const propsObject = match?.[1];

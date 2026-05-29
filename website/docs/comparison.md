@@ -6,7 +6,7 @@ title: Comparison to other frameworks
 
 ## vs React
 
-- No JSX functions/returns - components use statement-based templates
+- No wrapper components for control flow - returned templates support inline `if`, `for`, and `switch`
 - Built-in reactivity with `track()` and `&[]` lazy destructuring instead of useState/useEffect
 - Scoped CSS without CSS-in-JS libraries
 - No virtual DOM - fine-grained reactivity
@@ -20,6 +20,6 @@ title: Comparison to other frameworks
 
 ## vs Solid
 
-- Component definition with `component` keyword
+- Components are ordinary functions that return TSRX
 - Built-in collections (RippleArray, RippleSet)
-- Different templating approach within component bodies
+- Returned templates support statement-style control flow

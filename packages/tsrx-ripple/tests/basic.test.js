@@ -1,12 +1,12 @@
 import {
-	runSharedClassComponentDeclarationTests,
+	runSharedClassFunctionComponentTests,
 	runSharedComponentParamsTests,
 } from '@tsrx/core/test-harness/compile';
 import { compile, compile_to_volar_mappings } from '../src/index.js';
 import { describe, expect, it } from 'vitest';
 import { find_exact_mapping } from '../../tsrx/src/source-map-utils.js';
 
-runSharedClassComponentDeclarationTests({
+runSharedClassFunctionComponentTests({
 	compile,
 	compile_to_volar_mappings,
 	name: 'ripple',
@@ -51,7 +51,7 @@ describe('@tsrx/ripple Volar mappings cover declaration keywords', () => {
 
 describe('@tsrx/ripple Volar mappings cover arrow functions', () => {
 	it('adds a verification-only mapping for the whole arrow function', () => {
-		const source = `component C() { const f = (x: number): number => x + 1; }`;
+		const source = `function C() { const f = (x: number): number => x + 1; return <></>; }`;
 		const result = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
 		const source_arrow = '(x: number): number => x + 1';
 		const source_offset = source.indexOf(source_arrow);
@@ -73,11 +73,11 @@ describe('@tsrx/ripple Volar mappings cover arrow functions', () => {
 describe('@tsrx/ripple try pending fallbacks', () => {
 	it('allows empty pending blocks as null fallbacks', () => {
 		const { code } = compile(
-			`component App() {
+			`function App() { return <>
 				try {
 					<div>{'content'}</div>
 				} pending {}
-			}`,
+			</>; }`,
 			'App.tsrx',
 		);
 
@@ -87,53 +87,53 @@ describe('@tsrx/ripple try pending fallbacks', () => {
 });
 
 describe('@tsrx/ripple named ref props', () => {
-	it('wraps named ref props for components', () => {
+	it('keeps named ref-like props ordinary for components', () => {
 		const { code } = compile(
-			`component Child(props) {}
-			component App() {
+			`function Child(props) { return <></>; }
+			function App() { return <>
 				let input;
-				<Child input_ref={ref input} />
-			}`,
+				<Child input_ref={input} />
+			</>; }`,
 			'App.tsrx',
 		);
 
-		expect(code).toContain('input_ref: _$_.create_ref_prop(() => input, (v) => input = v)');
+		expect(code).toContain('input_ref: input');
 	});
 
 	it('wraps anonymous ref props for components', () => {
 		const { code } = compile(
-			`component Child(props) {}
-			component App() {
+			`function Child(props) { return <></>; }
+			function App() { return <>
 				let input;
-				<Child {ref input} />
-			}`,
+				<Child ref={input} />
+			</>; }`,
 			'App.tsrx',
 		);
 
-		expect(code).toContain('[ref]: _$_.create_ref_prop(() => input, (v) => input = v)');
+		expect(code).toContain('ref: _$_.create_ref_prop(() => input, (v) => input = v)');
 	});
 
-	it('applies direct named ref props on host elements as refs', () => {
+	it('keeps named ref-like props ordinary on host elements', () => {
 		const { code } = compile(
-			`component App() {
+			`function App() { return <>
 				let input;
-				<input input_ref={ref input} />
-			}`,
+				<input input_ref={input} />
+			</>; }`,
 			'App.tsrx',
 		);
 
-		expect(code).toContain('_$_.ref(input_1, () => _$_.create_ref_prop');
-		expect(code).not.toContain('input_ref');
+		expect(code).toContain('input_ref');
+		expect(code).not.toContain('_$_.create_ref_prop');
 	});
 
 	it('adds assignment setters for host ref attributes with identifiers and member expressions', () => {
 		const { code } = compile(
-			`component App() {
+			`function App() { return <>
 				let input;
 				let state = {};
 				<input ref={input} />
 				<input ref={state.input} />
-			}`,
+			</>; }`,
 			'App.tsrx',
 		);
 
@@ -143,152 +143,93 @@ describe('@tsrx/ripple named ref props', () => {
 
 	it('wraps ref forms on dynamic elements so runtime host spreads can apply them', () => {
 		const { code } = compile(
-			`component App() {
+			`function App() { return <>
 				let tag = track('input');
 				let input;
 				let state = {};
 				function fn() {}
-				<@tag ref={input} {ref state.other} input_ref={ref fn} />
-			}`,
+				<@tag ref={[input, state.other]} input_ref={fn} />
+			</>; }`,
 			'App.tsrx',
 		);
 
-		expect(code).toContain('ref: _$_.create_ref_prop(() => input, (v) => input = v)');
-		expect(code).toContain(
-			'[ref_1]: _$_.create_ref_prop(() => state.other, (v) => state.other = v)',
-		);
-		expect(code).toContain('input_ref: _$_.create_ref_prop(() => fn, (v) => fn = v)');
+		expect(code).toContain('ref: _$_.create_ref_prop(() => [');
+		expect(code).toContain('_$_.create_ref_prop(() => input, (v) => input = v)');
+		expect(code).toContain('_$_.create_ref_prop(() => state.other, (v) => state.other = v)');
+		expect(code).toContain('input_ref: fn');
 	});
 
 	it('prints named ref props in Volar TypeScript output', () => {
 		const { code } = compile_to_volar_mappings(
-			`component App() {
+			`function App() { return <>
 				let input;
-				<input input_ref={ref input} />
-			}`,
+				<input input_ref={input} />
+			</>; }`,
 			'App.tsrx',
 		);
 
-		expect(code).toContain("import { _$_RefProp__create } from 'ripple/compiler/internal/import';");
-		expect(code).toContain(
-			"<input input_ref={_$_RefProp__create<HTMLElementTagNameMap['input']>(() => input, (v) => input = v)} />",
+		expect(code).not.toContain(
+			"import { _$_RefProp__create } from 'ripple/compiler/internal/import';",
 		);
-		expect(code).not.toContain('input_ref={ref input}');
+		expect(code).toContain('<input input_ref={input} />');
 	});
 
 	it('preserves child namespaces for nested host ref props in Volar TypeScript output', () => {
 		const { code } = compile_to_volar_mappings(
-			`component App() {
+			`function App() { return <>
 				let circle;
 				let div;
 				<svg>
-					<circle circle_ref={ref circle} />
+					<circle circle_ref={circle} />
 					<foreignObject>
-						<div div_ref={ref div} />
+						<div div_ref={div} />
 					</foreignObject>
 				</svg>
-			}`,
+			</>; }`,
 			'App.tsrx',
 		);
 
-		expect(code).toContain(
-			"<circle circle_ref={_$_RefProp__create<SVGElementTagNameMap['circle']>(() => circle, (v) => circle = v)} />",
-		);
-		expect(code).toContain(
-			"<div div_ref={_$_RefProp__create<HTMLElementTagNameMap['div']>(() => div, (v) => div = v)} />",
-		);
+		expect(code).toContain('<circle circle_ref={circle} />');
+		expect(code).toContain('<div div_ref={div} />');
 	});
 
-	it('does not map the generated named ref setter back to the source ref target', () => {
-		const source = `component Child(props: { inputRef?: any; otherRef?: any }) {
+	it('maps named ref-like prop values as ordinary props', () => {
+		const source = `function Child(props: { inputRef?: any; otherRef?: any }) { return <>
 	<input />
-}
+</>; }
 
-component App() {
+function App() { return <>
 	let input: HTMLInputElement | undefined;
 	const state = { input: undefined as HTMLInputElement | undefined };
-	<input type="text" input_ref={ref input} />
-	<Child inputRef={ref input} otherRef={ref state.input} />
-}`;
+	<input type="text" input_ref={input} />
+	<Child inputRef={input} otherRef={state.input} />
+</>; }`;
 		const result = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
 
-		const host_element_offset = source.indexOf('<input type="text"');
-		const host_ref_container_offset = source.indexOf('{ref input}', host_element_offset);
-		const generated_host_element_offset = result.code.indexOf('<input type="text"');
-		const generated_host_ref_offset = result.code.indexOf(
-			'RefProp__create',
-			generated_host_element_offset,
-		);
-		const ref_container_offset = source.indexOf('{ref input}');
-		const ref_input_offset = source.indexOf('ref input') + 'ref '.length;
-		const ref_state_container_offset = source.indexOf('{ref state.input}');
-		const ref_state_offset = source.indexOf('ref state.input') + 'ref '.length;
-		const ref_state_input_offset = ref_state_offset + 'state.'.length;
-		const generated_input_getter = result.code.indexOf('input', result.code.indexOf('() => input'));
-		const generated_state_getter = result.code.indexOf(
-			'state.input',
-			result.code.indexOf('otherRef'),
-		);
-
-		const find_mappings = (source_offset, length) =>
-			result.mappings.filter(
-				(mapping) => mapping.sourceOffsets[0] === source_offset && mapping.lengths[0] === length,
-			);
-
-		const input_mappings = find_mappings(ref_input_offset, 'input'.length);
-		const state_mappings = find_mappings(ref_state_offset, 'state'.length);
-		const state_input_mappings = find_mappings(ref_state_input_offset, 'input'.length);
-		const container_mappings = result.mappings.filter(
-			(mapping) =>
-				mapping.sourceOffsets[0] === ref_container_offset ||
-				mapping.sourceOffsets[0] === ref_state_container_offset,
-		);
-		const host_wrapper_mappings = result.mappings.filter((mapping) => {
-			const generated_start = mapping.generatedOffsets[0];
-			const generated_end = generated_start + mapping.generatedLengths[0];
-			return (
-				(mapping.sourceOffsets[0] === host_element_offset ||
-					mapping.sourceOffsets[0] === host_ref_container_offset) &&
-				generated_start <= generated_host_ref_offset &&
-				generated_host_ref_offset < generated_end
-			);
-		});
-
 		expect(result.errors).toEqual([]);
-		expect(result.code).toContain('() => input, (v) => input = v');
-		expect(result.code).toContain('() => state.input, (v) => state.input = v');
-		expect(container_mappings).toEqual([]);
-		expect(host_wrapper_mappings).toEqual([]);
-		expect(input_mappings).toHaveLength(1);
-		expect(state_mappings).toHaveLength(1);
-		expect(state_input_mappings).toHaveLength(1);
-		expect(input_mappings[0].generatedOffsets[0]).toBe(generated_input_getter);
-		expect(state_mappings[0].generatedOffsets[0]).toBe(generated_state_getter);
-		expect(state_input_mappings[0].generatedOffsets[0]).toBe(
-			generated_state_getter + 'state.'.length,
-		);
+		expect(result.code).toContain('input_ref={input}');
+		expect(result.code).toContain('otherRef={state.input}');
 	});
 });
 
-describe('@tsrx/ripple <tsrx> Volar output', () => {
-	it('prints JSX converted from nested tsrx inside tsx expression containers', () => {
-		const source = `component App() {
-	const content = <tsx>
-		<section>{<tsrx><div>{'inside'}</div></tsrx>}</section>
-	</tsx>;
+describe('@tsrx/ripple native fragment Volar output', () => {
+	it('prints JSX converted from native fragment expression containers', () => {
+		const source = `function App() { return <>
+	const content = <section>{<div>{'inside'}</div>}</section>;
 	{content}
-}`;
+</>; }`;
 		const result = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
 
-		expect(result.code).toContain('<section>{<div>');
-		expect(result.code).not.toContain('<tsrx>');
+		expect(result.code).toContain('<section>');
+		expect(result.code).toContain('<div>');
+		expect(result.code).toContain("'inside';");
 		expect(result.code).not.toContain('<tsx>');
 	});
 
 	it('returns children before and after setup statements', () => {
-		const source = `class Foo { bar() { return <tsrx><div>"before"</div> const x = 1; <div>{x}</div></tsrx>; } }`;
+		const source = `class Foo { bar() { return <><div>"before"</div> const x = 1; <div>{x}</div></>; } }`;
 		const result = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
-		const match = result.code.match(/const ([A-Za-z_$][\w$]*) = \[\];/);
+		const match = result.code.match(/const ([A-Za-z_$][\w$]*) = \[\] as Array<any>;/);
 		expect(match).not.toBeNull();
 
 		const children_id = /** @type {RegExpMatchArray} */ (match)[1];
@@ -310,7 +251,7 @@ describe('@tsrx/ripple <tsrx> Volar output', () => {
 describe('@tsrx/ripple <tsx> expression values', () => {
 	it('passes plain identifier props directly in fragment shorthand values', () => {
 		const { code } = compile(
-			`component Some(props) {}
+			`function Some(props) { return <></>; }
 			function Test() {
 				const placeholder = 'value';
 				return <><Some prop={placeholder} /></>;
@@ -318,13 +259,13 @@ describe('@tsrx/ripple <tsx> expression values', () => {
 			'App.tsrx',
 		);
 
-		expect(code).toContain('Some(node, { prop: placeholder }, _$_.active_block);');
+		expect(code).toContain('_$_.render_component(Some, node, { prop: placeholder });');
 		expect(code).not.toContain('get prop()');
 	});
 
 	it('passes plain identifier props directly in tsx expression values', () => {
 		const { code } = compile(
-			`component Some(props) {}
+			`function Some(props) { return <></>; }
 			function Test() {
 				const placeholder = 'value';
 				return <tsx><Some prop={placeholder} /></tsx>;
@@ -332,41 +273,41 @@ describe('@tsrx/ripple <tsx> expression values', () => {
 			'App.tsrx',
 		);
 
-		expect(code).toContain('Some(node, { prop: placeholder }, _$_.active_block);');
+		expect(code).toContain('_$_.render_component(Some, node, { prop: placeholder });');
 		expect(code).not.toContain('get prop()');
 	});
 
 	it('passes plain identifier props directly in tsrx expression values', () => {
 		const { code } = compile(
-			`component Some(props) {}
+			`function Some(props) { return <></>; }
 			function Test() {
 				const placeholder = 'value';
-				return <tsrx><Some prop={placeholder} /></tsrx>;
+				return <><Some prop={placeholder} /></>;
 			}`,
 			'App.tsrx',
 		);
 
-		expect(code).toContain('Some(node, { prop: placeholder }, _$_.active_block);');
+		expect(code).toContain('_$_.render_component(Some, node, { prop: placeholder });');
 		expect(code).not.toContain('get prop()');
 	});
 
 	it('passes plain identifier props directly in component bodies', () => {
 		const { code } = compile(
-			`component Some(props) {}
-			component Test() {
+			`function Some(props) { return <></>; }
+			function Test() { return <>
 				const placeholder = 'value';
 				<Some prop={placeholder} />
-			}`,
+			</>; }`,
 			'App.tsrx',
 		);
 
-		expect(code).toContain('Some(node, { prop: placeholder }, _$_.active_block);');
+		expect(code).toContain('_$_.render_component(Some, node, { prop: placeholder });');
 		expect(code).not.toContain('get prop()');
 	});
 
 	it('passes plain non-tracked expression props directly', () => {
 		const { code } = compile(
-			`component Some(props) {}
+			`function Some(props) { return <></>; }
 			function Test() {
 				const first = 'hello';
 				const second = 'world';
@@ -375,13 +316,13 @@ describe('@tsrx/ripple <tsx> expression values', () => {
 			'App.tsrx',
 		);
 
-		expect(code).toContain('Some(node, { prop: first + second }, _$_.active_block);');
+		expect(code).toContain('_$_.render_component(Some, node, { prop: first + second });');
 		expect(code).not.toContain('get prop()');
 	});
 
 	it('wraps member expression props in getters', () => {
 		const { code } = compile(
-			`component Some(props) {}
+			`function Some(props) { return <></>; }
 			function Test() {
 				const obj = { value: 'value' };
 				return <><Some prop={obj.value} /></>;
@@ -395,7 +336,7 @@ describe('@tsrx/ripple <tsx> expression values', () => {
 
 	it('wraps computed member expression props in getters', () => {
 		const { code } = compile(
-			`component Some(props) {}
+			`function Some(props) { return <></>; }
 			function Test() {
 				const obj = { value: 'value' };
 				const key = 'value';
@@ -410,12 +351,12 @@ describe('@tsrx/ripple <tsx> expression values', () => {
 
 	it('wraps call expression props in getters', () => {
 		const { code } = compile(
-			`component Some(props) {}
+			`function Some(props) { return <></>; }
 			function getValue() {
 				return 'value';
 			}
 			function Test() {
-				return <tsrx><Some prop={getValue()} /></tsrx>;
+				return <><Some prop={getValue()} /></>;
 			}`,
 			'App.tsrx',
 		);
@@ -426,7 +367,7 @@ describe('@tsrx/ripple <tsx> expression values', () => {
 
 	it('wraps call expression props in fragment shorthand values in getters', () => {
 		const { code } = compile(
-			`component Some(props) {}
+			`function Some(props) { return <></>; }
 			function getValue() {
 				return 'value';
 			}
@@ -442,13 +383,13 @@ describe('@tsrx/ripple <tsx> expression values', () => {
 
 	it('wraps call expression props in component bodies in getters', () => {
 		const { code } = compile(
-			`component Some(props) {}
+			`function Some(props) { return <></>; }
 			function getValue() {
 				return 'value';
 			}
-			component Test() {
+			function Test() { return <>
 				<Some prop={getValue()} />
-			}`,
+			</>; }`,
 			'App.tsrx',
 		);
 
@@ -459,12 +400,12 @@ describe('@tsrx/ripple <tsx> expression values', () => {
 	it('wraps lazy tracked identifier props in fragment shorthand values in getters', () => {
 		const { code } = compile(
 			`import { track } from 'ripple';
-			component Some(props) {}
-			component Test() {
+			function Some(props) { return <></>; }
+			function Test() { return <>
 				let &[count] = track(0);
 				const content = <><Some prop={count} /></>;
 				{content}
-			}`,
+			</>; }`,
 			'App.tsrx',
 		);
 
@@ -475,7 +416,7 @@ describe('@tsrx/ripple <tsx> expression values', () => {
 	it('wraps lazy tracked identifier props in function fragment returns in getters', () => {
 		const { code } = compile(
 			`import { track } from 'ripple';
-			component Some(props) {}
+			function Some(props) { return <></>; }
 			function Test() {
 				let &[count] = track(0);
 				return <><Some prop={count} /></>;
@@ -483,7 +424,6 @@ describe('@tsrx/ripple <tsx> expression values', () => {
 			'App.tsrx',
 		);
 
-		expect(code).toContain('return _$_.tsrx_element');
 		expect(code).toContain('get prop()');
 		expect(code).toContain('return lazy.value;');
 	});
@@ -491,12 +431,12 @@ describe('@tsrx/ripple <tsx> expression values', () => {
 	it('wraps lazy tracked identifier props in getters', () => {
 		const { code } = compile(
 			`import { track } from 'ripple';
-			component Some(props) {}
-			component Test() {
+			function Some(props) { return <></>; }
+			function Test() { return <>
 				let &[count] = track(0);
 				const content = <tsx><Some prop={count} /></tsx>;
 				{content}
-			}`,
+			</>; }`,
 			'App.tsrx',
 		);
 
@@ -507,12 +447,12 @@ describe('@tsrx/ripple <tsx> expression values', () => {
 	it('wraps lazy tracked expression props in getters', () => {
 		const { code } = compile(
 			`import { track } from 'ripple';
-			component Some(props) {}
-			component Test() {
+			function Some(props) { return <></>; }
+			function Test() { return <>
 				let &[count] = track(0);
-				const content = <tsrx><Some prop={count % 2 ? 'odd' : 'even'} /></tsrx>;
+				const content = <><Some prop={count % 2 ? 'odd' : 'even'} /></>;
 				{content}
-			}`,
+			</>; }`,
 			'App.tsrx',
 		);
 
@@ -522,7 +462,7 @@ describe('@tsrx/ripple <tsx> expression values', () => {
 
 	it('lowers tsx values nested in template expressions', () => {
 		const { code } = compile(
-			`component App() {
+			`function App() { return <>
 				const primary = true;
 				<div>
 					{<tsx>
@@ -531,7 +471,7 @@ describe('@tsrx/ripple <tsx> expression values', () => {
 							: ['second:', <strong>{'two'}</strong>, ':done']}
 					</tsx>}
 				</div>
-			}`,
+			</>; }`,
 			'App.tsrx',
 		);
 
@@ -540,16 +480,112 @@ describe('@tsrx/ripple <tsx> expression values', () => {
 		expect(code).not.toContain('<tsx>');
 	});
 
+	it('lowers native element values outside components', () => {
+		const { code } = compile(`const test = <button>"Hello"</button>;`, 'App.tsrx');
+
+		expect(code).toContain('const test = _$_.tsrx_element');
+		expect(code).toContain('template(`<button>Hello</button>`');
+	});
+
+	it('lowers bare native element expression statements outside components', () => {
+		const { code } = compile(`<button>"Hello"</button>;`, 'App.tsrx');
+
+		expect(code).toContain('_$_.tsrx_element');
+		expect(code).toContain('template(`<button>Hello</button>`');
+	});
+
+	it('renders native element values assigned inside returned templates on the server', () => {
+		const { code } = compile(
+			`function App() { return <>
+				const test = <button>"Hello"</button>;
+				{test}
+			</>; }`,
+			'App.tsrx',
+			{ mode: 'server' },
+		);
+
+		expect(code).toContain('const test = _$_.tsrx_element');
+		expect(code).toContain('_$_.render_expression(test)');
+		expect(code).not.toContain('_$_.escape(test)');
+	});
+
+	it('keeps direct arrow component returns on the render path', () => {
+		const { code } = compile(`const App = () => <button>"Hello"</button>;`, 'App.tsrx');
+
+		expect(code).toContain('template(`<button>Hello</button>`');
+		expect(code).toContain('_$_.append(__anchor, button_1)');
+		expect(code).not.toContain('template(``');
+	});
+
+	it('keeps returned elements after comments on the render path', () => {
+		const { code } = compile(
+			`function App() {
+				return /* comment */ <div>"Commented"</div>;
+			}`,
+			'App.tsrx',
+		);
+
+		expect(code).toContain('template(`<div>Commented</div>`');
+		expect(code).toContain('_$_.append(__anchor, div_1)');
+	});
+
+	it('keeps directly called PascalCase numeric helpers as ordinary functions', () => {
+		const { code } = compile(
+			`function StatusCode() {
+				return 200;
+			}
+			const value = StatusCode();`,
+			'App.tsrx',
+		);
+
+		expect(code).toContain('function StatusCode()');
+		expect(code).toContain('return 200;');
+		expect(code).toContain('const value = StatusCode();');
+		expect(code).not.toContain('function StatusCode(__anchor');
+		expect(code).not.toContain('template(`200`');
+	});
+
+	it('keeps directly called PascalCase template literal helpers as ordinary functions', () => {
+		const { code } = compile(
+			`function FormatName(first, last) {
+				return \`\${first} \${last}\`;
+			}
+			const label = FormatName("Ada", "Lovelace");`,
+			'App.tsrx',
+		);
+
+		expect(code).toContain('function FormatName(first, last)');
+		expect(code).toContain('return `${first} ${last}`;');
+		expect(code).toContain('const label = FormatName("Ada", "Lovelace");');
+		expect(code).not.toContain('function FormatName(__anchor');
+	});
+
+	it('keeps renderable-only PascalCase functions as plain functions', () => {
+		const { code } = compile(
+			`function Label() {
+				return "Hi";
+			}
+			function App() {
+				return <Label />;
+			}`,
+			'App.tsrx',
+		);
+
+		expect(code).toContain('function Label()');
+		expect(code).toContain('return "Hi";');
+		expect(code).toContain('_$_.render_component(Label, node, {})');
+	});
+
 	it('uses server render_expression for conditional array expression values', () => {
 		const { code } = compile(
-			`component App() {
+			`function App() { return <>
 				const condition = true;
 				const ternary_items = condition ? ['start:', ['one', 2], ':end'] : ['fallback'];
 				const logical_items = condition && ['start:', ['one', 2], ':end'];
 
 				<div>{ternary_items}</div>
 				<div>{logical_items}</div>
-			}`,
+			</>; }`,
 			'App.tsrx',
 			{ mode: 'server' },
 		);
@@ -562,12 +598,12 @@ describe('@tsrx/ripple <tsx> expression values', () => {
 
 	it('uses client expression anchors that can hydrate conditional array markers', () => {
 		const { code } = compile(
-			`component App() {
+			`function App() { return <>
 				const condition = true;
 				const items = condition ? ['start:', ['one', 2], ':end'] : ['fallback'];
 
 				<div>{items}</div>
-			}`,
+			</>; }`,
 			'App.tsrx',
 		);
 
@@ -579,34 +615,11 @@ describe('@tsrx/ripple <tsx> expression values', () => {
 });
 
 describe('@tsrx/ripple nested function fragment returns', () => {
-	it('keeps special fragment returns inside component-local functions', () => {
-		const { code } = compile(
-			`export component App() {
-				<div>"App"</div>
-				function FragmentReturn() {
-					return <><div>fragment</div></>;
-				}
-				function TsxReturn() {
-					return <tsx><div>tsx</div></tsx>;
-				}
-				function TsrxReturn() {
-					return <tsrx><div>"tsrx"</div></tsrx>;
-				}
-			}`,
-			'App.tsrx',
-		);
-
-		expect(code).not.toContain('return;');
-		expect(code).toMatch(/function FragmentReturn\(\) {\s+return _\$_.tsrx_element/);
-		expect(code).toMatch(/function TsxReturn\(\) {\s+return _\$_.tsrx_element/);
-		expect(code).toMatch(/function TsrxReturn\(\) {\s+return _\$_.tsrx_element/);
-	});
-
 	it('keeps special fragment returns inside component prop arrow functions', () => {
 		const { code } = compile(
-			`component Child(props) {}
+			`function Child(props) { return <></>; }
 
-			export component App() {
+			export function App() { return <>
 				<Child
 					fragment={() => {
 						return <><div>fragment</div></>;
@@ -615,16 +628,239 @@ describe('@tsrx/ripple nested function fragment returns', () => {
 						return <tsx><div>tsx</div></tsx>;
 					}}
 					tsrx={() => {
-						return <tsrx><div>"tsrx"</div></tsrx>;
+						return <><div>"tsrx"</div></>;
 					}}
 				/>
-			}`,
+			</>; }`,
 			'App.tsrx',
 		);
 
-		expect(code).not.toContain('return;');
 		expect(code).toMatch(/fragment: \(\) => {\s+return _\$_.tsrx_element/);
 		expect(code).toMatch(/tsx: \(\) => {\s+return _\$_.tsrx_element/);
 		expect(code).toMatch(/tsrx: \(\) => {\s+return _\$_.tsrx_element/);
+	});
+
+	it('allows return-value branches inside nested component prop functions', () => {
+		const source = `function Page(props) { return <></>; }
+
+			export function Test() { return <>
+				<Page
+					params={{
+						menuAlt: (isAdmin) => {
+							if (isAdmin) {
+								return [<>"Delete"</>, <>"Edit"</>];
+							} else {
+								return [<>"View"</>];
+							}
+						},
+						bySwitch: (role) => {
+							switch (role) {
+								case 'admin':
+									return [<>"Edit"</>];
+								default:
+									return [<>"View"</>];
+							}
+						},
+					}}
+				/>
+		</>; }`;
+		const { code } = compile(source, 'App.tsrx');
+		const server = compile(source, 'App.tsrx', { mode: 'server' });
+
+		expect(code).toMatch(/menuAlt: \(isAdmin\) => {\s+return _\$_.tsrx_element/);
+		expect(code).toMatch(/bySwitch: \(role\) => {\s+return _\$_.tsrx_element/);
+		expect(code).toContain("case 'admin':");
+		expect(code).toMatch(/_\$_.expression\(expression.*\(\) => \[/s);
+		expect(server.code).toContain('_$_.render_expression([');
+	});
+
+	it('allows any returns inside nested component prop functions', () => {
+		const source = `function Page(props) { return <></>; }
+
+			export function Test() { return <>
+				<Page fn={() => {
+					if (true) {
+						return;
+					}
+					return undefined;
+				}} />
+			</>; }`;
+		const { code } = compile(source, 'App.tsrx');
+		const server = compile(source, 'App.tsrx', { mode: 'server' });
+		const tsx = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
+
+		expect(code).toContain('return;');
+		expect(code).toContain('return undefined;');
+		expect(server.code).toContain('return;');
+		expect(server.code).toContain('return undefined;');
+		expect(tsx.code).toContain('return;');
+		expect(tsx.code).toContain('return undefined;');
+		expect(code).not.toContain('Return statements are not allowed');
+	});
+
+	it('uses one return guard for multiple component return branches', () => {
+		const source = `function Test({ done }) {
+			if (done.value) {
+				return <p>"Done"</p>;
+			} else if (done.value === 'test') {
+				return <p>"Not done"</p>;
+			}
+
+			const loop = () => <>
+				for (const item of items) {
+					<div>{item}</div>
+				}
+			</>;
+
+			return loop();
+		}`;
+		const client = compile(source, 'App.tsrx');
+		const server = compile(source, 'App.tsrx', { mode: 'server' });
+		const tsx = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
+
+		expect(client.code).toContain('var return_guard = false;');
+		expect(client.code).toContain('_$_.for(');
+		expect(client.code).toContain('_$_.render_tsrx_element(loop(),');
+		expect(client.code).not.toContain('_$_.expression(expression_2, loop)');
+		expect(client.code).not.toContain('return_guard_1');
+		expect(client.code).not.toContain('!return_guard &&');
+		expect(server.code).toContain('var return_guard = false;');
+		expect(server.code).toContain('for (const item of items)');
+		expect(server.code).toContain('_$_.render_tsrx_element(loop())');
+		expect(server.code).not.toContain('_$_.render_expression(loop())');
+		expect(server.code).not.toContain('return_guard_1');
+		expect(server.code).not.toContain('!return_guard &&');
+		expect(tsx.code).toContain('if (done.value)');
+		expect(tsx.code).toContain('return;');
+	});
+
+	it('keeps return guard names local to each compiled function', () => {
+		const source = `function First(flag) {
+			if (flag) {
+				return <p>"first"</p>;
+			}
+			<span>"fallback"</span>
+		}
+
+		function Second(flag) {
+			if (flag) {
+				return <p>"second"</p>;
+			}
+			<span>"fallback"</span>
+		}`;
+		const client = compile(source, 'App.tsrx');
+		const server = compile(source, 'App.tsrx', { mode: 'server' });
+
+		expect(client.code.match(/var return_guard = false;/g)).toHaveLength(2);
+		expect(client.code).not.toContain('return_guard_1');
+		expect(server.code.match(/var return_guard = false;/g)).toHaveLength(2);
+		expect(server.code).not.toContain('return_guard_1');
+	});
+
+	it('still avoids user return_guard bindings inside a compiled function', () => {
+		const source = `function Test(return_guard) {
+			if (return_guard) {
+				return <p>"done"</p>;
+			}
+			<span>{return_guard}</span>
+		}`;
+		const client = compile(source, 'App.tsrx');
+		const server = compile(source, 'App.tsrx', { mode: 'server' });
+
+		expect(client.code).toContain('var return_guard_1 = false;');
+		expect(server.code).toContain('var return_guard_1 = false;');
+	});
+});
+
+describe('@tsrx/ripple unified function and component compilation', () => {
+	const expect_value_function = (source) => {
+		const client = compile(source, 'App.tsrx');
+		const server = compile(source, 'App.tsrx', { mode: 'server' });
+
+		expect(client.code).toContain('return _$_.tsrx_element((__anchor, __block) =>');
+		expect(server.code).toContain('return _$_.tsrx_element(() =>');
+		expect(client.code).not.toContain('function Test(__anchor');
+		expect(server.code).not.toContain('_$_.push_component()');
+		expect(server.code).not.toContain('_$_.pop_component()');
+	};
+
+	it('compiles native template returns as value-producing functions', () => {
+		expect_value_function(`function Test() { return <p />; }`);
+	});
+
+	it('compiles template variables and alternate returns as renderable values', () => {
+		expect_value_function(`function Test(flag) {
+			const alt = <p />;
+			if (flag === 'array') return [alt, 'text'];
+			if (flag === 'null') return null;
+			if (flag === 'undefined') return undefined;
+			return alt;
+		}`);
+	});
+
+	it('drops dead native template statements after ASI returns', () => {
+		const source = `function Test() {
+			return;
+			<div>{"should not render"}</div>
+		}`;
+		const client = compile(source, 'App.tsrx');
+		const server = compile(source, 'App.tsrx', { mode: 'server' });
+
+		expect(client.code).toContain('return;');
+		expect(client.code).not.toContain('should not render');
+		expect(client.code).not.toContain('return_guard');
+		expect(server.code).toContain('return;');
+		expect(server.code).not.toContain('should not render');
+		expect(server.code).not.toContain('return_guard');
+	});
+
+	it('guards regular statements after conditional component returns', () => {
+		const source = `function Test(flag) {
+			if (flag) return;
+			sideEffect();
+			return <p />;
+		}`;
+		const client = compile(source, 'App.tsrx');
+		const server = compile(source, 'App.tsrx', { mode: 'server' });
+
+		expect(client.code).toContain('if (!return_guard) _$_.with_scope(__block, sideEffect)');
+		expect(server.code).toContain('if (!return_guard) sideEffect();');
+	});
+
+	it('does not use direct calls to disqualify native template functions', () => {
+		const source = `function Test() { return <p />; }
+			function App() { return <>{Test()}</>; }`;
+		const client = compile(source, 'App.tsrx');
+		const server = compile(source, 'App.tsrx', { mode: 'server' });
+
+		expect(client.code).toContain('function Test()');
+		expect(client.code).toContain('() => _$_.with_scope(__block, Test)');
+		expect(client.code).not.toContain('Test(__anchor');
+		expect(server.code).toContain('_$_.render_expression(Test())');
+	});
+
+	it('emits component calls through the runtime component helper', () => {
+		const source = `function Test() { return <p />; }
+			function App() { return <><Test /></>; }`;
+		const client = compile(source, 'App.tsrx');
+		const server = compile(source, 'App.tsrx', { mode: 'server' });
+
+		expect(client.code).toContain('_$_.render_component(Test, node, {})');
+		expect(server.code).toContain('_$_.render_component(comp, ...args)');
+	});
+
+	it('does not classify plain or compat-only functions as native TSRX functions', () => {
+		const source = `function App() { return <>
+			function Plain() { return 'plain'; }
+			function Compat() { return <tsx><div /></tsx>; }
+		</>; }`;
+		const client = compile(source, 'App.tsrx');
+		const server = compile(source, 'App.tsrx', { mode: 'server' });
+
+		expect(client.code).toContain("return 'plain';");
+		expect(client.code).not.toContain('Plain(__anchor');
+		expect(client.code).not.toContain('Compat(__anchor');
+		expect(server.code).not.toContain('Plain(__output');
+		expect(server.code).not.toContain('Compat(__output');
 	});
 });

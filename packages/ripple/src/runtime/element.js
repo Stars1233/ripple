@@ -35,5 +35,5 @@ export function normalize_children(value) {
 		return value;
 	}
 
-	return tsrx_element(value);
+	return tsrx_element(() => value({}));
 }

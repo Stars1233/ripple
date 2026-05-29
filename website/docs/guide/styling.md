@@ -8,7 +8,8 @@ Ripple supports native CSS styling that's scoped (localized) to the given
 component using the `<style>` element.
 
 ```ripple
-component MyComponent() {
+function MyComponent() {
+  return <>
   <div class="container">
     <h1>"Hello World"</h1>
   </div>
@@ -24,10 +25,12 @@ component MyComponent() {
       font-size: 2rem;
     }
   </style>
+
+  </>;
 }
 ```
 
-::: info The `<style>` element must be top-level within a `component`.
+::: info The `<style>` element must be top-level within a returned TSRX template.
 :::
 
 ## Dynamic Classes
@@ -94,7 +97,8 @@ styles, use the `:global()` pseudo-class or `:global` block:
 <Code>
 
 ```ripple
-export component App() {
+export function App() {
+  return <>
   <div class="container">
     <Child />
   </div>
@@ -123,15 +127,20 @@ export component App() {
       }
     }
   </style>
+
+  </>;
 }
 
-component Child() {
+function Child() {
+  return <>
   // The div should have its font-size at 2rem from parent
   <div>
     <h2 class="header">"This is a header with font-size 3rem"</h2>
     <span class="highlight">"This will be red and bold"</span>
     <p class="nested">"This will have left margin"</p>
   </div>
+
+  </>;
 }
 ```
 
@@ -145,7 +154,8 @@ across components, prefix the animation name with `-global-`:
 <Code>
 
 ```ripple
-export component App() {
+export function App() {
+  return <>
   <div class="parent">
     <Child />
   </div>
@@ -175,9 +185,12 @@ export component App() {
       animation: slideIn 1s;
     }
   </style>
+
+  </>;
 }
 
-component Child() {
+function Child() {
+  return <>
   <div class="child">"Child content"</div>
 
   <style>
@@ -185,51 +198,66 @@ component Child() {
       animation: fadeIn 1s; /* Uses global fadeIn from Parent */
     }
   </style>
+
+  </>;
 }
 ```
 
 </Code>
 
-## Passing Scoped Classes to Child Components (`{style}`)
+## Passing Scoped Classes to Child Components (`<style ref>`)
 
 Scoped styles only apply to DOM elements within the same component. If you want a
-parent to influence how a child component looks, you can pass scoped class names
-as props using the `{style "className"}` directive.
+parent to influence how a child component looks, expose the scoped class map from
+the component's `<style>` block with a ref and pass entries from that map as
+props.
 
-`{style "className"}` produces a string containing both the CSS scope hash and the
-class name (e.g. `"ripple-abc123 highlight"`), which the child applies to its own
-elements via the `class` attribute.
+Each map entry contains both the CSS scope hash and the class name (for example
+`"ripple-abc123 highlight"`), which the child applies to its own elements via the
+`class` attribute.
 
 ### Basic Usage
 
 ```ripple
-component Child({ className }: { className: string }) {
+function Child({ className }: { className: string }) {
+  return <>
   <div class={className}>"styled child"</div>
+
+  </>;
 }
 
-component Parent() {
-  <Child className={style "highlight"} />
+function Parent() {
+  let styles;
+  return <>
+  <Child className={styles.highlight} />
 
-  <style>
+  <style ref={(s) => styles = s}>
     .highlight {
       color: red;
     }
   </style>
+
+  </>;
 }
 ```
 
 You can pass multiple classes:
 
 ```ripple
-component Child({ primary, secondary }: { primary: string; secondary: string }) {
+function Child({ primary, secondary }: { primary: string; secondary: string }) {
+  return <>
   <div class={primary}>"primary"</div>
   <span class={secondary}>"secondary"</span>
+
+  </>;
 }
 
-component Parent() {
-  <Child primary={style "primary"} secondary={style "secondary"} />
+function Parent() {
+  let styles;
+  return <>
+  <Child primary={styles.primary} secondary={styles.secondary} />
 
-  <style>
+  <style ref={(s) => styles = s}>
     .primary {
       color: blue;
     }
@@ -237,29 +265,38 @@ component Parent() {
       color: gray;
     }
   </style>
+
+  </>;
 }
 ```
 
 ### With Dynamic Components
 
-`{style}` also works when rendering dynamic components with `<@Component />`:
+Style refs also work when rendering dynamic components with `<@Component />`:
 
 ```ripple
 import { track } from 'ripple';
 
-component Child({ cls }: { cls: string }) {
+function Child({ cls }: { cls: string }) {
+  return <>
   <span class={cls}>"text"</span>
+
+  </>;
 }
 
-component Parent() {
+function Parent() {
+  let styles;
+  return <>
   let &[Dynamic] = track(() => Child);
-  <@Dynamic cls={style "text"} />
+  <@Dynamic cls={styles.text} />
 
-  <style>
+  <style ref={(s) => styles = s}>
     .text {
       color: red;
     }
   </style>
+
+  </>;
 }
 ```
 
@@ -269,7 +306,8 @@ A child component can combine classes it receives from a parent with its own
 scoped classes:
 
 ```ripple
-component Card({ className }: { className?: string }) {
+function Card({ className }: { className?: string }) {
+  return <>
   <div class={['card-base', className ?? '']}>"card content"</div>
 
   <style>
@@ -277,36 +315,44 @@ component Card({ className }: { className?: string }) {
       border: 1px solid black;
     }
   </style>
+
+  </>;
 }
 
-component App() {
-  <Card className={style "themed"} />
+function App() {
+  let styles;
+  return <>
+  <Card className={styles.themed} />
 
-  <style>
+  <style ref={(s) => styles = s}>
     .themed {
       background: purple;
     }
   </style>
+
+  </>;
 }
 ```
 
 ### Standalone Requirement
 
-A class referenced via `{style}` must exist as a **standalone** selector in the
+Classes exposed by a style ref map come from **standalone** selectors in the
 `<style>` block. Classes that only appear inside compound, descendant, or
-combinator selectors cannot be passed.
+combinator selectors are not exported on the map.
 
 If a class appears both standalone and in a descendant selector, it can still be
-used with `{style}`:
+used through the style ref map:
 
 ```ripple
-component App() {
+function App() {
+  let styles;
+  return <>
   <div class="parent">
-    <Child cls={style "dual"} />
+    <Child cls={styles.dual} />
   </div>
 
-  <style>
-    /* Standalone rule — makes .dual valid for {style} */
+  <style ref={(s) => styles = s}>
+    /* Standalone rule — exposes styles.dual */
     .dual {
       color: blue;
     }
@@ -316,6 +362,8 @@ component App() {
       font-weight: bold;
     }
   </style>
+
+  </>;
 }
 ```
 
@@ -323,21 +371,20 @@ The following will **not** work because the class has no standalone rule:
 
 ```ripple
 // ❌ .nested only exists in a descendant selector
-component App() {
-  <Child cls={style "nested"} />
+function App() {
+  let styles;
+  return <>
+  <Child cls={styles.nested} />
 
-  <style>
+  <style ref={(s) => styles = s}>
     .wrapper .nested {
       color: red;
     }
   </style>
+
+  </>;
 }
 ```
 
-### Syntax Rules
-
-- **Static string only:** `{style "className"}` or `{style 'className'}`
-- **No dynamic access:** `{style variable}` and `{style "base" + suffix}` are compile errors
-- **Components only:** `{style}` can only be used inside a `component` body
-- **Props only:** `{style}` cannot be used directly on DOM elements — pass it to a
-  child component instead
+The map is available wherever you assign it, so declare the variable before the
+returned template when you need to read it earlier in the markup.

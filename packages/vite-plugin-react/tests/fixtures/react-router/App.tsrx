@@ -20,10 +20,12 @@ const projectRoutes: readonly ProjectRoute[] = [
 	},
 ];
 
-export component ReactRouterFixture() {
-	<RouterFixtureShell
-		routes={projectRoutes}
-		initialEntry="/projects/alpha?tab=activity"
-		fallbackLabel="No matching route"
-	/>
+export function ReactRouterFixture() {
+	return <>
+		<RouterFixtureShell
+			routes={projectRoutes}
+			initialEntry="/projects/alpha?tab=activity"
+			fallbackLabel="No matching route"
+		/>
+	</>;
 }

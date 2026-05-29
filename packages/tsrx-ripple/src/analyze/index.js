@@ -9,7 +9,6 @@
 	Visitors,
 	Binding,
 	TopScopedClasses,
-	StyleClasses,
 } from '../../types/index';
  */
 /**
@@ -25,17 +24,16 @@ import {
 	extractPaths,
 	analyzeCss,
 	pruneCss,
+	collectStyleRefAttributes,
 	error,
 	getReturnKeywordNode,
 	isEventAttribute,
 	isInsideComponent as is_inside_component,
 	validateNesting,
-	validateClassComponentDeclarations,
-	validateComponentLoopBreakStatement,
-	validateComponentLoopReturnStatement,
-	validateComponentParams,
-	validateComponentReturnStatement,
-	validateComponentUnsupportedLoopStatement,
+	validateTsrxLoopBreakStatement,
+	validateTsrxLoopReturnStatement,
+	validateTsrxReturnStatement,
+	validateTsrxUnsupportedLoopStatement,
 } from '@tsrx/core';
 const b = builders;
 import { walk } from 'zimmerframe';
@@ -53,6 +51,11 @@ import {
 	build_lazy_array_rest,
 	build_lazy_array_set,
 	build_lazy_array_update,
+	collect_tsrx_stylesheet,
+	get_native_tsrx_function_body,
+	is_native_tsrx_template_node,
+	is_native_tsrx_function_node,
+	is_tsrx_component_function,
 } from '../utils.js';
 import is_reference from 'is-reference';
 
@@ -235,7 +238,6 @@ function mark_control_flow_has_template(path) {
 		const node = path[i];
 
 		if (
-			node.type === 'Component' ||
 			node.type === 'FunctionExpression' ||
 			node.type === 'ArrowFunctionExpression' ||
 			node.type === 'FunctionDeclaration'
@@ -264,7 +266,6 @@ function mark_control_flow_has_template(path) {
  */
 function is_function_or_class_boundary(node) {
 	return (
-		node.type === 'Component' ||
 		node.type === 'FunctionExpression' ||
 		node.type === 'ArrowFunctionExpression' ||
 		node.type === 'FunctionDeclaration' ||
@@ -298,6 +299,28 @@ function is_inside_component_for_of(path) {
 			return false;
 		}
 		if (node.type === 'ForOfStatement') {
+			return true;
+		}
+	}
+	return false;
+}
+
+/**
+ * @param {AnalysisContext['path']} path
+ * @returns {boolean}
+ */
+function is_inside_template_child(path) {
+	for (let i = path.length - 1; i >= 0; i -= 1) {
+		const node = path[i];
+		if (is_function_or_class_boundary(node)) {
+			return false;
+		}
+		if (
+			node.type === 'Element' ||
+			node.type === 'Tsrx' ||
+			node.type === 'Tsx' ||
+			node.type === 'TsxCompat'
+		) {
 			return true;
 		}
 	}
@@ -348,14 +371,6 @@ function mark_control_flow_has_continue(path) {
  */
 function is_inside_tsx_context(path) {
 	return path.some((node) => node?.type === 'TsxCompat' || node?.type === 'Tsx');
-}
-
-/**
- * @param {AnalysisContext['path']} path
- * @returns {boolean}
- */
-function is_inside_tsrx_context(path) {
-	return path.some((node) => node?.type === 'Tsrx');
 }
 
 /**
@@ -1024,6 +1039,19 @@ function setup_nested_lazy_param_transforms(pattern, context, type_annotation = 
 	const pattern_type_annotation = get_pattern_type_annotation(pattern) ?? type_annotation;
 
 	switch (pattern.type) {
+		case 'Identifier': {
+			if (pattern_type_annotation) {
+				const binding = context.state.scope.get(pattern.name);
+				if (binding?.node === pattern) {
+					binding.metadata = {
+						...(binding.metadata ?? {}),
+						typeAnnotation: pattern_type_annotation,
+					};
+				}
+			}
+			return;
+		}
+
 		case 'AssignmentPattern':
 			setup_nested_lazy_param_transforms(pattern.left, context, pattern_type_annotation);
 			return;
@@ -1089,9 +1117,86 @@ function setup_nested_lazy_param_transforms(pattern, context, type_annotation = 
  */
 function visit_function(node, context) {
 	node.metadata = {
+		...node.metadata,
 		tracked: false,
 		path: [...context.path],
 	};
+
+	if (is_tsrx_component_function(node, context)) {
+		node.metadata.native_tsrx_function = true;
+		context.state.component = node;
+
+		if (node.params.length > 0) {
+			const props = node.params[0];
+
+			if (props.type === 'ObjectPattern' || props.type === 'ArrayPattern') {
+				if (props.lazy) {
+					setup_lazy_transforms(props, b.id('__props'), context.state, true, false);
+				} else {
+					setup_nested_lazy_param_transforms(props, context, get_pattern_type_annotation(props));
+				}
+			} else if (props.type === 'AssignmentPattern') {
+				error(
+					'Props are always an object, use destructured props with default values instead',
+					context.state.analysis.module.filename,
+					props,
+					context.state.collect ? context.state.analysis.errors : undefined,
+					context.state.analysis.comments,
+				);
+			}
+		}
+
+		/** @type {AST.Element[]} */
+		const elements = [];
+		const metadata = {};
+		const styleClasses = new Map();
+		/** @type {TopScopedClasses} */
+		const topScopedClasses = new Map();
+		const render_body = get_native_tsrx_function_body(node);
+		const component_state = {
+			...context.state,
+			component: node,
+			elements,
+			function_depth: (context.state.function_depth ?? 0) + 1,
+			metadata,
+		};
+
+		context.next(component_state);
+
+		const css = collect_tsrx_stylesheet(render_body);
+		/** @type {any} */ (node).css = css;
+		/** @type {any} */ (node.metadata).css = css;
+
+		if (css !== null) {
+			analyzeCss(css);
+			const prune = () => {
+				for (const element of elements) {
+					pruneCss(css, element, styleClasses, topScopedClasses);
+				}
+			};
+			prune();
+			if (collectStyleRefAttributes(render_body).length > 0) {
+				for (const [className, classInfo] of topScopedClasses) {
+					styleClasses.set(className, classInfo.selector ?? classInfo);
+				}
+				prune();
+			}
+			if (topScopedClasses.size > 0) {
+				/** @type {any} */ (node.metadata).topScopedClasses = topScopedClasses;
+			}
+		}
+
+		if (node.type !== 'ArrowFunctionExpression' && node.id) {
+			context.state.analysis.component_metadata.push({
+				id: node.id.name,
+			});
+		}
+
+		if (node.metadata.tracked) {
+			mark_as_tracked(context.path);
+		}
+		return;
+	}
 
 	// Set up lazy transforms for any lazy destructured parameters
 	for (let i = 0; i < node.params.length; i++) {
@@ -1122,7 +1227,7 @@ function mark_as_tracked(path) {
 	for (let i = path.length - 1; i >= 0; i -= 1) {
 		const node = path[i];
 
-		if (node.type === 'Component') {
+		if (is_native_tsrx_function_node(node)) {
 			break;
 		}
 		if (
@@ -1159,40 +1264,9 @@ function error_return_keyword(node, context, message) {
  * @returns {boolean}
  */
 function is_children_template_expression(expression, context) {
-	const component = context.path.findLast((node) => node.type === 'Component');
+	const component = context.path.findLast((node) => is_native_tsrx_function_node(node));
 	const component_scope = component ? context.state.scopes.get(component) : null;
 	return is_children_template_expression_in_scope(expression, context.state.scope, component_scope);
-}
-
-/**
- * `Element` analysis visits attribute values manually, so zimmerframe's path
- * can be `[... Element]` instead of `[... Element, Attribute]`.
- *
- * @param {AST.Node} node
- * @param {AST.Node[]} path
- * @returns {{ attribute: AST.Attribute | null, element: AST.Element | null }}
- */
-function get_style_attribute_context(node, path) {
-	const parent = path.at(-1);
-	const attribute =
-		parent?.type === 'Attribute' && parent.value === node
-			? parent
-			: /** @type {AST.Element | undefined} */ (
-					path.findLast((ancestor) => ancestor.type === 'Element')
-				)?.attributes.find((attr) => attr.type === 'Attribute' && attr.value === node);
-
-	const element = /** @type {AST.Element | undefined} */ (
-		path.findLast(
-			(ancestor) =>
-				ancestor.type === 'Element' &&
-				(!attribute || ancestor.attributes.some((attr) => attr === attribute)),
-		)
-	);
-
-	return {
-		attribute: /** @type {AST.Attribute | null} */ (attribute ?? null),
-		element: /** @type {AST.Element | null} */ (element ?? null),
-	};
 }
 
 /** @type {Visitors<AST.Node, AnalysisState>} */
@@ -1332,7 +1406,7 @@ const visitors = {
 
 		// Lazy bindings from track() calls (read_unwraps) are inherently reactive —
 		// propagate tracking so that control flow (if/for/switch)
-		// and early returns create reactive blocks
+		// and template control flow can create reactive blocks
 		if (
 			!node.tracked &&
 			binding?.read_unwraps &&
@@ -1576,47 +1650,6 @@ const visitors = {
 		context.next();
 	},
 
-	Style(node, context) {
-		const component = is_inside_component(context, true);
-		const style_context = get_style_attribute_context(node, context.path);
-
-		if (!component) {
-			error(
-				'`{style "class_name"}` can only be used within a component',
-				context.state.analysis.module.filename,
-				node,
-				context.state.collect ? context.state.analysis.errors : undefined,
-				context.state.analysis.comments,
-			);
-		}
-
-		if (!style_context.attribute) {
-			error(
-				'`{style "class_name"}` can only be used as an element attribute value.',
-				context.state.analysis.module.filename,
-				node,
-				context.state.collect ? context.state.analysis.errors : undefined,
-				context.state.analysis.comments,
-			);
-		}
-
-		if (style_context.element && is_element_dom_element(style_context.element)) {
-			error(
-				'`{style "class_name"}` cannot be used directly on DOM elements. Pass the class to a child component instead.',
-				context.state.analysis.module.filename,
-				node,
-				context.state.collect ? context.state.analysis.errors : undefined,
-				context.state.analysis.comments,
-			);
-		}
-
-		if (typeof node.value.value === 'string') {
-			context.state.metadata.styleClasses?.set(node.value.value, node.value);
-		}
-
-		context.next();
-	},
-
 	ImportDeclaration(node, context) {
 		const source_name = get_submodule_import_source_name(node);
 		if (source_name === null) {
@@ -1663,106 +1696,12 @@ const visitors = {
 	},
 
 	ClassBody(node, context) {
-		validateClassComponentDeclarations(
-			node,
-			context.state.analysis.module.filename,
-			context.state.collect ? context.state.analysis.errors : undefined,
-			context.state.analysis.comments,
-		);
 		context.next();
 	},
 
-	Component(node, context) {
-		context.state.component = node;
-
-		validateComponentParams(
-			node,
-			context.state.analysis.module.filename,
-			context.state.collect ? context.state.analysis.errors : undefined,
-			context.state.analysis.comments,
-		);
-
-		if (node.params.length > 0) {
-			const props = node.params[0];
-
-			if (props.type === 'ObjectPattern' || props.type === 'ArrayPattern') {
-				// Lazy destructuring: &{...} or &[...] — set up lazy transforms
-				if (props.lazy) {
-					setup_lazy_transforms(props, b.id('__props'), context.state, true, false);
-				} else {
-					setup_nested_lazy_param_transforms(props, context, get_pattern_type_annotation(props));
-				}
-			} else if (props.type === 'AssignmentPattern') {
-				error(
-					'Props are always an object, use destructured props with default values instead',
-					context.state.analysis.module.filename,
-					props,
-					context.state.collect ? context.state.analysis.errors : undefined,
-					context.state.analysis.comments,
-				);
-			}
-		}
-		/** @type {AST.Element[]} */
-		const elements = [];
-
-		// Track metadata for this component
-		const metadata = {
-			styleClasses: /** @type {StyleClasses} */ (new Map()),
-		};
-
-		/** @type {TopScopedClasses} */
-		const topScopedClasses = new Map();
-
-		context.next({
-			...context.state,
-			elements,
-			function_depth: (context.state.function_depth ?? 0) + 1,
-			metadata,
-		});
-
-		const css = node.css;
-
-		if (css !== null) {
-			// Analyze CSS to set global selector metadata
-			analyzeCss(css);
-
-			for (const node of elements) {
-				pruneCss(css, node, metadata.styleClasses, topScopedClasses);
-			}
-
-			if (topScopedClasses.size > 0) {
-				node.metadata.topScopedClasses = topScopedClasses;
-			}
-		}
-
-		if (metadata.styleClasses.size > 0) {
-			node.metadata.styleClasses = metadata.styleClasses;
-
-			for (const [className, property] of metadata.styleClasses) {
-				if (!topScopedClasses?.has(className)) {
-					error(
-						`CSS class ".${className}" does not exist as a stand-alone class in ${node.id?.name ? node.id.name : "this component's"} <style> block`,
-						context.state.analysis.module.filename,
-						property,
-						context.state.collect ? context.state.analysis.errors : undefined,
-						context.state.analysis.comments,
-					);
-				}
-			}
-		}
-
-		// Store component metadata in analysis
-		// Only add metadata if component has a name (not anonymous)
-		if (node.id) {
-			context.state.analysis.component_metadata.push({
-				id: node.id.name,
-			});
-		}
-	},
-
 	ForStatement(node, context) {
-		if (is_inside_component(context)) {
-			validateComponentUnsupportedLoopStatement(
+		if (is_inside_component(context) && !context.state.regular_js && !node.metadata?.regular_js) {
+			validateTsrxUnsupportedLoopStatement(
 				node,
 				context.state.analysis.module.filename,
 				context.state.collect ? context.state.analysis.errors : undefined,
@@ -1774,6 +1713,10 @@ const visitors = {
 	},
 
 	SwitchStatement(node, context) {
+		if (context.state.regular_js || node.metadata?.regular_js) {
+			return context.next({ ...context.state, regular_js: true, component: undefined });
+		}
+
 		if (!is_inside_component(context)) {
 			return context.next();
 		}
@@ -1806,6 +1749,10 @@ const visitors = {
 	},
 
 	ForOfStatement(node, context) {
+		if (context.state.regular_js || node.metadata?.regular_js) {
+			return context.next({ ...context.state, regular_js: true, component: undefined });
+		}
+
 		if (!is_inside_component(context)) {
 			return context.next();
 		}
@@ -1889,18 +1836,6 @@ const visitors = {
 
 		if (declaration && declaration.type === 'FunctionDeclaration') {
 			exports.add(declaration.id.name);
-		} else if (declaration && declaration.type === 'Component') {
-			error(
-				'Not implemented: Exported component declaration not supported in server modules.',
-				context.state.analysis.module.filename,
-				/** @type {AST.Identifier} */ (declaration.id),
-				context.state.collect ? context.state.analysis.errors : undefined,
-				context.state.analysis.comments,
-			);
-			// TODO: the client and server rendering doesn't currently support components
-			// If we're going to support this, we need to account also for anonymous object declaration
-			// and specifiers
-			// 	exports.add(/** @type {AST.Identifier} */ (declaration.id).name);
 		} else if (declaration && declaration.type === 'VariableDeclaration') {
 			for (const decl of declaration.declarations) {
 				if (decl.init !== undefined && decl.init !== null) {
@@ -1995,6 +1930,10 @@ const visitors = {
 	},
 
 	IfStatement(node, context) {
+		if (context.state.regular_js || node.metadata?.regular_js) {
+			return context.next({ ...context.state, regular_js: true, component: undefined });
+		}
+
 		if (!is_inside_component(context)) {
 			return context.next();
 		}
@@ -2091,8 +2030,12 @@ const visitors = {
 			return context.next();
 		}
 
+		if (is_native_tsrx_template_node(node.argument)) {
+			context.visit(/** @type {AST.Node} */ (node.argument), context.state);
+		}
+
 		if (is_inside_component_for_of(context.path)) {
-			validateComponentLoopReturnStatement(
+			validateTsrxLoopReturnStatement(
 				node,
 				context.state.analysis.module.filename,
 				context.state.collect ? context.state.analysis.errors : undefined,
@@ -2101,18 +2044,22 @@ const visitors = {
 			return;
 		}
 
-		validateComponentReturnStatement(
-			node,
-			context.state.analysis.module.filename,
-			context.state.collect ? context.state.analysis.errors : undefined,
-			context.state.analysis.comments,
-		);
+		if (is_inside_template_child(context.path)) {
+			if (!node.metadata?.invalid_tsrx_template_return) {
+				validateTsrxReturnStatement(
+					node,
+					context.state.analysis.module.filename,
+					context.state.collect ? context.state.analysis.errors : undefined,
+					context.state.analysis.comments,
+				);
+			}
+			return;
+		}
 
 		for (let i = context.path.length - 1; i >= 0; i--) {
 			const ancestor = context.path[i];
 
 			if (
-				ancestor.type === 'Component' ||
 				ancestor.type === 'FunctionExpression' ||
 				ancestor.type === 'ArrowFunctionExpression' ||
 				ancestor.type === 'FunctionDeclaration'
@@ -2137,7 +2084,7 @@ const visitors = {
 
 	BreakStatement(node, context) {
 		if (is_inside_component(context) && break_targets_component_loop(context.path)) {
-			validateComponentLoopBreakStatement(
+			validateTsrxLoopBreakStatement(
 				node,
 				context.state.analysis.module.filename,
 				context.state.collect ? context.state.analysis.errors : undefined,
@@ -2165,7 +2112,6 @@ const visitors = {
 			const ancestor = context.path[i];
 
 			if (
-				ancestor.type === 'Component' ||
 				ancestor.type === 'FunctionExpression' ||
 				ancestor.type === 'ArrowFunctionExpression' ||
 				ancestor.type === 'FunctionDeclaration'
@@ -2185,6 +2131,10 @@ const visitors = {
 
 	TryStatement(node, context) {
 		const { state } = context;
+		if (state.regular_js || node.metadata?.regular_js) {
+			return context.next({ ...state, regular_js: true, component: undefined });
+		}
+
 		if (!is_inside_component(context)) {
 			return context.next();
 		}
@@ -2237,8 +2187,8 @@ const visitors = {
 	},
 
 	ForInStatement(node, context) {
-		if (is_inside_component(context)) {
-			validateComponentUnsupportedLoopStatement(
+		if (is_inside_component(context) && !context.state.regular_js && !node.metadata?.regular_js) {
+			validateTsrxUnsupportedLoopStatement(
 				node,
 				context.state.analysis.module.filename,
 				context.state.collect ? context.state.analysis.errors : undefined,
@@ -2250,8 +2200,8 @@ const visitors = {
 	},
 
 	WhileStatement(node, context) {
-		if (is_inside_component(context)) {
-			validateComponentUnsupportedLoopStatement(
+		if (is_inside_component(context) && !context.state.regular_js && !node.metadata?.regular_js) {
+			validateTsrxUnsupportedLoopStatement(
 				node,
 				context.state.analysis.module.filename,
 				context.state.collect ? context.state.analysis.errors : undefined,
@@ -2263,8 +2213,8 @@ const visitors = {
 	},
 
 	DoWhileStatement(node, context) {
-		if (is_inside_component(context)) {
-			validateComponentUnsupportedLoopStatement(
+		if (is_inside_component(context) && !context.state.regular_js && !node.metadata?.regular_js) {
+			validateTsrxUnsupportedLoopStatement(
 				node,
 				context.state.analysis.module.filename,
 				context.state.collect ? context.state.analysis.errors : undefined,
@@ -2305,11 +2255,19 @@ const visitors = {
 	},
 
 	Tsrx(_, context) {
+		if (context.state.regular_js) {
+			return context.next();
+		}
+
 		mark_control_flow_has_template(context.path);
 		return context.next();
 	},
 
 	TsxCompat(node, context) {
+		if (context.state.regular_js) {
+			return context.next();
+		}
+
 		mark_control_flow_has_template(context.path);
 
 		const configured_compat_kinds = context.state.configured_compat_kinds;
@@ -2327,16 +2285,12 @@ const visitors = {
 	},
 
 	Element(node, context) {
-		if (!node.id) {
-			error(TEMPLATE_FRAGMENT_ERROR, context.state.analysis.module.filename, node);
+		if (context.state.regular_js || node.metadata?.regular_js) {
+			return context.next({ ...context.state, regular_js: true, component: undefined });
 		}
 
-		if (!is_inside_component(context) && !is_inside_tsrx_context(context.path)) {
-			error(
-				'Elements cannot be used outside of components',
-				context.state.analysis.module.filename,
-				node,
-			);
+		if (!node.id) {
+			error(TEMPLATE_FRAGMENT_ERROR, context.state.analysis.module.filename, node);
 		}
 
 		const { state, visit, path } = context;
@@ -2384,7 +2338,7 @@ const visitors = {
 			if (!is_dom_element && state.elements) {
 				state.elements.push(node);
 				// Mark dynamic elements as scoped by default since we can't match CSS at compile time
-				if (state.component?.css) {
+				if (/** @type {any} */ (state.component)?.metadata?.css) {
 					node.metadata.scoped = true;
 				}
 			}
@@ -2540,8 +2494,6 @@ const visitors = {
 					}
 				} else if (attr.type === 'SpreadAttribute') {
 					visit(attr.argument, state);
-				} else if (attr.type === 'RefAttribute') {
-					visit(attr.argument, state);
 				}
 			}
 			/** @type {(AST.Node | AST.Expression)[]} */
@@ -2551,7 +2503,11 @@ const visitors = {
 			/** @type {Set<string>} */
 			const child_component_names = new Set();
 			for (const child of node.children) {
-				if (child.type === 'Component' && child.id) {
+				if (
+					(child.type === 'FunctionDeclaration' || child.type === 'FunctionExpression') &&
+					is_native_tsrx_function_node(child) &&
+					child.id
+				) {
 					child_component_names.add(child.id.name);
 				}
 			}
@@ -2588,13 +2544,11 @@ const visitors = {
 			}
 
 			for (const child of node.children) {
-				if (child.type === 'Component') {
+				if (is_native_tsrx_function_node(child)) {
 					visit(child, state);
 				} else if (child.type !== 'EmptyStatement') {
 					implicit_children.push(
-						child.type === 'TSRXExpression' || child.type === 'Text' || child.type === 'Html'
-							? child.expression
-							: child,
+						child.type === 'TSRXExpression' || child.type === 'Text' ? child.expression : child,
 					);
 				}
 			}
@@ -2623,12 +2577,20 @@ const visitors = {
 	},
 
 	TSRXExpression(node, context) {
+		if (context.state.regular_js) {
+			return context.next();
+		}
+
 		mark_control_flow_has_template(context.path);
 
 		context.next();
 	},
 
 	Text(node, context) {
+		if (context.state.regular_js) {
+			return context.next();
+		}
+
 		mark_control_flow_has_template(context.path);
 
 		if (is_children_template_expression(/** @type {AST.Expression} */ (node.expression), context)) {

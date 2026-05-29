@@ -323,26 +323,14 @@ function get_descendant_elements(node, adjacent_only) {
 			}
 		}
 
-		if (/** @type {AST.Component} */ (current_node).body) {
-			for (const child of /** @type {AST.Component} */ (current_node).body) {
-				visit(child, depth + 1);
-			}
-		}
-
 		// For template nodes and interpolation expressions
 		if (
-			(current_node.type === 'TSRXExpression' ||
-				current_node.type === 'Text' ||
-				current_node.type === 'Html') &&
-			/** @type {AST.TSRXExpression | AST.Html | AST.TextNode} */ (current_node).expression &&
-			typeof (
-				/** @type {AST.TSRXExpression | AST.Html | AST.TextNode} */ (current_node).expression
-			) === 'object'
+			(current_node.type === 'TSRXExpression' || current_node.type === 'Text') &&
+			/** @type {AST.TSRXExpression | AST.TextNode} */ (current_node).expression &&
+			typeof (/** @type {AST.TSRXExpression | AST.TextNode} */ (current_node).expression) ===
+				'object'
 		) {
-			visit(
-				/** @type {AST.TSRXExpression | AST.Html | AST.TextNode} */ (current_node).expression,
-				depth + 1,
-			);
+			visit(/** @type {AST.TSRXExpression | AST.TextNode} */ (current_node).expression, depth + 1);
 		}
 	}
 
@@ -399,7 +387,6 @@ function can_render_dynamic_content(element, check_classes = false) {
  */
 function get_possible_element_siblings(node, direction, adjacent_only) {
 	const siblings = new Map();
-	// Parent has to be an Element not a Component
 	const parent = get_element_parent(node);
 
 	if (!parent) {
@@ -428,9 +415,9 @@ function get_possible_element_siblings(node, direction, adjacent_only) {
 	for (let i = start; i !== end; i += step) {
 		const sibling = container[i];
 
-		if (sibling.type === 'Element' || sibling.type === 'Component') {
+		if (sibling.type === 'Element') {
 			siblings.set(sibling, true);
-			// Don't break for dynamic elements (children, Components, dynamic components)
+			// Don't break for dynamic elements (children and dynamic components)
 			// as they can render dynamic content or might render nothing
 			const isDynamic = can_render_dynamic_content(sibling, false);
 			if (adjacent_only && !isDynamic) {
@@ -534,12 +521,6 @@ function apply_combinator(relative_selector, rest_selectors, rule, node, directi
 												break;
 											}
 											if (combinator.name === '+') break; // For adjacent, only check first element
-										} else if (subsequent.type === 'Component') {
-											// Skip components when looking for the target element
-											if (combinator.name === '+') {
-												// For adjacent, continue looking
-												continue;
-											}
 										}
 									}
 								}
@@ -987,6 +968,10 @@ function relative_selector_might_apply_to_node(relative_selector, rule, element,
 			}
 
 			case 'TypeSelector': {
+				if (is_element_dynamic(/** @type {AST.Element} */ (element))) {
+					break;
+				}
+
 				if (
 					element.id.type === 'Identifier' &&
 					element.id.name.toLowerCase() !== name.toLowerCase() &&
@@ -1106,11 +1091,11 @@ export function prune_css(css, element, styleClasses, topScopedClasses) {
 				node.metadata.used = true;
 			}
 
-			// Populate top_scoped_classes for truly standalone class selectors ({style} support).
+			// Populate top_scoped_classes for truly standalone class selectors.
 			// A class is standalone only when the entire effective selector chain (after resolving
 			// nesting and stripping :global) is a single RelativeSelector with a single ClassSelector.
 			// This prevents classes from compound selectors like `.wrapper .nested` or selectors
-			// inside :global() from being treated as valid {style} targets.
+			// inside :global() from being exported through style refs.
 			if (selectors.length === 1) {
 				const sole_selector = selectors[0];
 				if (

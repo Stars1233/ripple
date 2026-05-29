@@ -11,7 +11,6 @@ import type {
 	JsxTransformContext,
 	JsxTransformOptions,
 	JsxTransformResult,
-	componentToFunctionDeclaration,
 	createJsxTransform,
 } from './jsx-platform';
 
@@ -23,7 +22,19 @@ export type {
 	JsxTransformOptions,
 	JsxTransformResult,
 };
-export { createJsxTransform, componentToFunctionDeclaration };
+export { createJsxTransform };
+
+export function collectStyleRefAttributes(node: any, refs?: any[]): any[];
+export function createStyleClassMap(component: any, css: any): AST.ObjectExpression;
+export function createStyleRefSetupStatements(
+	refAttributes: any[],
+	styleMap: AST.Expression,
+	options?: {
+		allowMutableRefTarget?: boolean;
+		createTempIdentifier?: () => AST.Identifier;
+		visitExpression?: (expression: AST.Expression) => AST.Expression;
+	},
+): AST.Statement[];
 
 /**
  * Compile error interface
@@ -77,10 +88,11 @@ interface BaseNodeMetaData {
 	has_continue?: boolean;
 	is_reactive?: boolean;
 	lone_return?: boolean;
+	regular_js?: boolean;
+	returned_tsrx_child?: boolean;
 	forceMapping?: boolean;
 	lazy_id?: string;
 	disable_verification?: boolean;
-	lazy_param_is_component?: boolean;
 	lazy_param_binding_mappings?: Array<{
 		source: AST.Identifier;
 		generated: AST.Identifier | AST.Literal;
@@ -88,11 +100,11 @@ interface BaseNodeMetaData {
 }
 
 interface FunctionMetaData extends BaseNodeMetaData {
-	// needed for volar tokens to recognize component functions
-	is_component?: boolean;
+	native_tsrx_function?: boolean;
 	is_method?: boolean;
 	tracked?: boolean;
 	has_lazy_descendants?: boolean;
+	synthetic_children?: boolean;
 }
 
 // Strip parent, loc, and range from TSESTree nodes to match @sveltejs/acorn-typescript output
@@ -139,6 +151,13 @@ declare module 'estree' {
 	interface SimpleCallExpression {
 		metadata: BaseNodeMetaData & {
 			hash?: string;
+		};
+	}
+
+	interface ReturnStatement {
+		metadata: BaseNodeMetaData & {
+			invalid_tsrx_template_return?: boolean;
+			generated_loop_continue_return?: boolean;
 		};
 	}
 
@@ -204,26 +223,19 @@ declare module 'estree' {
 
 	// Include TypeScript node types and TSRX-specific nodes in NodeMap
 	interface NodeMap {
-		Component: Component;
 		Tsx: Tsx;
 		Tsrx: Tsrx;
 		TsxCompat: TsxCompat;
 		TSRXExpression: TSRXExpression;
-		Html: Html;
-		Style: Style;
 		Element: Element;
 		Text: TextNode;
 		Attribute: Attribute;
-		RefAttribute: RefAttribute;
-		RefExpression: RefExpression;
 		SpreadAttribute: SpreadAttribute;
 		ParenthesizedExpression: ParenthesizedExpression;
 		ScriptContent: ScriptContent;
 	}
 
 	interface ExpressionMap {
-		Style: Style;
-		RefExpression: RefExpression;
 		Text: TextNode;
 		JSXEmptyExpression: ESTreeJSX.JSXEmptyExpression;
 		ParenthesizedExpression: ParenthesizedExpression;
@@ -319,25 +331,6 @@ declare module 'estree' {
 		trailingComments?: AST.Comment[] | undefined;
 	}
 
-	/**
-	 * TSRX custom interfaces and types section
-	 */
-	interface Component extends AST.BaseNode {
-		type: 'Component';
-		// null is for anonymous components, e.g. `component(props) => {}`
-		id: AST.Identifier | null;
-		params: AST.Pattern[];
-		body: AST.Node[];
-		css: CSS.StyleSheet | null;
-		metadata: BaseNodeMetaData & {
-			arrow?: boolean;
-			topScopedClasses?: TopScopedClasses;
-			styleClasses?: StyleClasses;
-		};
-		default: boolean;
-		typeParameters?: AST.TSTypeParameterDeclaration;
-	}
-
 	interface Tsx extends AST.BaseNode {
 		type: 'Tsx';
 		attributes: Array<any>;
@@ -367,17 +360,6 @@ declare module 'estree' {
 		unclosed?: boolean;
 		openingElement: ESTreeJSX.JSXOpeningElement;
 		closingElement: ESTreeJSX.JSXClosingElement;
-	}
-
-	interface Html extends AST.BaseNode {
-		type: 'Html';
-		expression: AST.Expression;
-	}
-
-	interface Style extends AST.BaseExpression {
-		type: 'Style';
-		value: AST.Literal;
-		loc?: AST.SourceLocation;
 	}
 
 	export interface TSRXExpression extends AST.BaseExpression {
@@ -445,49 +427,23 @@ declare module 'estree' {
 		};
 	}
 
-	interface RefAttribute extends AST.BaseNode {
-		type: 'RefAttribute';
-		argument: AST.Expression;
-		loc?: AST.SourceLocation;
-	}
-
-	interface RefExpression extends AST.BaseNode {
-		type: 'RefExpression';
-		argument: AST.Expression;
-		loc?: AST.SourceLocation;
-	}
-
 	interface SpreadAttribute extends AST.BaseNode {
 		type: 'SpreadAttribute';
 		argument: AST.Expression;
 		loc?: AST.SourceLocation;
 	}
 
-	/**
-	 * TSRX's extended Declaration type that includes Component
-	 * Use this instead of Declaration when you need Component support
-	 */
-	export type TSRXDeclaration = AST.Declaration | Component | AST.TSDeclareFunction;
+	export type TSRXDeclaration = AST.Declaration | AST.TSDeclareFunction;
 
-	/**
-	 * TSRX's extended ExportNamedDeclaration with Component support
-	 */
 	interface TSRXExportNamedDeclaration extends Omit<AST.ExportNamedDeclaration, 'declaration'> {
 		declaration?: TSRXDeclaration | null | undefined;
 	}
 
-	/**
-	 * TSRX's extended Program with Component support
-	 */
 	interface TSRXProgram extends Omit<Program, 'body'> {
-		body: (Program['body'][number] | Component | FunctionExpression)[];
+		body: (Program['body'][number] | FunctionExpression)[];
 	}
 
-	interface TSRXProperty extends Omit<AST.Property, 'value'> {
-		value: AST.Property['value'] | Component;
-	}
-
-	export type TSRXAttribute = AST.Attribute | AST.SpreadAttribute | AST.RefAttribute;
+	export type TSRXAttribute = AST.Attribute | AST.SpreadAttribute;
 
 	export type TSRXStatement = AST.Statement | TSESTree.Statement;
 
@@ -692,7 +648,6 @@ declare module 'estree-jsx' {
 	}
 
 	interface JSXExpressionContainer {
-		html?: boolean;
 		text?: boolean;
 		style?: boolean;
 	}
@@ -1213,7 +1168,6 @@ export type DeclarationKind =
 	| 'function'
 	| 'param'
 	| 'rest_param'
-	| 'component'
 	| 'import'
 	| 'module'
 	| 'using'
@@ -1268,6 +1222,7 @@ export interface Binding {
 		lazy_array_index?: number;
 		lazy_array_source_tracked?: boolean;
 		lazy_array_rest?: boolean;
+		typeAnnotation?: AST.TypeNode;
 	} | null;
 	/** Kind of binding */
 	kind: BindingKind;
@@ -1378,10 +1333,11 @@ export interface BaseState {
 	ancestor_server_block: AST.TSModuleDeclaration | undefined;
 	inside_head?: boolean;
 	keep_component_style?: boolean;
+	regular_js?: boolean;
 
 	/** Common For All */
 	to_ts: boolean;
-	component?: AST.Component;
+	component?: AST.Function;
 }
 
 export interface AnalysisState extends BaseState {
@@ -1425,6 +1381,7 @@ export interface TransformServerState extends BaseState {
 	template_child?: boolean;
 	skip_regular_blocks?: boolean;
 	in_regular_block?: boolean;
+	is_tsrx_element?: boolean;
 	jsx_to_tsrx_element?: boolean;
 }
 
@@ -1461,6 +1418,7 @@ export interface TransformClientState extends BaseState {
 	return_flags?: Map<AST.ReturnStatement, { name: string; tracked: boolean }>;
 	is_tsrx_element?: boolean;
 	jsx_to_tsrx_element?: boolean;
+	template_child?: boolean;
 	ref_target_type?: AST.TypeNode;
 }
 
