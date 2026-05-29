@@ -17,6 +17,12 @@ const OLD_COMPONENT_SYNTAX_HTML = highlight_tsrx(
 }`,
 );
 
+const SINGLE_ELEMENT_RETURN_HTML = highlight_tsrx(
+	`function Button({ label, onClick }: Props) {
+  return <button {onClick}>{label}</button>;
+}`,
+);
+
 const EXPRESSION_TSRX_HTML = highlight_tsrx(
 	`function Profile({ user }: { user: User | null }) {
   if (!user) return null;
@@ -154,7 +160,13 @@ export function BlogSimplifyingTsrxAfterFeedbackPage() {
 							<code innerHTML={OLD_COMPONENT_SYNTAX_HTML} />
 						</pre>
 						<p>
-							{'Now TSRX is an expression you return from an ordinary function. Once the expression opens, its body is statement-driven: you can declare values, branch with '}
+							{'Now TSRX is an expression you return from an ordinary function. A component can return a single element directly when that is all it needs.'}
+						</p>
+						<pre class="code-block">
+							<code innerHTML={SINGLE_ELEMENT_RETURN_HTML} />
+						</pre>
+						<p>
+							{'When you return a fragment, its body is statement-driven: you can declare values, branch with '}
 							<code>{'if'}</code>
 							{', loop with '}
 							<code>{'for...of'}</code>
