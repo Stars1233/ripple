@@ -147,18 +147,78 @@ static bool is_identifier_continue(int32_t c) {
   return is_identifier_start(c) || iswdigit(c);
 }
 
-static bool scan_identifier_for_jsx_statement_keyword(TSLexer *lexer) {
-  char word[16];
+static void scan_identifier_word(TSLexer *lexer, char *word, size_t word_size) {
   unsigned length = 0;
 
   while (is_identifier_continue(lexer->lookahead)) {
-    if (length < sizeof(word) - 1) {
+    if (length < word_size - 1) {
       word[length++] = (char)lexer->lookahead;
     }
     advance(lexer);
   }
 
   word[length] = '\0';
+}
+
+static bool scan_jsx_statement_spacing_and_comments(TSLexer *lexer) {
+  for (;;) {
+    while (iswspace(lexer->lookahead)) {
+      advance(lexer);
+    }
+
+    if (lexer->lookahead == '/') {
+      advance(lexer);
+
+      if (lexer->lookahead == '/') {
+        advance(lexer);
+        while (lexer->lookahead != 0 && lexer->lookahead != '\n') {
+          advance(lexer);
+        }
+      } else if (lexer->lookahead == '*') {
+        advance(lexer);
+        while (true) {
+          if (lexer->lookahead == 0) return false;
+          if (lexer->lookahead == '*') {
+            advance(lexer);
+            if (lexer->lookahead == '/') {
+              advance(lexer);
+              break;
+            }
+          } else {
+            advance(lexer);
+          }
+        }
+      } else {
+        return false;
+      }
+    } else {
+      return true;
+    }
+  }
+}
+
+static bool scan_next_jsx_identifier_equals(TSLexer *lexer, const char *expected) {
+  char word[16];
+
+  if (!scan_jsx_statement_spacing_and_comments(lexer)) return false;
+  if (!is_identifier_start(lexer->lookahead)) return false;
+
+  scan_identifier_word(lexer, word, sizeof(word));
+  return strcmp(word, expected) == 0;
+}
+
+static bool scan_identifier_for_jsx_statement_keyword(TSLexer *lexer) {
+  char word[16];
+
+  scan_identifier_word(lexer, word, sizeof(word));
+
+  if (strcmp(word, "abstract") == 0) {
+    return scan_next_jsx_identifier_equals(lexer, "class");
+  }
+
+  if (strcmp(word, "async") == 0) {
+    return scan_next_jsx_identifier_equals(lexer, "function");
+  }
 
   return strcmp(word, "break") == 0 ||
          strcmp(word, "class") == 0 ||

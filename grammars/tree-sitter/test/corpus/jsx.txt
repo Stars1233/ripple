@@ -519,6 +519,39 @@ function WithControlFlow(x) {
             children: (jsx_text)
             close_tag: (jsx_closing_fragment)))))))
 
+==========================================
+Function Return Async Native Declaration
+==========================================
+
+function WithAsyncDeclaration() {
+  return <>
+    async function load() {
+      return 1;
+    }
+    async work
+  </>;
+}
+
+---
+
+(program
+  (expression_statement
+    (function_expression
+      name: (identifier)
+      parameters: (formal_parameters)
+      body: (statement_block
+        (return_statement
+          (jsx_fragment
+            open_tag: (jsx_opening_fragment)
+            children: (function_declaration
+              name: (identifier)
+              parameters: (formal_parameters)
+              body: (statement_block
+                (return_statement
+                  (number))))
+            children: (jsx_text)
+            close_tag: (jsx_closing_fragment)))))))
+
 ==================
 Server Module
 ==================
