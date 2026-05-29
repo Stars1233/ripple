@@ -3059,7 +3059,7 @@ export function optionalFn(bar: string, baz?: string) {
 			expect(code).not.toMatch(/<Child\s+class(Name)?="/);
 		});
 
-		it('passes style ref classes through a composite component prop', () => {
+		it('passes style expression classes through a composite component prop', () => {
 			// `className` here is a prop on a composite component, not a DOM
 			// attribute — every target passes prop names through unchanged,
 			// so the assertion is cross-platform regardless of the host-
@@ -3073,13 +3073,13 @@ export function optionalFn(bar: string, baz?: string) {
 					</style>
 				</>; }
 
-				export function App() { return <>
-					let styles;
-					<Badge className={styles.highlight} />
-
-					<style ref={(s) => styles = s}>
+				export function App() {
+					const styles = <style>
 						.highlight { background: green; }
-					</style>
+					</style>;
+
+					return <>
+					<Badge className={styles.highlight} />
 				</>; }`,
 				'App.tsrx',
 			);
@@ -3091,19 +3091,19 @@ export function optionalFn(bar: string, baz?: string) {
 			expect(code).toContain('className={styles.highlight}');
 		});
 
-		it('passes style ref classes through a composite component prop when the element has children', () => {
+		it('passes style expression classes through a composite component prop when the element has children', () => {
 			const { code, css, cssHash } = compile(
 				`function Child({ className }: { className?: string }) { return <>
 						<span class={className}>"hello world"</span>
 					</>; }
 
-					export function App() { return <>
-						let styles;
-						<Child className={styles.container}>"hello world"</Child>
-
-						<style ref={(s) => styles = s}>
+					export function App() {
+						const styles = <style>
 							.container { color: red; }
-						</style>
+						</style>;
+
+						return <>
+						<Child className={styles.container}>"hello world"</Child>
 					</>; }`,
 				'App.tsrx',
 			);
@@ -3115,15 +3115,15 @@ export function optionalFn(bar: string, baz?: string) {
 			expect(code).toContain('className={styles.container}');
 		});
 
-		it('passes hyphenated style ref class names through a composite component prop', () => {
+		it('passes hyphenated style expression class names through a composite component prop', () => {
 			const { code, css, cssHash } = compile(
-				`export function App() { return <>
-					let styles;
-					<Child cls={styles['accent-tone']} />
-
-					<style ref={(s) => styles = s}>
+				`export function App() {
+					const styles = <style>
 						.accent-tone { color: red; }
-					</style>
+					</style>;
+
+					return <>
+					<Child cls={styles['accent-tone']} />
 				</>; }`,
 				'App.tsrx',
 			);

@@ -13,14 +13,18 @@
 import {
 	builders,
 	escape,
+	analyzeCss,
 	isEventAttribute,
 	isInsideComponent as is_inside_component,
 	renderCssResult,
 	renderStylesheets,
+	prepareStylesheetForRender,
 	pruneCss,
 	collectStyleRefAttributes,
 	createStyleClassMap,
+	createStyleClassMapFromStylesheet,
 	createStyleRefSetupStatements,
+	getStyleElementStylesheet,
 	CSS_HASH_IDENTIFIER,
 	obfuscateIdentifier,
 	BLOCK_CLOSE,
@@ -53,6 +57,7 @@ import {
 	is_static_native_tsrx_function_call,
 	is_native_tsrx_template_node,
 	is_tsrx_component_function,
+	is_style_element,
 	simple_hash,
 	strong_hash,
 	flatten_switch_consequent,
@@ -129,6 +134,50 @@ function get_component_css(state) {
  */
 function get_component_css_hash(state) {
 	return get_component_css(state)?.hash ?? null;
+}
+
+/**
+ * @param {AST.Element} node
+ * @param {TransformServerContext} context
+ * @returns {AST.ObjectExpression | null}
+ */
+function build_style_class_map_expression(node, context) {
+	const stylesheet = getStyleElementStylesheet(node);
+	if (!stylesheet) {
+		return null;
+	}
+
+	analyzeCss(stylesheet);
+	context.state.stylesheets.push(prepareStylesheetForRender(stylesheet));
+	return create_server_style_class_map_expression(stylesheet);
+}
+
+/**
+ * @param {AST.CSS.StyleSheet} stylesheet
+ * @returns {AST.ObjectExpression}
+ */
+function create_server_style_class_map_expression(stylesheet) {
+	const style_map = createStyleClassMapFromStylesheet(stylesheet);
+	return b.object(
+		style_map.properties.map((property) => {
+			if (property.type !== 'Property') {
+				return property;
+			}
+			return b.prop(
+				'get',
+				/** @type {AST.Expression} */ (property.key),
+				b.function(
+					null,
+					[],
+					b.block([
+						b.stmt(b.call('_$_.output_register_css', b.literal(stylesheet.hash))),
+						b.return(/** @type {AST.Expression} */ (property.value)),
+					]),
+				),
+				property.computed,
+			);
+		}),
+	);
 }
 
 /**
@@ -1775,6 +1824,21 @@ const visitors = {
 
 	Element(node, context) {
 		const { state, visit } = context;
+
+		if (
+			is_style_element(node) &&
+			(state.regular_js ||
+				is_native_tsrx_value_position(context.path) ||
+				is_regular_js_statement_position(context.path))
+		) {
+			const expression = build_style_class_map_expression(node, context);
+			if (expression) {
+				if (is_regular_js_statement_position(context.path)) {
+					return b.stmt(expression);
+				}
+				return expression;
+			}
+		}
 
 		if (
 			state.regular_js ||

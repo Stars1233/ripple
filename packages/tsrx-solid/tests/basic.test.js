@@ -493,14 +493,15 @@ describe('@tsrx/solid basic', () => {
 			expect(code).toMatch(/class="wrapper tsrx-[a-z0-9]+"/);
 		});
 
-		it('supports style refs for scoped class maps', () => {
+		it('supports style expressions for scoped class maps', () => {
 			const { code } = compile(
-				`export function App() { return <>
-					let styles;
-					<div class={styles.root}>{'hi'}</div>
-					<style ref={(s) => styles = s}>
+				`export function App() {
+					const styles = <style>
 						.root { color: blue; }
-					</style>
+					</style>;
+
+					return <>
+					<div class={styles.root}>{'hi'}</div>
 				</>; }`,
 				'App.tsrx',
 			);

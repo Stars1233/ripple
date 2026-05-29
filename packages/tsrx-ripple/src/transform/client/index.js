@@ -27,6 +27,7 @@ import tsx from 'esrap/languages/tsx';
 import {
 	builders,
 	clone_expression_node,
+	analyzeCss,
 	IS_CONTROLLED,
 	IS_INDEXED,
 	TEMPLATE_FRAGMENT,
@@ -38,10 +39,13 @@ import {
 	obfuscateIdentifier,
 	object,
 	renderCssResult,
+	prepareStylesheetForRender,
 	pruneCss,
 	collectStyleRefAttributes,
 	createStyleClassMap,
+	createStyleClassMapFromStylesheet,
 	createStyleRefSetupStatements,
+	getStyleElementStylesheet,
 	getOriginalEventName,
 	isEventAttribute,
 	isInsideComponent as is_inside_component,
@@ -92,6 +96,7 @@ import {
 	is_static_native_tsrx_function_call,
 	is_native_tsrx_template_node,
 	is_tsrx_component_function,
+	is_style_element,
 	rewrite_lazy_member_base,
 	should_guard_regular_js_statement,
 	strip_tsrx_style_elements,
@@ -157,6 +162,22 @@ function get_component_css(state) {
  */
 function get_component_css_hash(state) {
 	return get_component_css(state)?.hash ?? null;
+}
+
+/**
+ * @param {AST.Element} node
+ * @param {TransformClientContext} context
+ * @returns {AST.ObjectExpression | null}
+ */
+function build_style_class_map_expression(node, context) {
+	const stylesheet = getStyleElementStylesheet(node);
+	if (!stylesheet) {
+		return null;
+	}
+
+	analyzeCss(stylesheet);
+	context.state.stylesheets.push(prepareStylesheetForRender(stylesheet));
+	return createStyleClassMapFromStylesheet(stylesheet);
 }
 
 /**
@@ -2219,6 +2240,21 @@ const visitors = {
 
 	Element(node, context) {
 		const { state, visit } = context;
+
+		if (
+			is_style_element(node) &&
+			(state.regular_js ||
+				is_native_tsrx_value_position(context.path) ||
+				is_regular_js_statement_position(context.path))
+		) {
+			const expression = build_style_class_map_expression(node, context);
+			if (expression) {
+				if (is_regular_js_statement_position(context.path)) {
+					return b.stmt(expression);
+				}
+				return expression;
+			}
+		}
 
 		if (state.to_ts) {
 			const fragment = /** @type {AST.Tsrx} */ (

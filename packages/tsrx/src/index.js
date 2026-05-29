@@ -170,7 +170,9 @@ export {
 export {
 	collect_style_ref_attributes as collectStyleRefAttributes,
 	create_style_class_map as createStyleClassMap,
+	create_style_class_map_from_stylesheet as createStyleClassMapFromStylesheet,
 	create_style_ref_setup_statements as createStyleRefSetupStatements,
+	get_style_element_stylesheet as getStyleElementStylesheet,
 } from './transform/style-ref.js';
 export {
 	clone_expression_node,

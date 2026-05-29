@@ -30,7 +30,7 @@ function MyComponent() {
 }
 ```
 
-::: info The `<style>` element must be top-level within a returned TSRX template.
+::: info Bare scoped `<style>` blocks should be top-level within a returned TSRX template. Assign a `<style>` expression to a variable when you want a reusable class map.
 :::
 
 ## Dynamic Classes
@@ -205,12 +205,11 @@ function Child() {
 
 </Code>
 
-## Passing Scoped Classes to Child Components (`<style ref>`)
+## Passing Scoped Classes to Child Components (`<style>` Expressions)
 
 Scoped styles only apply to DOM elements within the same component. If you want a
-parent to influence how a child component looks, expose the scoped class map from
-the component's `<style>` block with a ref and pass entries from that map as
-props.
+parent to influence how a child component looks, assign a `<style>` expression to
+a variable and pass entries from that class map as props.
 
 Each map entry contains both the CSS scope hash and the class name (for example
 `"ripple-abc123 highlight"`), which the child applies to its own elements via the
@@ -227,17 +226,13 @@ function Child({ className }: { className: string }) {
 }
 
 function Parent() {
-  let styles;
-  return <>
-  <Child className={styles.highlight} />
-
-  <style ref={(s) => styles = s}>
+  const styles = <style>
     .highlight {
       color: red;
     }
-  </style>
+  </style>;
 
-  </>;
+  return <Child className={styles.highlight} />;
 }
 ```
 
@@ -253,26 +248,22 @@ function Child({ primary, secondary }: { primary: string; secondary: string }) {
 }
 
 function Parent() {
-  let styles;
-  return <>
-  <Child primary={styles.primary} secondary={styles.secondary} />
-
-  <style ref={(s) => styles = s}>
+  const styles = <style>
     .primary {
       color: blue;
     }
     .secondary {
       color: gray;
     }
-  </style>
+  </style>;
 
-  </>;
+  return <Child primary={styles.primary} secondary={styles.secondary} />;
 }
 ```
 
 ### With Dynamic Components
 
-Style refs also work when rendering dynamic components with `<@Component />`:
+Style expression maps also work when rendering dynamic components with `<@Component />`:
 
 ```ripple
 import { track } from 'ripple';
@@ -285,17 +276,15 @@ function Child({ cls }: { cls: string }) {
 }
 
 function Parent() {
-  let styles;
-  return <>
-  let &[Dynamic] = track(() => Child);
-  <@Dynamic cls={styles.text} />
-
-  <style ref={(s) => styles = s}>
+  const styles = <style>
     .text {
       color: red;
     }
-  </style>
+  </style>;
 
+  return <>
+  let &[Dynamic] = track(() => Child);
+  <@Dynamic cls={styles.text} />
   </>;
 }
 ```
@@ -320,38 +309,28 @@ function Card({ className }: { className?: string }) {
 }
 
 function App() {
-  let styles;
-  return <>
-  <Card className={styles.themed} />
-
-  <style ref={(s) => styles = s}>
+  const styles = <style>
     .themed {
       background: purple;
     }
-  </style>
+  </style>;
 
-  </>;
+  return <Card className={styles.themed} />;
 }
 ```
 
 ### Standalone Requirement
 
-Classes exposed by a style ref map come from **standalone** selectors in the
-`<style>` block. Classes that only appear inside compound, descendant, or
+Classes exposed by a style expression map come from **standalone** selectors in
+the `<style>` block. Classes that only appear inside compound, descendant, or
 combinator selectors are not exported on the map.
 
 If a class appears both standalone and in a descendant selector, it can still be
-used through the style ref map:
+used through the style expression map:
 
 ```ripple
 function App() {
-  let styles;
-  return <>
-  <div class="parent">
-    <Child cls={styles.dual} />
-  </div>
-
-  <style ref={(s) => styles = s}>
+  const styles = <style>
     /* Standalone rule — exposes styles.dual */
     .dual {
       color: blue;
@@ -361,8 +340,12 @@ function App() {
     .parent .dual {
       font-weight: bold;
     }
-  </style>
+  </style>;
 
+  return <>
+  <div class="parent">
+    <Child cls={styles.dual} />
+  </div>
   </>;
 }
 ```
@@ -372,19 +355,15 @@ The following will **not** work because the class has no standalone rule:
 ```ripple
 // ❌ .nested only exists in a descendant selector
 function App() {
-  let styles;
-  return <>
-  <Child cls={styles.nested} />
-
-  <style ref={(s) => styles = s}>
+  const styles = <style>
     .wrapper .nested {
       color: red;
     }
-  </style>
+  </style>;
 
-  </>;
+  return <Child cls={styles.nested} />;
 }
 ```
 
-The map is available wherever you assign it, so declare the variable before the
-returned template when you need to read it earlier in the markup.
+The map is available wherever the variable is in scope, so declare it before the
+returned template when you need to pass classes into child components.

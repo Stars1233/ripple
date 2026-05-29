@@ -3,6 +3,8 @@
 import * as b from '../utils/builders.js';
 import { clone_expression_node, clone_identifier } from './jsx/ast-builders.js';
 
+const regex_backslash_and_following_character = /\\(.)/g;
+
 /**
  * @typedef {{
  *   allowMutableRefTarget?: boolean;
@@ -19,7 +21,7 @@ import { clone_expression_node, clone_identifier } from './jsx/ast-builders.js';
 export function create_style_class_map(component, css) {
 	const hash = css?.hash ?? null;
 	const top_scoped_classes = /** @type {Map<string, any>} */ (
-		component?.metadata?.topScopedClasses ?? new Map()
+		component?.metadata?.topScopedClasses ?? collect_style_class_map_entries(css)
 	);
 	const class_names = [...top_scoped_classes.keys()].sort();
 
@@ -27,6 +29,28 @@ export function create_style_class_map(component, css) {
 		class_names.map((class_name) =>
 			b.prop('init', b.literal(class_name), b.literal(hash ? `${hash} ${class_name}` : class_name)),
 		),
+	);
+}
+
+/**
+ * @param {any} css
+ * @returns {AST.ObjectExpression}
+ */
+export function create_style_class_map_from_stylesheet(css) {
+	return create_style_class_map(
+		{ metadata: { topScopedClasses: collect_style_class_map_entries(css) } },
+		css,
+	);
+}
+
+/**
+ * @param {any} style_element
+ * @returns {any | null}
+ */
+export function get_style_element_stylesheet(style_element) {
+	return (
+		style_element?.children?.find?.((/** @type {any} */ child) => child.type === 'StyleSheet') ??
+		null
 	);
 }
 
@@ -232,4 +256,71 @@ function is_function_or_class_boundary(node) {
 		node?.type === 'ClassDeclaration' ||
 		node?.type === 'ClassExpression'
 	);
+}
+
+/**
+ * @param {any} css
+ * @returns {Map<string, any>}
+ */
+function collect_style_class_map_entries(css) {
+	const entries = new Map();
+	collect_rule_class_map_entries(css, entries);
+	return entries;
+}
+
+/**
+ * @param {any} node
+ * @param {Map<string, any>} entries
+ * @returns {void}
+ */
+function collect_rule_class_map_entries(node, entries) {
+	if (!node || typeof node !== 'object') return;
+
+	if (Array.isArray(node)) {
+		for (const child of node) collect_rule_class_map_entries(child, entries);
+		return;
+	}
+
+	if (node.type === 'ComplexSelector') {
+		const class_selector = get_standalone_class_selector(node);
+		if (class_selector) {
+			const name = class_selector.name.replace(regex_backslash_and_following_character, '$1');
+			if (!entries.has(name)) {
+				entries.set(name, {
+					start: class_selector.start,
+					end: class_selector.end,
+					selector: class_selector,
+				});
+			}
+		}
+	}
+
+	if (is_function_or_class_boundary(node)) {
+		return;
+	}
+
+	for (const key of Object.keys(node)) {
+		if (key === 'loc' || key === 'start' || key === 'end' || key === 'metadata') {
+			continue;
+		}
+		collect_rule_class_map_entries(node[key], entries);
+	}
+}
+
+/**
+ * @param {any} complex_selector
+ * @returns {any | null}
+ */
+function get_standalone_class_selector(complex_selector) {
+	if (complex_selector?.children?.length !== 1) return null;
+	const relative_selector = complex_selector.children[0];
+	if (
+		relative_selector?.metadata?.is_global ||
+		relative_selector?.metadata?.is_global_like ||
+		relative_selector?.selectors?.length !== 1
+	) {
+		return null;
+	}
+	const selector = relative_selector.selectors[0];
+	return selector?.type === 'ClassSelector' ? selector : null;
 }

@@ -180,14 +180,11 @@ const STYLE_COMPOSITION_HTML = highlight_tsrx(
 }
 
 function App() {
-  let styles;
-  return <>
-    <Badge className={styles.highlight} />
+  const styles = <style>
+    .highlight { background: #e8f5e9; color: #2e7d32; }
+  </style>;
 
-    <style ref={(s) => styles = s}>
-      .highlight { background: #e8f5e9; color: #2e7d32; }
-    </style>
-  </>;
+  return <Badge className={styles.highlight} />;
 }`,
 );
 
@@ -546,9 +543,9 @@ export function DocsPage() {
 						<section class="doc-section" id="style-composition">
 							<h2 class="section-heading">{'Style composition'}</h2>
 							<p class="section-body">
-								{'Because scoped styles don\'t cross component boundaries, a '}
-								<code class="inline-code">{'<style ref>'}</code>
-								{' callback can expose a class map for passing scoped class names to child components as props. '}
+								{'Because scoped styles don\'t cross component boundaries, assigning a '}
+								<code class="inline-code">{'<style>'}</code>
+								{' expression to a variable exposes a class map for passing scoped class names to child components as props. '}
 								<code class="inline-code">{'styles.highlight'}</code>
 								{' contains both the scope hash and the class name, which the child applies via its '}
 								<code class="inline-code">{'class'}</code>
@@ -558,7 +555,7 @@ export function DocsPage() {
 								<code innerHTML={STYLE_COMPOSITION_HTML} />
 							</pre>
 							<p class="section-body">
-								{'Classes exposed on the ref map come from standalone selectors in the component\'s '}
+								{'Classes exposed on the map come from standalone selectors in the '}
 								<code class="inline-code">{'<style>'}</code>
 								{' block. Classes that only appear in compound or descendant selectors are not exported on the map.'}
 							</p>

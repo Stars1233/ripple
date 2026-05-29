@@ -482,7 +482,7 @@ export function SpecificationPage() {
 						<section class="doc-section" id="style">
 							<h2 class="section-heading">{'4.6 Style Elements and Style Identifiers'}</h2>
 							<p class="section-body">
-								{'The syntax of raw style elements is part of core TSRX. The host is responsible for the meaning of selector scoping, generated class names, selector eligibility, style refs, and stylesheet registration.'}
+								{'The syntax of raw style elements is part of core TSRX. The host is responsible for the meaning of selector scoping, generated class names, selector eligibility, style expression class maps, and stylesheet registration.'}
 							</p>
 							<pre class="code-block plain">
 								<code>{STYLE_GRAMMAR}</code>
@@ -536,7 +536,7 @@ export function SpecificationPage() {
 							<ul class="spec-list">
 								<li>{'How functions returning TSRX lower into executable host code.'}</li>
 								<li>{'How lazy destructuring is realized at runtime.'}</li>
-								<li>{'How style refs expose generated or scoped class names.'}</li>
+								<li>{'How style expressions expose generated or scoped class names.'}</li>
 								<li>
 									{'How compatibility kinds are configured for '}
 									<code class="inline-code">{'<tsx:kind>'}</code>

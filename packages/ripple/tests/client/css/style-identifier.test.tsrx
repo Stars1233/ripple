@@ -1,23 +1,27 @@
 import { track } from 'ripple';
 import { compile } from '@tsrx/ripple';
 
-describe('style refs', () => {
+const external_styles = <style>
+	.external {
+		color: tomato;
+	}
+</style>;
+
+describe('style class maps', () => {
 	describe('basic usage with components', () => {
-		it('passes scoped classes to a child component via a style ref', () => {
+		it('passes scoped classes to a child component via a style expression', () => {
 			function Child({ className }: { className: string }) {
 				return <><div class={className}>{'styled child'}</div></>;
 			}
 
 			function Parent() {
-				let styles;
-				return <>
-					<Child className={styles.highlight} />
-					<style ref={(s) => (styles = s)}>
-						.highlight {
-							color: red;
-						}
-					</style>
-				</>;
+				const styles = <style>
+					.highlight {
+						color: red;
+					}
+				</style>;
+
+				return <><Child className={styles.highlight} /></>;
 			}
 
 			render(Parent);
@@ -30,7 +34,7 @@ describe('style refs', () => {
 			expect(classes.some((cls: string) => cls === 'highlight')).toBe(true);
 		});
 
-		it('passes multiple style ref classes to a child component', () => {
+		it('passes multiple style expression classes to a child component', () => {
 			function Child({ primary, secondary }: { primary: string; secondary: string }) {
 				return <>
 					<div class={primary}>{'primary'}</div>
@@ -39,18 +43,16 @@ describe('style refs', () => {
 			}
 
 			function Parent() {
-				let styles;
-				return <>
-					<Child primary={styles.primary} secondary={styles.secondary} />
-					<style ref={(s) => (styles = s)}>
-						.primary {
-							color: blue;
-						}
-						.secondary {
-							color: gray;
-						}
-					</style>
-				</>;
+				const styles = <style>
+					.primary {
+						color: blue;
+					}
+					.secondary {
+						color: gray;
+					}
+				</style>;
+
+				return <><Child primary={styles.primary} secondary={styles.secondary} /></>;
 			}
 
 			render(Parent);
@@ -70,44 +72,43 @@ describe('style refs', () => {
 			expect(spanClasses.some((cls: string) => cls === 'secondary')).toBe(true);
 		});
 
-		it('allows style ref classes on child components with children', () => {
+		it('allows style expression classes on child components with children', () => {
 			const source = `
 function Child({ className }) { return <>
 	<div class={className}>"hello world"</div>
 </>; }
 function App() {
-	let styles;
+	const styles = <style>
+		.container {
+			color: red;
+		}
+	</style>;
+
 	return <>
 		<Child className={styles.container}>"hello world"</Child>
-
-		<style ref={(s) => styles = s}>
-			.container {
-				color: red;
-			}
-		</style>
 	</>;
 }`;
 
 			expect(() => compile(source, 'test.tsrx')).not.toThrow();
 		});
 
-		it('passes scoped classes to a dynamic child component via a style ref', () => {
+		it('passes scoped classes to a dynamic child component via a style expression', () => {
 			function Child({ cls }: { cls: string }) {
 				return <><span class={cls}>{'text'}</span></>;
 			}
 
 			function Parent() {
-				let styles;
+				const styles = <style>
+					.text {
+						color: red;
+					}
+				</style>;
+
 				return <>
 					let dynamic = track(() => Child);
 					<div class="wrapper">
 						<@dynamic cls={styles.text} />
 					</div>
-					<style ref={(s) => (styles = s)}>
-						.text {
-							color: red;
-						}
-					</style>
 				</>;
 			}
 
@@ -120,7 +121,25 @@ function App() {
 			expect(classes.some((cls: string) => cls === 'text')).toBe(true);
 		});
 
-		it('child can combine its own classes with a parent style ref class', () => {
+		it('passes style expression classes declared outside the component', () => {
+			function Child({ cls }: { cls: string }) {
+				return <><span class={cls}>{'text'}</span></>;
+			}
+
+			function Parent() {
+				return <Child cls={external_styles.external} />;
+			}
+
+			render(Parent);
+
+			const span = container.querySelector('span');
+			expect(span).toBeTruthy();
+			const classes = Array.from(span.classList);
+			expect(classes.some((cls: string) => cls.startsWith('tsrx-'))).toBe(true);
+			expect(classes.some((cls: string) => cls === 'external')).toBe(true);
+		});
+
+		it('child can combine its own classes with a parent style expression class', () => {
 			function Card({ className }: { className?: string }) {
 				return <>
 					<div class={['card-base', className ?? '']}>{'card content'}</div>
@@ -133,15 +152,13 @@ function App() {
 			}
 
 			function App() {
-				let styles;
-				return <>
-					<Card className={styles.themed} />
-					<style ref={(s) => (styles = s)}>
-						.themed {
-							background: purple;
-						}
-					</style>
-				</>;
+				const styles = <style>
+					.themed {
+						background: purple;
+					}
+				</style>;
+
+				return <><Card className={styles.themed} /></>;
 			}
 
 			render(App);
@@ -159,19 +176,19 @@ function App() {
 			}
 
 			function App() {
-				let styles;
+				const styles = <style>
+					.dual {
+						color: blue;
+					}
+					.parent .dual {
+						font-weight: bold;
+					}
+				</style>;
+
 				return <>
 					<div class="parent">
 						<Child cls={styles.dual} />
 					</div>
-					<style ref={(s) => (styles = s)}>
-						.dual {
-							color: blue;
-						}
-						.parent .dual {
-							font-weight: bold;
-						}
-					</style>
 				</>;
 			}
 
@@ -223,15 +240,14 @@ function Child({ cls }) { return <>
 	<div class={cls}>{'text'}</div>
 </>; }
 export function App() {
-	let styles;
+	const styles = <style>
+		.highlight {
+			color: red;
+		}
+	</style>;
+
 	return <>
 		<Child cls={styles.highlight} />
-
-		<style ref={(s) => styles = s}>
-			.highlight {
-				color: red;
-			}
-		</style>
 	</>;
 }`;
 			const { code } = compile(source, 'test.tsrx');
@@ -246,15 +262,14 @@ function Child({ cls }) { return <>
 	<div class={cls}>{'text'}</div>
 </>; }
 export function App() {
-	let styles;
+	const styles = <style>
+		.highlight {
+			color: red;
+		}
+	</style>;
+
 	return <>
 		<Child cls={styles.highlight} />
-
-		<style ref={(s) => styles = s}>
-			.highlight {
-				color: red;
-			}
-		</style>
 	</>;
 }`;
 			const { code } = compile(source, 'test.tsrx', { mode: 'server' });

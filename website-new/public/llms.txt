@@ -759,12 +759,12 @@ selectors, or parts of a chain:
 - `:global(.foo, .bar)`
 - `.scoped :global(.unscoped) .also-scoped`
 
-### Style composition via `<style ref>`
+### Style composition via style expressions
 
-Because scoped classes don't cross component boundaries, a `<style ref>` callback
-can expose a class map. Each standalone class maps to a string containing both
-the scope hash and the class name. Pass those values to children through normal
-props.
+Because scoped classes don't cross component boundaries, assigning a `<style>`
+expression to a variable exposes a class map. Each standalone class maps to a
+string containing both the scope hash and the class name. Pass those values to
+children through normal props.
 
 ```tsrx
 function Badge({ className }: { className?: string }) {
@@ -778,20 +778,17 @@ function Badge({ className }: { className?: string }) {
 }
 
 function App() {
-  let styles;
-  return <>
-  <Badge className={styles.highlight} />
-  <style ref={(s) => styles = s}>
+  const styles = <style>
     .highlight { background: #e8f5e9; color: #2e7d32; }
-  </style>
+  </style>;
 
-  </>;
+  return <Badge className={styles.highlight} />;
 }
 ```
 
-Style ref maps expose standalone selectors from the surrounding component's
-`<style>`. Classes that only appear as part of compound/descendant selectors are
-not exported on the map.
+Style expression maps expose standalone selectors from their `<style>` value.
+Classes that only appear as part of compound/descendant selectors are not
+exported on the map.
 
 ## Target-specific behavior
 

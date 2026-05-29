@@ -26,6 +26,7 @@ export { createJsxTransform };
 
 export function collectStyleRefAttributes(node: any, refs?: any[]): any[];
 export function createStyleClassMap(component: any, css: any): AST.ObjectExpression;
+export function createStyleClassMapFromStylesheet(css: any): AST.ObjectExpression;
 export function createStyleRefSetupStatements(
 	refAttributes: any[],
 	styleMap: AST.Expression,
@@ -35,6 +36,7 @@ export function createStyleRefSetupStatements(
 		visitExpression?: (expression: AST.Expression) => AST.Expression;
 	},
 ): AST.Statement[];
+export function getStyleElementStylesheet(styleElement: any): any | null;
 
 /**
  * Compile error interface

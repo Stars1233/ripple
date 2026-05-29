@@ -569,8 +569,8 @@ function Card() {
 }
 ```
 
-Use `:global(...)` to opt out of scoping. Use `<style ref>` to expose scoped
-class names for passing across component boundaries.
+Use `:global(...)` to opt out of scoping. Assign a `<style>` expression to a
+variable to expose scoped class names for passing across component boundaries.
 
 ```tsrx
 function Badge({ className }: { className?: string }) {
@@ -585,16 +585,14 @@ function Badge({ className }: { className?: string }) {
 }
 
 function App() {
-	let styles;
-	return <>
-		<Badge className={styles.highlight} />
-		<style ref={(s) => styles = s}>
-			.highlight {
-				background: #e8f5e9;
-				color: #2e7d32;
-			}
-		</style>
-	</>;
+	const styles = <style>
+		.highlight {
+			background: #e8f5e9;
+			color: #2e7d32;
+		}
+	</style>;
+
+	return <Badge className={styles.highlight} />;
 }
 ```
 

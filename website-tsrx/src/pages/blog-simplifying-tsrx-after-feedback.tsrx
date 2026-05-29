@@ -89,17 +89,15 @@ const SPECIAL_CASES_BEFORE_HTML = highlight_tsrx(
 
 const SPECIAL_CASES_AFTER_HTML = highlight_tsrx(
 	`function Article({ contentHtml, inputRef }: Props) {
-  let styles;
+  const styles = <style>
+    .card { padding: 1rem; }
+  </style>;
 
   return <>
     <article innerHTML={contentHtml} />
     <Fragment innerHTML={contentHtml} />
     <input ref={inputRef} />
     <Child class={styles.card} />
-
-    <style ref={(s) => styles = s}>
-      .card { padding: 1rem; }
-    </style>
   </>;
 }`,
 );
@@ -263,11 +261,13 @@ export function BlogSimplifyingTsrxAfterFeedbackPage() {
 							{' when you want to insert HTML without a wrapper element. Refs use '}
 							<code>{'ref={...}'}</code>
 							{', and scoped classes can be shared with children through '}
-							<code>{'<style ref>'}</code>
+							<code>{'const styles = <style>...</style>'}</code>
 							{'.'}
 						</p>
 						<p>
-							{'Style refs are resolved while TSRX renders the returned fragment, not later in a framework update cycle. That keeps the class map available to the same render without forcing a second render or paint.'}
+							{'The style expression is just a value. Put it before the returned content, then pass '}
+							<code>{'styles.card'}</code>
+							{' anywhere that value is in scope.'}
 						</p>
 						<pre class="code-block">
 							<code innerHTML={SPECIAL_CASES_AFTER_HTML} />

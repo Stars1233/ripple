@@ -45,7 +45,9 @@ import { prepare_stylesheet_for_render, annotate_with_hash, is_style_element } f
 import {
 	collect_style_ref_attributes,
 	create_style_class_map,
+	create_style_class_map_from_stylesheet,
 	create_style_ref_setup_statements,
+	get_style_element_stylesheet,
 } from '../style-ref.js';
 import { is_function_or_component_node } from '../../utils/ast.js';
 import {
@@ -251,7 +253,16 @@ export function createJsxTransform(platform) {
 				);
 			},
 
-			Element(node, { next, state }) {
+			Element(node, { next, path, state }) {
+				if (is_style_element(node) && is_style_expression_position(path)) {
+					const stylesheet = get_style_element_stylesheet(node);
+					if (stylesheet) {
+						analyze_css(stylesheet);
+						state.stylesheets.push(stylesheet);
+						return /** @type {any} */ (create_style_class_map_from_stylesheet(stylesheet));
+					}
+				}
+
 				// Capture raw children BEFORE the walker transforms them so a
 				// platform hook (e.g. Solid's textContent optimization) can
 				// inspect the original Text / TSRXExpression nodes rather than
@@ -1502,11 +1513,33 @@ function collect_style_elements(node, styles) {
 		return;
 	}
 
-	for (const key of Object.keys(node)) {
-		if (key === 'loc' || key === 'start' || key === 'end' || key === 'metadata') {
-			continue;
+	if (node.type === 'Element') {
+		collect_style_elements(node.children || [], styles);
+		return;
+	}
+
+	if (node.type === 'BlockStatement') {
+		collect_style_elements(node.body || [], styles);
+		return;
+	}
+
+	if (node.type === 'IfStatement') {
+		collect_style_elements(node.consequent, styles);
+		collect_style_elements(node.alternate, styles);
+		return;
+	}
+
+	if (node.type === 'SwitchStatement') {
+		for (const switch_case of node.cases || []) {
+			collect_style_elements(switch_case.consequent || [], styles);
 		}
-		collect_style_elements(node[key], styles);
+		return;
+	}
+
+	if (node.type === 'TryStatement') {
+		collect_style_elements(node.block, styles);
+		collect_style_elements(node.handler?.body, styles);
+		collect_style_elements(node.finalizer, styles);
 	}
 }
 
@@ -1548,22 +1581,53 @@ function strip_style_elements(node) {
 		return node;
 	}
 
-	for (const key of Object.keys(node)) {
-		if (key === 'loc' || key === 'start' || key === 'end' || key === 'metadata' || key === 'css') {
-			continue;
+	if (node.type === 'Element') {
+		node.children = strip_style_elements(node.children || []);
+		return node;
+	}
+
+	if (node.type === 'BlockStatement') {
+		node.body = strip_style_elements(node.body || []);
+		return node;
+	}
+
+	if (node.type === 'IfStatement') {
+		node.consequent = strip_style_elements(node.consequent);
+		if (node.alternate) node.alternate = strip_style_elements(node.alternate);
+		return node;
+	}
+
+	if (node.type === 'SwitchStatement') {
+		for (const switch_case of node.cases || []) {
+			switch_case.consequent = strip_style_elements(switch_case.consequent || []);
 		}
-		const value = node[key];
-		if (Array.isArray(value)) {
-			node[key] = strip_style_elements(value);
-		} else if (value && typeof value === 'object') {
-			const stripped = strip_style_elements(value);
-			if (stripped) {
-				node[key] = stripped;
-			}
-		}
+		return node;
+	}
+
+	if (node.type === 'TryStatement') {
+		node.block = strip_style_elements(node.block);
+		if (node.handler?.body) node.handler.body = strip_style_elements(node.handler.body);
+		if (node.finalizer) node.finalizer = strip_style_elements(node.finalizer);
 	}
 
 	return node;
+}
+
+/**
+ * @param {any[]} path
+ * @returns {boolean}
+ */
+function is_style_expression_position(path) {
+	const parent = path.at(-1);
+	return !(
+		parent?.type === 'Element' ||
+		parent?.type === 'Tsrx' ||
+		parent?.type === 'Tsx' ||
+		parent?.type === 'TsxCompat' ||
+		parent?.type === 'BlockStatement' ||
+		parent?.type === 'Program' ||
+		parent?.type === 'SwitchCase'
+	);
 }
 
 /**
