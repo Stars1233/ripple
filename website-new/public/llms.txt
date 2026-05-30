@@ -356,9 +356,6 @@ function App() {
 }
 ```
 
-Use `<tsx:react>...</tsx:react>` only when intentionally switching to React JSX
-compat semantics.
-
 ### Text children and expressions: `"..."`, `{ ... }`
 
 Double-quoted static text may appear directly as a child. Every expression

@@ -45,8 +45,8 @@ export async function generate_docs_index() {
 	fs.accessSync(features_path);
 	fs.accessSync(getting_started_path);
 
-	const expression_island_grammar = extract_string_array_constant(
-		'EXPRESSION_ISLAND_GRAMMAR',
+	const expression_value_grammar = extract_string_array_constant(
+		'EXPRESSION_VALUE_GRAMMAR',
 		specification_source,
 	);
 	const template_expression_grammar = extract_string_array_constant(
@@ -74,7 +74,7 @@ Core ideas:
 - Components are ordinary TypeScript functions that return TSRX.
 - TSRX opens in expression position, then template children use a template statement list inside the fragment.
 - control-flow statements can contain template output.
-- native TSRX can be returned directly as \`<div />\` or \`<>...</>\`; host-specific JSX-style values can use compatibility islands such as \`<tsx:react>...</tsx:react>\`.
+- native TSRX can be returned directly as \`<div />\` or \`<>...</>\`.
 - lazy destructuring uses &[] and &{} for by-reference bindings.
 
 The core language docs should stay target-neutral. After identifying the active runtime target, use target-specific docs, prompts, or skills for runtime imports, bundler setup, and semantics that are not defined by TSRX itself.
@@ -127,10 +127,10 @@ ${template_expression_grammar}
 Source: website-tsrx/src/pages/specification.tsrx#templates`,
 		},
 		{
-			slug: 'tsx-expression-values',
+			slug: 'expression-values',
 			title: 'Expression Values',
 			use_cases:
-				'fragments, tsrx tag, tsx compat tag, pass template as prop, return template from helper, render props, expression position jsx',
+				'fragments, pass template as prop, return template from helper, render props, expression position jsx',
 			content: `# Expression Values
 
 Returned TSRX opens in expression position. Inside the TSRX fragment, template elements are statements and control flow can emit UI.
@@ -159,10 +159,10 @@ Use fragments for assigning UI to variables, returning UI from helper functions,
 Specification grammar:
 
 \`\`\`text
-${expression_island_grammar}
+${expression_value_grammar}
 \`\`\`
 
-Source: website-tsrx/src/pages/specification.tsrx#tsx-islands`,
+Source: website-tsrx/src/pages/specification.tsrx#expression-values`,
 		},
 		{
 			slug: 'control-flow',
@@ -264,7 +264,6 @@ The core MCP server should detect the target, then hand off runtime-specific que
 Target-specific layers should own:
 - package installation and bundler setup
 - runtime imports and helper APIs
-- compatibility blocks and escape hatches
 - compiler warnings and semantic restrictions
 - examples that depend on a specific rendering runtime
 

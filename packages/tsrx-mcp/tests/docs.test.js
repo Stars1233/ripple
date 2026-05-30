@@ -8,23 +8,16 @@ describe('@tsrx/mcp documentation index', () => {
 		const slugs = list_documentation_sections().map((section) => section.slug);
 
 		expect(slugs).toEqual(
-			expect.arrayContaining([
-				'overview',
-				'components',
-				'tsx-expression-values',
-				'target-integration',
-			]),
+			expect.arrayContaining(['overview', 'components', 'expression-values', 'target-integration']),
 		);
 	});
 
 	it('includes generated specification grammar in language sections', () => {
 		expect(find_documentation_section('components')?.content ?? '').toContain('function Button');
-		expect(find_documentation_section('tsx-expression-values')?.content ?? '').toContain(
-			'TsxCompatElement',
-		);
-		expect(find_documentation_section('tsx-expression-values')?.content ?? '').toContain(
+		expect(find_documentation_section('expression-values')?.content ?? '').toContain(
 			'TsrxExpression',
 		);
+		expect(find_documentation_section('expression-values')?.content ?? '').not.toContain('tsx:');
 	});
 
 	it('documents component loop control-flow rules', () => {

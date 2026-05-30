@@ -74,15 +74,12 @@ function App() {
 ```
 
 Use fragments for statement-rich templates and single elements for compact return
-values. `<tsx:react>` remains the explicit escape hatch when you intentionally
-want React JSX semantics.
+values.
 
 ### TSRX vs React JSX
 
 - `<div>"Text"</div>` is a TSRX expression with Ripple/TSRX text rules.
 - `<>...</>` opens a TSRX fragment; its children are statements.
-- `<tsx:react>...</tsx:react>` switches to React JSX semantics and requires
-  compat setup.
 
 ## Guard Returns Before Templates
 

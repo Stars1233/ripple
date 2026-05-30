@@ -362,12 +362,10 @@ JavaScript expressions still use `{...}`.
 Bare unquoted text is not valid TSRX text. Use a double-quoted text child or an
 expression container.
 
-### Expression islands
+### Expression values
 
 Because TSRX is the default JSX expression language, `<div />` and `<>...</>`
-produce native TSRX values. Use compatibility islands such as
-`<tsx:react>...</tsx:react>` when a host needs JSX-compatible children instead
-of TSRX template children.
+produce native TSRX values.
 
 ```tsrx
 function App() {
@@ -382,10 +380,6 @@ const nativeTemplate = <>
 	const label = name.trim();
 	<span>{label}</span>
 </>;
-
-const reactCompatible = <tsx:react>
-	<span>Settings</span>
-</tsx:react>;
 ```
 
 ### Text, escaped text, and raw HTML
@@ -660,7 +654,7 @@ are not tied to one returned fragment.
 ### React and Preact
 
 Hooks that appear inside returned TSRX template branches, loops, switches, try
-blocks, or expression islands are isolated behind generated child components
+blocks, or expression values are isolated behind generated child components
 when safe. Hook results must stay local to the generated component; move shared
 state into an explicit child component when values need to cross the generated
 boundary. React and Preact can also emit async component functions when template
@@ -791,7 +785,6 @@ function List<T>({ items, render }: Props<T>) {
 | Exported component     | `export function Name(...) { return <div />; }`  |
 | Native TSRX value      | `const v = <div>"Hi"</div>;`                     |
 | Native TSRX fragment   | `const v = <><span>"Hi"</span></>;`              |
-| JSX-compatible island  | `const v = <tsx:react><span>Hi</span></tsx:react>;` |
 | Text content           | `<p>"literal"</p>`, `<p>{expr}</p>`              |
 | Lazy prop destructure  | `function C(&{ x, y }: Props) { ... }`           |
 | Lazy array destructure | `let &[count, set] = createSignal(0);`           |
