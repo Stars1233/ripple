@@ -421,7 +421,11 @@ export function App() {
 }
 ```
 
-**Dynamic styles:**
+`<style>` blocks contain static CSS. TSRX template rules for JavaScript statements
+and expressions do not apply inside them. For dynamic values, set CSS custom
+properties on elements and read them with `var(...)` from static CSS.
+
+**Dynamic CSS values:**
 
 ```tsrx
 import { track } from 'ripple';
@@ -429,12 +433,18 @@ import { track } from 'ripple';
 export function App() {
   let &[color] = track('red');
 
-  return <div>
-    <div style={{ color, fontWeight: 'bold' }}>"Styled text"</div>
+  return <>
+    <div class="notice" style={{ '--notice-color': color }}>"Styled text"</div>
     <button onClick={() => (color = color === 'red' ? 'blue' : 'red')}>
       "Toggle Color"
     </button>
-  </div>;
+    <style>
+      .notice {
+        color: var(--notice-color);
+        font-weight: bold;
+      }
+    </style>
+  </>;
 }
 ```
 

@@ -25,7 +25,7 @@ export default function App() {
   return <>
 	<div class="message">"Hello Ripple!"</div>
 
-  <InlineStyles />
+  <DynamicStyleValues />
 
 	<style>
 		.message {
@@ -40,28 +40,21 @@ export default function App() {
   </>;
 }
 
-function InlineStyles() {
+function DynamicStyleValues() {
   return <>
-  let color = track('#3e95ff');
+  let &[color] = track('#3e95ff');
 
-  <p style={\`color: \${@color}; font-weight: bold; background-color: #eee\`}>
-		"Hello Ripple!"
-  </p>
-  <p style={{ color: @color, fontWeight: 'bold', 'background-color': '#eee' }}>
+  <p class="notice" style={{ '--notice-color': color }}>
 		"Hello Ripple!"
   </p>
 
-  const style = {
-    @color,
-    fontWeight: 'bold',
-    'background-color': '#eee',
-  };
-
-  // using object spread
-	<p style={{...style}}>"Hello Ripple!"</p>
-
-  // using object directly
-	<p style={style}>"Hello Ripple!"</p>
+  <style>
+    .notice {
+      color: var(--notice-color);
+      font-weight: bold;
+      background-color: #eee;
+    }
+  </style>
   </>;
 }
 

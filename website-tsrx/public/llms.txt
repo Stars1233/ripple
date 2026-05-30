@@ -317,12 +317,16 @@ function Icon() {
 - Keep setup logic before the return when it is plain JavaScript.
 - Put rendered structure, template control flow, and scoped `<style>` blocks inside the returned TSRX expression.
 - Use module-scope `<style>` expressions for reusable class maps.
+- Treat `<style>` contents as static CSS, and use CSS custom properties for
+  runtime style values.
 
 **LLM DON'T:**
 
 - Do not invent a custom declaration form for components.
 - Do not warn users away from returned TSRX; returning TSRX is the component model.
 - Do not mix special declaration examples with function-based examples.
+- Do not put JavaScript statements, control flow, or `{expr}` interpolation
+  inside `<style>` blocks.
 
 ### Expression outside, statements inside
 
@@ -567,17 +571,23 @@ A returned TSRX template can include a `<style>` block. The compiler rewrites
 selectors with a unique hash so rules only apply to elements inside that
 returned template. Parent styles do not leak into child components.
 
+`<style>` blocks contain static CSS. TSRX template rules for JavaScript
+statements and expressions do not apply inside them, so do not put `{expr}`,
+`if`, `for`, or declarations in a style block. Use CSS custom properties for
+runtime values: set them on an element with `style={{ '--name': value }}` and
+read them from static CSS with `var(--name)`.
+
 ```tsrx
-function Card() {
+function Card({ tone }: { tone: string }) {
 	return <>
-		<div class="card">
+		<div class="card" style={{ '--card-tone': tone }}>
 			<h2>"Scoped title"</h2>
 			<p>"Styles here won't leak out."</p>
 		</div>
 		<style>
 			.card {
 				padding: 1.5rem;
-				border: 1px solid #ddd;
+				border: 1px solid var(--card-tone);
 			}
 
 			h2 {
@@ -619,7 +629,8 @@ function App() {
 
 Style expressions can also live at module scope. Use this for StyleX-like or
 CSS-in-JS-like reusable class maps when the styles should be declared before the
-components that reference them:
+components that reference them. The CSS inside the style expression is still
+static CSS; dynamic values should still flow through CSS custom properties:
 
 ```tsrx
 const articleStyles = <style>
@@ -796,6 +807,7 @@ function List<T>({ items, render }: Props<T>) {
 | Async boundary         | `try { ... } pending { ... }`                    |
 | Guard exit             | `if (!user) { return null; }`                    |
 | Scoped style           | `<style> .x { ... } </style>`                    |
+| Dynamic CSS value      | `style={{ '--tone': tone }}` + `var(--tone)`     |
 | Escape scoping         | `:global(.class)`                                |
 | Cross-component class  | `<Child class={styles.foo} />`; React uses `className` |
 | Dynamic element        | `<@tag />` with a tracked/stateful `tag`         |

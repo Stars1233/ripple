@@ -4,8 +4,8 @@ title: Styling in Ripple
 
 # Styling
 
-Ripple supports native CSS styling that's scoped (localized) to the given
-component using the `<style>` element.
+Ripple supports native CSS styling that's scoped (localized) to the returned
+TSRX template using the `<style>` element.
 
 ```ripple
 function MyComponent() {
@@ -33,6 +33,11 @@ function MyComponent() {
 ::: info Bare scoped `<style>` blocks should be top-level within a returned TSRX template. Assign a `<style>` expression to a variable when you want a reusable class map.
 :::
 
+`<style>` blocks contain static CSS. TSRX template rules for JavaScript
+statements and expressions do not apply inside them, so do not put `{expr}`,
+`if`, `for`, or declarations in a style block. Use CSS custom properties for
+runtime values.
+
 ## Dynamic Classes
 
 In Ripple, the `class` attribute can accept more than just a string — it also
@@ -56,38 +61,37 @@ let &[count] = track(3);
 // becomes: class="foo bar"
 ```
 
-## Dynamic Inline Styles
+## Dynamic CSS Values
 
-Sometimes you might need to dynamically set inline styles. For this, you can use
-the `style` attribute, passing either a string or an object to it:
+Styles in `<style>` blocks are static CSS. When a value needs to change at
+runtime, put that value in a CSS custom property on the element and read it with
+`var(...)` from your static CSS:
 
 ```ripple
 import { track } from 'ripple';
 
-let &[color] = track('red');
+function App() {
+  let &[color] = track('red');
 
-<div style={`color: ${color}; font-weight: bold; background-color: gray`} />
-<div style={{ color: color, fontWeight: 'bold', 'background-color': 'gray' }} />
+  return <>
+  <div class="notice" style={{ '--notice-color': color }}>
+    "Styled text"
+  </div>
+  <button onClick={() => (color = color === 'red' ? 'blue' : 'red')}>
+    "Toggle Color"
+  </button>
 
-const style = {
-  color,
-  fontWeight: 'bold',
-  'background-color': 'gray',
-};
+  <style>
+    .notice {
+      color: var(--notice-color);
+      font-weight: bold;
+      background-color: gray;
+    }
+  </style>
 
-// using object spread
-<div style={{ ...style }} />
-
-// using object directly
-<div {style} />
+  </>;
+}
 ```
-
-Both examples above will render the same inline styles, however, it's recommended
-to use the object notation as it's typically more performance optimized.
-
-::: info When passing an object to the `style` attribute, you can use either
-camelCase or kebab-case for CSS property names.
-:::
 
 ## Global Styles
 

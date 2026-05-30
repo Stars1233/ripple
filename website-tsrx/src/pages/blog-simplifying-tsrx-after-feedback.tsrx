@@ -129,9 +129,9 @@ const SPECIAL_CASES_AFTER_HTML = highlight_tsrx(
 );
 
 const SCOPED_STYLE_HTML = highlight_tsrx(
-	`function Card({ title }: Props) {
+	`function Card({ title, tone }: Props) {
   return <>
-    <article class="card">
+    <article class="card" style={{ '--card-tone': tone }}>
       <h2>{title}</h2>
     </article>
 
@@ -139,6 +139,7 @@ const SCOPED_STYLE_HTML = highlight_tsrx(
       .card {
         padding: 1rem;
         border-radius: 0.75rem;
+        border-color: var(--card-tone);
       }
     </style>
   </>;
@@ -366,13 +367,26 @@ export function BlogSimplifyingTsrxAfterFeedbackPage() {
 							<code>{'<style>'}</code>
 							{' block is still there, but its mental model is clearer: styles are scoped to the TSRX fragment that contains them, not to a separate component declaration form. It works the same way as before for colocated styles.'}
 						</p>
+						<p>
+							{'Inside '}
+							<code>{'<style>'}</code>
+							{', write static CSS. The TSRX rules for JavaScript statements and expressions inside elements do not apply there: no '}
+							<code>{'if'}</code>
+							{', '}
+							<code>{'for'}</code>
+							{', or '}
+							<code>{'{expr}'}</code>
+							{'. When a style value needs to change at runtime, set a CSS custom property on the element and read it with '}
+							<code>{'var(...)'}</code>
+							{'.'}
+						</p>
 						<pre class="code-block">
 							<code innerHTML={SCOPED_STYLE_HTML} />
 						</pre>
 						<p>
 							{'When you move styles into a value before the returned template, the model is intentionally more like '}
 							<code>{'StyleX'}</code>
-							{' and other popular CSS-in-JS solutions: you get a declarative class map, and you pass those class names explicitly where you need them.'}
+							{' and other popular CSS-in-JS solutions: the CSS is still static, but you get a declarative class map, and you pass those class names explicitly where you need them.'}
 						</p>
 						<pre class="code-block">
 							<code innerHTML={MODULE_STYLE_HTML} />

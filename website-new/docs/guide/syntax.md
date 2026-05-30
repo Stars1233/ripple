@@ -32,6 +32,8 @@ element directly, or use a fragment when the template needs multiple statements.
 Once a TSRX expression is opened, its body is a template statement list:
 elements, local variables, control flow, and `<style>` blocks can sit next to
 each other.
+The statement rules apply to the template body, not to CSS text inside
+`<style>` blocks.
 
 ```ripple
 function MyComponent({ name }: { name: string | null }) {
