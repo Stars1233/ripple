@@ -15,7 +15,6 @@ const TARGET_OPTIONS = [
 	{ value: 'ripple', label: 'Ripple' },
 	{ value: 'solid', label: 'Solid' },
 	{ value: 'vue', label: 'Vue' },
-	{ value: 'marko', label: 'Marko' },
 ];
 const TARGET_LABELS: Record<string, string> = {
 	react: 'React output',
@@ -23,11 +22,6 @@ const TARGET_LABELS: Record<string, string> = {
 	vue: 'Vue output',
 	ripple: 'Ripple output',
 	solid: 'Solid output',
-	marko: 'Marko output',
-};
-
-const TARGET_OUTPUT_LANG: Record<string, string> = {
-	marko: 'marko',
 };
 
 const VALID_TARGETS = new Set(TARGET_OPTIONS.map((o) => o.value));
@@ -253,9 +247,8 @@ export function CompilerDemo() {
 						return;
 					}
 
-					const output_lang = TARGET_OUTPUT_LANG[selected_target.value] ?? 'tsx';
 					output_view.dispatch({
-						effects: output_lang_compartment.reconfigure(shiki_highlight(output_lang)),
+						effects: output_lang_compartment.reconfigure(shiki_highlight('tsx')),
 					});
 					replace_doc(output_view, join_compiled_output(payload.output.code, payload.output.css));
 					status = `${TARGET_LABELS[payload.target] ?? 'Selected output'} ready`;
