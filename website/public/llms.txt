@@ -73,7 +73,8 @@ export function Panel({ title, children }: { title: string; children: any }) {
 - Use `export function` for public components.
 - Return `<div />` directly for compact UI.
 - Return `<>...</>` when the template includes multiple statements.
-- Keep `<style>` blocks inside the TSRX fragment/expression they style.
+- Keep inline `<style>` blocks inside the TSRX fragment/expression they style.
+- Use module-scope `<style>` expressions for reusable class maps.
 
 **LLM DON'T:**
 - Do not invent a custom declaration form for components.
@@ -829,6 +830,28 @@ function App() {
   return <Badge class={styles.highlight} />;
 }
 ```
+
+Style expressions can also live at module scope. Use this for StyleX-like or
+CSS-in-JS-like reusable class maps when the styles should be declared before the
+components that reference them:
+
+```ripple
+const articleStyles = <style>
+  .card { padding: 1rem; }
+  .title { font-weight: 700; }
+</style>;
+
+export function ArticleCard({ title }: { title: string }) {
+  // Ripple host elements:
+  return <article class={articleStyles.card}>
+    <h2 class={articleStyles.title}>{title}</h2>
+  </article>;
+}
+```
+
+Inline `<style>` blocks inside a returned TSRX template are scoped to that
+returned template. Module-scope style expressions are reusable class maps and
+are not tied to one returned fragment.
 
 Style expression maps expose standalone selectors from their `<style>` value.
 Classes that only appear as part of compound/descendant selectors are not
