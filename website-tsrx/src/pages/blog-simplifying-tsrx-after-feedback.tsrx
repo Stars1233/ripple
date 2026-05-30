@@ -23,19 +23,24 @@ const SINGLE_ELEMENT_RETURN_HTML = highlight_tsrx(
 }`,
 );
 
-const EXPRESSION_TSRX_HTML = highlight_tsrx(
-	`function Profile({ user }: { user: User | null }) {
-  if (!user) return null;
-
+const STATEMENT_CONTROL_FLOW_HTML = highlight_tsrx(
+	`function Dashboard({ items }: Props) {
   return <>
-    const displayName = user.name.trim();
+    const visibleItems = items.filter((item) => !item.hidden);
 
-    if (user.isAdmin) {
-      <p>{displayName}" can manage settings."</p>
+    <ul>
+      for (const item of visibleItems; key item.id) {
+        <li>{item.label}</li>
+      }
+    </ul>
+
+    try {
+      <ActivityFeed />
+    } pending {
+      <p>"Loading activity..."</p>
+    } catch (error) {
+      <p>"Could not load activity."</p>
     }
-
-    const title = <tsx><strong>{displayName}</strong></tsx>;
-    <Card {title} />
   </>;
 }`,
 );
@@ -138,15 +143,15 @@ const MODULE_STYLE_HTML = highlight_tsrx(
 </style>;
 
 function ArticleCard({ title }: Props) {
+  // Ripple, Preact, Solid, and Vue host elements:
   return <article class={styles.card}>
     <h2 class={styles.title}>{title}</h2>
   </article>;
-}
 
-function ReactArticleCard({ title }: Props) {
-  return <article className={styles.card}>
-    <h2 className={styles.title}>{title}</h2>
-  </article>;
+  // React host elements:
+  // return <article className={styles.card}>
+  //   <h2 className={styles.title}>{title}</h2>
+  // </article>;
 }`,
 );
 
@@ -240,14 +245,16 @@ export function BlogSimplifyingTsrxAfterFeedbackPage() {
 							<code>{'for...of'}</code>
 							{', and emit UI in order.'}
 						</p>
-						<p>
-							{'When you need traditional JSX or TSX children instead of TSRX children, wrap that island in '}
-							<code>{'<tsx>'}</code>
-							{'. That gives you a small escape hatch without making the whole file feel like a different language.'}
-						</p>
 						<pre class="code-block">
-							<code innerHTML={EXPRESSION_TSRX_HTML} />
+							<code innerHTML={STATEMENT_CONTROL_FLOW_HTML} />
 						</pre>
+						<p>
+							{'All the useful TSRX control flow remains as-is: lists can still be rendered with '}
+							<code>{'for...of'}</code>
+							{', async boundaries can still use '}
+							<code>{'try / pending / catch'}</code>
+							{', and the template still reads in the order the UI is produced.'}
+						</p>
 
 						<h2>{'No more return magic inside templates'}</h2>
 						<p>
