@@ -573,7 +573,7 @@ Use `:global(...)` to opt out of scoping. Assign a `<style>` expression to a
 variable to expose scoped class names for passing across component boundaries.
 
 ```tsrx
-function Badge({ className }: { className?: string }) {
+function Badge({ class: className }: { class?: string }) {
 	return <>
 		<span class={'badge ' + (className ?? '')}>"New"</span>
 		<style>
@@ -592,7 +592,7 @@ function App() {
 		}
 	</style>;
 
-	return <Badge className={styles.highlight} />;
+	return <Badge class={styles.highlight} />;
 }
 ```
 
@@ -745,7 +745,7 @@ function List<T>({ items, render }: Props<T>) {
 | Guard exit             | `if (!user) { return null; }`                    |
 | Scoped style           | `<style> .x { ... } </style>`                    |
 | Escape scoping         | `:global(.class)`                                |
-| Cross-component class  | `<Child className={styles.foo} />`               |
+| Cross-component class  | `<Child class={styles.foo} />`                   |
 | Dynamic element        | `<@tag />` with a tracked/stateful `tag`         |
 
 ## Resources
