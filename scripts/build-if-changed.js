@@ -5,9 +5,9 @@
  *
  * Usage: node scripts/build-if-changed.js <package-dir> [<package-dir> ...]
  *
- * Computes a SHA-256 hash of src/ and bin/ for each package under packages/
- * and writes it to <package>/.build-hash (gitignored). These per-package
- * hashes can be reused by other scripts.
+ * Computes a SHA-256 hash of package.json, src/, and bin/ for each package
+ * under packages/ and writes it to <package>/.build-hash (gitignored).
+ * These per-package hashes can be reused by other scripts.
  *
  * To decide whether the specified build targets need rebuilding, all
  * per-package hashes are combined. If the combined hash differs from the
@@ -63,10 +63,15 @@ const combined = crypto.createHash('sha256');
 for (const name of all_packages) {
 	const pkg_path = path.join(packages_dir, name);
 	const src_dirs = ['src', 'bin'].filter((d) => fs.existsSync(path.join(pkg_path, d)));
-	if (src_dirs.length === 0) continue;
+	const package_json = path.join(pkg_path, 'package.json');
+	const has_package_json = fs.existsSync(package_json);
+	if (src_dirs.length === 0 && !has_package_json) continue;
 
 	const hash = crypto.createHash('sha256');
-	const files = src_dirs.flatMap((d) => collect_files(path.join(pkg_path, d))).sort();
+	const files = [
+		...(has_package_json ? [package_json] : []),
+		...src_dirs.flatMap((d) => collect_files(path.join(pkg_path, d))),
+	].sort();
 	for (const file of files) {
 		hash.update(path.relative(pkg_path, file));
 		hash.update(fs.readFileSync(file));
