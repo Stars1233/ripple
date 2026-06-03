@@ -12,7 +12,6 @@
     [
       "ripple",
       "@ripple-ts/cli",
-      "@ripple-ts/compat-react",
       "create-ripple",
       "@tsrx/eslint-parser",
       "@tsrx/eslint-plugin",
