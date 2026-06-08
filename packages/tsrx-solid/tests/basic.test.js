@@ -694,7 +694,7 @@ describe('@tsrx/solid basic', () => {
 			// Solid the static-element-identity optimization React relies on
 			// doesn't apply, so hoisting it into a module-level `App__static`
 			// const only adds an alias indirection. Truly-static DOM trees
-			// (e.g. `<span>'Online'</span>` with no scope refs) should still
+			// (e.g. `<span>Online</span>` with no scope refs) should still
 			// be hoisted — those are real DOM nodes worth caching.
 			const { code } = compile(switch_source, 'App.tsrx');
 

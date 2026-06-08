@@ -236,10 +236,10 @@ const items=[1,2,3];
 	});
 
 	it('keeps native fragments expression based', async () => {
-		const input = `function App(){return <><div>"Hello world"</div>{value}</>}`;
+		const input = `function App(){return <><div>Hello world</div>{value}</>}`;
 		const expected = `function App() {
   return <>
-    <div>"Hello world"</div>
+    <div>Hello world</div>
     {value}
   </>;
 }`;
@@ -280,17 +280,17 @@ const items=[1,2,3];
 		const input = `export function App() {
   let [count] = track(0);
   return <div>
-    <p>"Count: "{count}</p>
-    <p>"Count: "{count}</p>
-    <button onClick={() => count++}>"Increment"</button>
+    <p>Count: {count}</p>
+    <p>Count: {count}</p>
+    <button onClick={() => count++}>Increment</button>
   </div>;
 }`;
 		const expected = `export function App() {
   let [count] = track(0);
   return <div>
-    <p>"Count: "{count}</p>
-    <p>"Count: "{count}</p>
-    <button onClick={() => count++}>"Increment"</button>
+    <p>Count: {count}</p>
+    <p>Count: {count}</p>
+    <button onClick={() => count++}>Increment</button>
   </div>;
 }`;
 
@@ -611,10 +611,10 @@ const items=[1,2,3];
 	});
 
 	it('should keep sibling children in tsrx expression fragments on separate lines', async () => {
-		const input = `function Test(p1,p2){return <><div>"Hello"</div><div>{p1}</div><div>{p2}</div></>}`;
+		const input = `function Test(p1,p2){return <><div>Hello</div><div>{p1}</div><div>{p2}</div></>}`;
 		const expected = `function Test(p1, p2) {
   return <>
-    <div>"Hello"</div>
+    <div>Hello</div>
     <div>{p1}</div>
     <div>{p2}</div>
   </>;
@@ -709,9 +709,9 @@ const items=[1,2,3];
 	});
 
 	it('keeps fitting single-child fragments inline and expands non-fitting single-child fragments', async () => {
-		const input = `function Test(){const short=<><span>"Ready"</span></>;const long=<><ReallyLongComponentName first={alpha} second={beta} third={gamma}/></>;}`;
+		const input = `function Test(){const short=<><span>Ready</span></>;const long=<><ReallyLongComponentName first={alpha} second={beta} third={gamma}/></>;}`;
 		const expected = `function Test() {
-  const short = <><span>"Ready"</span></>;
+  const short = <><span>Ready</span></>;
   const long = <>
     <ReallyLongComponentName
       first={alpha}
@@ -726,16 +726,16 @@ const items=[1,2,3];
 	});
 
 	it('expands multi-child fragments while keeping fitting openers on the first line', async () => {
-		const input = `function Test(){const short=<><div>"A"</div><div>"B"</div></>;const thisNameIsRidiculouslyLongEnoughToMissThePrintWidth=<><div>"A"</div><div>"B"</div></>;}`;
+		const input = `function Test(){const short=<><div>A</div><div>B</div></>;const thisNameIsRidiculouslyLongEnoughToMissThePrintWidth=<><div>A</div><div>B</div></>;}`;
 		const expected = `function Test() {
   const short = <>
-    <div>"A"</div>
-    <div>"B"</div>
+    <div>A</div>
+    <div>B</div>
   </>;
   const thisNameIsRidiculouslyLongEnoughToMissThePrintWidth =
     <>
-      <div>"A"</div>
-      <div>"B"</div>
+      <div>A</div>
+      <div>B</div>
     </>;
 }`;
 
@@ -1402,11 +1402,11 @@ export function Test({ a, b }: Props) {}`;
 
 		it('should not force attribute-less elements to break with singleAttributePerLine', async () => {
 			const input = `function One() @{
-  <div>"Hello"</div>
+  <div>Hello</div>
 }`;
 
 			const expected = `function One() @{
-  <div>"Hello"</div>
+  <div>Hello</div>
 }`;
 
 			const result = await format(input, {

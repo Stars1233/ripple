@@ -135,7 +135,7 @@ const solid_platform = {
 			// level pays no runtime cost — it just creates an extra `const`
 			// that aliases a helper invocation (e.g. `App__static1 =
 			// <App__StatementBodyHook2 />`). Truly-static DOM trees like
-			// `<span>'Hello'</span>` still benefit from being hoisted out of
+			// `<span>Hello</span>` still benefit from being hoisted out of
 			// the per-render closure, so we only veto hoisting when the
 			// subtree contains a *component* JSX element. Same logic Vue uses.
 			return !contains_component_jsx(node);

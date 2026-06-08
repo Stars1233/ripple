@@ -75,7 +75,7 @@ describe('style class maps', () => {
 		it('allows style expression classes on child components with children', () => {
 			const source = `
 function Child({ className }) @{
-	<div class={className}>"hello world"</div>
+	<div class={className}>hello world</div>
 }
 function App() @{
 	const styles = <style>
@@ -84,7 +84,7 @@ function App() @{
 		}
 	</style>;
 
-		<Child className={styles.container}>"hello world"</Child>
+		<Child className={styles.container}>hello world</Child>
 }`;
 
 			expect(() => compile(source, 'test.tsrx')).not.toThrow();
