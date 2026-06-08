@@ -1128,6 +1128,19 @@ export function convert_source_map_to_mappings(
 					visit(node.body);
 				}
 
+				if (node.type === 'ForOfStatement' && node.empty) {
+					mappings.push(
+						get_mapping_from_node(
+							node.empty,
+							src_to_gen_map,
+							gen_line_offsets,
+							mapping_data_verify_only,
+						),
+					);
+
+					visit(node.empty);
+				}
+
 				if (node.loc) {
 					mappings.push(
 						get_mapping_from_node(node, src_to_gen_map, gen_line_offsets, mapping_data_verify_only),
@@ -1176,49 +1189,6 @@ export function convert_source_map_to_mappings(
 						),
 					);
 
-					// Add a special token for the 'pending' keyword with customData
-					// to suppress TypeScript diagnostics and provide custom hover/definition
-					const pending = /** @type {(typeof node.pending) & AST.NodeWithLocation} */ (
-						node.pending
-					);
-					const pendingKeywordLoc = {
-						start: {
-							line: pending.loc.start.line,
-							column: pending.loc.start.column - 'pending '.length,
-						},
-						end: {
-							line: pending.loc.start.line,
-							column: pending.loc.start.column - 1,
-						},
-					};
-					tokens.push({
-						source: 'pending',
-						generated: 'pending',
-						loc: pendingKeywordLoc,
-						metadata: {
-							wordHighlight: {
-								/** @type {DocumentHighlightKind} */
-								kind: 1,
-							},
-							suppressedDiagnostics: [
-								1472, // 'catch' or 'finally' expected
-								2304, // Cannot find name 'pending'
-							],
-							// suppress all hovers
-							hover: false,
-
-							// Example of a custom hover contents (uses markdown)
-							// hover:	'```ripple\npending\n```\n\nRipple-specific keyword for try/pending blocks.\n\nThe `pending` block executes while async operations inside the `try` block are awaiting. This provides a built-in loading state for async components.',
-
-							// Example of a custom definition and its type definition file
-							// definition: {
-							// 	typeReplace: {
-							// 		name: 'SomeType',
-							// 		path: 'types/index.d.ts',
-							// 	},
-							// },
-						},
-					});
 					visit(node.pending);
 				}
 				if (node.handler) {

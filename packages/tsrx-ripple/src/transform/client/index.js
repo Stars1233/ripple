@@ -4110,14 +4110,29 @@ function transform_tsrx_ts_render_control_flow_statement(node, context) {
 				b.let(/** @type {AST.Identifier} */ (context.visit(node.index)), b.literal(0)),
 			);
 		}
+		const empty =
+			node.empty != null
+				? b.block(
+						transform_tsrx_ts_render_children(node.empty.body, {
+							...context,
+							state: {
+								...context.state,
+								scope: context.state.scopes.get(node.empty) || context.state.scope,
+							},
+						}),
+						/** @type {AST.NodeWithLocation} */ (node.empty),
+					)
+				: null;
 
-		return b.for_of(
+		const result = b.for_of(
 			/** @type {AST.Pattern} */ (context.visit(node.left)),
 			/** @type {AST.Expression} */ (context.visit(node.right)),
 			b.block(block_body),
 			node.await,
 			/** @type {AST.NodeWithLocation} */ (node),
 		);
+		result.empty = empty;
+		return result;
 	}
 
 	if (node.type === 'SwitchStatement') {
@@ -4505,6 +4520,19 @@ function transform_ts_child(node, context) {
 			block_body.unshift(b.let(/** @type {AST.Identifier} */ (visit(node.index)), b.literal(0)));
 		}
 		const body = b.block(block_body);
+		const empty =
+			node.empty != null
+				? b.block(
+						transform_body(node.empty.body, {
+							...context,
+							state: {
+								...context.state,
+								scope: context.state.scopes.get(node.empty) || context.state.scope,
+							},
+						}),
+						/** @type {AST.NodeWithLocation} */ (node.empty),
+					)
+				: null;
 
 		const result = b.for_of(
 			/** @type {AST.Pattern} */ (visit(node.left)),
@@ -4513,6 +4541,7 @@ function transform_ts_child(node, context) {
 			node.await,
 			/** @type {AST.NodeWithLocation} */ (node),
 		);
+		result.empty = empty;
 
 		if (!state.init) {
 			return result;
@@ -6008,6 +6037,12 @@ function create_tsx_with_typescript_support(comments) {
 			// the start needs to be covered as we don't cover it in visitors
 			context.location(loc.start.line, loc.start.column);
 			base_tsx.ForOfStatement?.(node, context);
+			if (node.empty) {
+				context.newline();
+				context.write('(() => ');
+				context.visit(node.empty);
+				context.write(')();');
+			}
 			// cover the end
 			context.location(loc.end.line, loc.end.column);
 		},

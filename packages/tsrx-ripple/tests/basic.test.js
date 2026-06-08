@@ -293,6 +293,27 @@ describe('@tsrx/ripple try pending fallbacks', () => {
 	});
 });
 
+describe('@tsrx/ripple for empty fallbacks', () => {
+	it('prints empty blocks as valid TypeScript in Volar output', () => {
+		const { code } = compile_to_volar_mappings(
+			`function App() @{
+				const items = [];
+				@for (const item of items) {
+					<div>Hello</div>
+				} @empty {
+					<div>Nothing to see</div>
+				}
+			}`,
+			'App.tsrx',
+			{ loose: true },
+		);
+
+		expect(code).toContain('for (const item of items)');
+		expect(code).toContain('return <div>Nothing to see</div>;');
+		expect(code).not.toContain(' empty ');
+	});
+});
+
 describe('@tsrx/ripple named ref props', () => {
 	it('keeps named ref-like props ordinary for components', () => {
 		const { code } = compile(
