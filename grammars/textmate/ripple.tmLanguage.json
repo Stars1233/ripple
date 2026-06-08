@@ -311,16 +311,16 @@
       "begin": "(@)(\\{)",
       "beginCaptures": {
         "1": {
-          "name": "punctuation.definition.block.tsrx punctuation.definition.block.js"
+          "name": "keyword.control.directive.tsrx punctuation.definition.block.tsrx punctuation.definition.block.js"
         },
         "2": {
-          "name": "punctuation.definition.block.tsrx punctuation.definition.block.js"
+          "name": "keyword.control.directive.tsrx punctuation.definition.block.tsrx punctuation.definition.block.js"
         }
       },
       "end": "(\\})",
       "endCaptures": {
         "1": {
-          "name": "punctuation.definition.block.tsrx punctuation.definition.block.js"
+          "name": "keyword.control.directive.tsrx punctuation.definition.block.tsrx punctuation.definition.block.js"
         }
       },
       "patterns": [
@@ -4607,7 +4607,7 @@
               "name": "keyword.operator.type.annotation.js"
             }
           },
-          "end": "(?<![:|&])(?=$|^|[{};,]|//)",
+          "end": "(?<![:|&])(?=$|^|@(?=\\{)|[{};,]|//)",
           "patterns": [
             {
               "include": "#return-type-core"
@@ -4622,7 +4622,7 @@
               "name": "keyword.operator.type.annotation.js"
             }
           },
-          "end": "(?<![:|&])((?=[{};,]|//|^\\s*$)|((?<=\\S)(?=\\s*$)))",
+          "end": "(?<![:|&])((?=@(?=\\{)|[{};,]|//|^\\s*$)|((?<=\\S)(?=\\s*$)))",
           "patterns": [
             {
               "include": "#return-type-core"
@@ -4661,7 +4661,7 @@
           "name": "keyword.operator.type.annotation.js"
         }
       },
-      "end": "(?==>|\\{|(^\\s*(export|function|class|interface|let|var|(?:\\busing(?=\\s+(?!in\\b|of\\b(?!\\s*(?:of\\b|=)))[_$[:alpha:]])\\b)|(?:\\bawait\\s+(?:\\busing(?=\\s+(?!in\\b|of\\b(?!\\s*(?:of\\b|=)))[_$[:alpha:]])\\b)\\b)|const|import|enum|namespace|module|type|abstract|declare)\\s+))",
+      "end": "(?==>|@(?=\\{)|\\{|(^\\s*(export|function|class|interface|let|var|(?:\\busing(?=\\s+(?!in\\b|of\\b(?!\\s*(?:of\\b|=)))[_$[:alpha:]])\\b)|(?:\\bawait\\s+(?:\\busing(?=\\s+(?!in\\b|of\\b(?!\\s*(?:of\\b|=)))[_$[:alpha:]])\\b)\\b)|const|import|enum|namespace|module|type|abstract|declare)\\s+))",
       "patterns": [
         {
           "include": "#arrow-return-type-body"
@@ -4675,7 +4675,7 @@
           "name": "meta.arrow.js meta.return.type.arrow.js keyword.operator.type.annotation.js"
         }
       },
-      "end": "(?==>|\\{|(^\\s*(export|function|class|interface|let|var|(?:\\busing(?=\\s+(?!in\\b|of\\b(?!\\s*(?:of\\b|=)))[_$[:alpha:]])\\b)|(?:\\bawait\\s+(?:\\busing(?=\\s+(?!in\\b|of\\b(?!\\s*(?:of\\b|=)))[_$[:alpha:]])\\b)\\b)|const|import|enum|namespace|module|type|abstract|declare)\\s+))",
+      "end": "(?==>|@(?=\\{)|\\{|(^\\s*(export|function|class|interface|let|var|(?:\\busing(?=\\s+(?!in\\b|of\\b(?!\\s*(?:of\\b|=)))[_$[:alpha:]])\\b)|(?:\\bawait\\s+(?:\\busing(?=\\s+(?!in\\b|of\\b(?!\\s*(?:of\\b|=)))[_$[:alpha:]])\\b)\\b)|const|import|enum|namespace|module|type|abstract|declare)\\s+))",
       "contentName": "meta.arrow.js meta.return.type.arrow.js",
       "patterns": [
         {

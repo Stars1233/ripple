@@ -316,7 +316,7 @@
 				</dict>
 			</dict>
 			<key>end</key>
-			<string>(?==&gt;|\{|(^\s*(export|function|class|interface|let|var|(?:\busing(?=\s+(?!in\b|of\b(?!\s*(?:of\b|=)))[_$[:alpha:]])\b)|(?:\bawait\s+(?:\busing(?=\s+(?!in\b|of\b(?!\s*(?:of\b|=)))[_$[:alpha:]])\b)\b)|const|import|enum|namespace|module|type|abstract|declare)\s+))</string>
+			<string>(?==&gt;|@(?=\{)|\{|(^\s*(export|function|class|interface|let|var|(?:\busing(?=\s+(?!in\b|of\b(?!\s*(?:of\b|=)))[_$[:alpha:]])\b)|(?:\bawait\s+(?:\busing(?=\s+(?!in\b|of\b(?!\s*(?:of\b|=)))[_$[:alpha:]])\b)\b)|const|import|enum|namespace|module|type|abstract|declare)\s+))</string>
 			<key>name</key>
 			<string>meta.return.type.arrow.js</string>
 			<key>patterns</key>
@@ -7687,7 +7687,7 @@
 			<key>contentName</key>
 			<string>meta.arrow.js meta.return.type.arrow.js</string>
 			<key>end</key>
-			<string>(?==&gt;|\{|(^\s*(export|function|class|interface|let|var|(?:\busing(?=\s+(?!in\b|of\b(?!\s*(?:of\b|=)))[_$[:alpha:]])\b)|(?:\bawait\s+(?:\busing(?=\s+(?!in\b|of\b(?!\s*(?:of\b|=)))[_$[:alpha:]])\b)\b)|const|import|enum|namespace|module|type|abstract|declare)\s+))</string>
+			<string>(?==&gt;|@(?=\{)|\{|(^\s*(export|function|class|interface|let|var|(?:\busing(?=\s+(?!in\b|of\b(?!\s*(?:of\b|=)))[_$[:alpha:]])\b)|(?:\bawait\s+(?:\busing(?=\s+(?!in\b|of\b(?!\s*(?:of\b|=)))[_$[:alpha:]])\b)\b)|const|import|enum|namespace|module|type|abstract|declare)\s+))</string>
 			<key>patterns</key>
 			<array>
 				<dict>
@@ -8155,7 +8155,7 @@
 						</dict>
 					</dict>
 					<key>end</key>
-					<string>(?&lt;![:|&amp;])(?=$|^|[{};,]|//)</string>
+					<string>(?&lt;![:|&amp;])(?=$|^|@(?=\{)|[{};,]|//)</string>
 					<key>name</key>
 					<string>meta.return.type.js</string>
 					<key>patterns</key>
@@ -8178,7 +8178,7 @@
 						</dict>
 					</dict>
 					<key>end</key>
-					<string>(?&lt;![:|&amp;])((?=[{};,]|//|^\s*$)|((?&lt;=\S)(?=\s*$)))</string>
+					<string>(?&lt;![:|&amp;])((?=@(?=\{)|[{};,]|//|^\s*$)|((?&lt;=\S)(?=\s*$)))</string>
 					<key>name</key>
 					<string>meta.return.type.js</string>
 					<key>patterns</key>
@@ -8955,12 +8955,12 @@
 				<key>1</key>
 				<dict>
 					<key>name</key>
-					<string>punctuation.definition.block.tsrx punctuation.definition.block.js</string>
+					<string>keyword.control.directive.tsrx punctuation.definition.block.tsrx punctuation.definition.block.js</string>
 				</dict>
 				<key>2</key>
 				<dict>
 					<key>name</key>
-					<string>punctuation.definition.block.tsrx punctuation.definition.block.js</string>
+					<string>keyword.control.directive.tsrx punctuation.definition.block.tsrx punctuation.definition.block.js</string>
 				</dict>
 			</dict>
 			<key>contentName</key>
@@ -8972,7 +8972,7 @@
 				<key>1</key>
 				<dict>
 					<key>name</key>
-					<string>punctuation.definition.block.tsrx punctuation.definition.block.js</string>
+					<string>keyword.control.directive.tsrx punctuation.definition.block.tsrx punctuation.definition.block.js</string>
 				</dict>
 			</dict>
 			<key>name</key>
