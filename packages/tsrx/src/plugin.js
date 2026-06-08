@@ -2156,9 +2156,10 @@ export function TSRXPlugin(config) {
 			#popTokenContextsAfterTemplateExpressionElement(node) {
 				// A fragment in expression position (`() => <>…</>`) leaves the tokenizer
 				// at `exprAllowed === false`, unlike a self-closing element. When the next
-				// token is a `;`, the following statement may legitimately open with a JSX
-				// tag (`<List/>`), so restore expression position to match the element path.
-				if (this.type === tt.semi && node.type === 'JSXFragment') {
+				// token is a `;` or ASI can insert one, the following statement may
+				// legitimately open with a JSX tag (`<List/>`), so restore expression
+				// position to match the element path.
+				if ((this.type === tt.semi || this.canInsertSemicolon()) && node.type === 'JSXFragment') {
 					this.exprAllowed = true;
 				}
 				const ctx = this.context;
