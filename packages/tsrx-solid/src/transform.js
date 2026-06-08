@@ -1509,6 +1509,8 @@ function rewrite_early_return_guard_body(body, transform_context) {
 				} else {
 					jsx_bucket.push(child);
 				}
+			} else if (is_bare_render_expression(child)) {
+				jsx_bucket.push(to_jsx_expression_container(child, child));
 			} else {
 				outer.push(child);
 			}

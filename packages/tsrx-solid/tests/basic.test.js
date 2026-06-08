@@ -419,6 +419,24 @@ describe('@tsrx/solid basic', () => {
 			expect(code).not.toContain('if (cond)');
 		});
 
+		it('component-body plain if return uses trailing render output as <Show> fallback', () => {
+			const { code } = compile(
+				`function StatusBadge(props) @{
+					if (props.disabled) {
+						return <span>disabled</span>
+					}
+
+					<span>enabled</span>
+				}`,
+				'StatusBadge.tsrx',
+			);
+
+			expect(code).toContain("import { Show } from 'solid-js'");
+			expect(code).toContain('<Show when={props.disabled} fallback={StatusBadge__static2}>');
+			expect(code).toContain('{StatusBadge__static1}</Show>');
+			expect(code).not.toContain('<>{StatusBadge__static2}<Show');
+		});
+
 		it('preserves ordinary control flow for plain functions returning templates', () => {
 			const { code } = compile(
 				`function Dashboard({ user }: { user: string | null }) {
