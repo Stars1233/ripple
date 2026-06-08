@@ -169,14 +169,12 @@ describe('@tsrx/preact basic', () => {
 		const { code } = compile(
 			`import { useEffect } from 'preact/hooks';
 
-				export function App({ x }: { x: boolean }) {
+				export function App({ x }: { x: boolean }) @{
 					if (x) {
 						return null;
 					}
 
 					useEffect(() => {});
-
-					return null;
 				}`,
 			'App.tsrx',
 		);
@@ -188,6 +186,28 @@ describe('@tsrx/preact basic', () => {
 			code.indexOf('export function App'),
 		);
 		expect(code.indexOf('useEffect(() => {});')).toBeLessThan(code.indexOf('export function App'));
+	});
+
+	it('does not split hooks out of ordinary uppercase function bodies', () => {
+		const { code } = compile(
+			`import { useEffect } from 'preact/hooks';
+
+				export function App({ x }: { x: boolean }) {
+					if (x) {
+						return null;
+					}
+
+					useEffect(() => {});
+				}`,
+			'App.tsrx',
+		);
+
+		expect(code).toContain('export function App({ x }: { x: boolean }) {');
+		expect(code).toContain('if (x) {');
+		expect(code).toContain('return null;');
+		expect(code).toContain('useEffect(() => {});');
+		expect(code).not.toContain('StatementBodyHook');
+		expect(code).not.toContain('return <App__StatementBodyHook');
 	});
 
 	it('does not hoist render-time expressions from template bodies', () => {
