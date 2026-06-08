@@ -258,6 +258,15 @@ export function TSRXPlugin(config) {
 			#allowExpressionContainerTrailingSemicolon = false;
 			#jsxAttributeValueExpressionDepth = 0;
 			#jsxExpressionContainerDepth = 0;
+			// Context-stack length at the start of each open `{ … }` expression container.
+			// A control-flow directive (`@if`/`@for`/…) parsed inside a container strips
+			// JSX contexts so its header/body tokenize as JS; without a floor it would also
+			// strip the enclosing element's and container's contexts (which nothing rebuilds),
+			// underflowing the context stack when the surrounding markup closes. The directive
+			// filter preserves everything below the innermost baseline. See
+			// `#filterTemplateScriptContexts`.
+			/** @type {number[]} */
+			#expressionContainerContextBaselines = [];
 			#consumeContainerBraceAfterScope = false;
 			#scriptJSXElementDepth = 0;
 			#forceScriptJSXElementDepth = 0;
@@ -838,10 +847,7 @@ export function TSRXPlugin(config) {
 				}
 				this.pos = index;
 				if (found_boundary) {
-					this.context = this.context.filter(
-						(context) =>
-							context !== tstc.tc_expr && context !== tstc.tc_oTag && context !== tstc.tc_cTag,
-					);
+					this.#filterTemplateScriptContexts();
 					if (this.curContext() !== b_stat) {
 						this.context.push(b_stat);
 					}
@@ -1450,6 +1456,25 @@ export function TSRXPlugin(config) {
 				return node;
 			}
 
+			/**
+			 * Drop the JSX tokenizer contexts (`tc_expr`/`tc_oTag`/`tc_cTag`) so the
+			 * directive header/body tokenizes as JavaScript, while preserving every
+			 * context below the innermost open `{ … }` expression container. Those lower
+			 * contexts belong to the enclosing markup (the container brace, the element
+			 * that holds the `{ … }`, any outer fragment); a plain filter would drop them
+			 * too and underflow the context stack when that markup later closes. Outside
+			 * any expression container the baseline is 0, so this matches the original
+			 * "strip everything" behavior the bare-template path relies on.
+			 */
+			#filterTemplateScriptContexts() {
+				const baseline = this.#expressionContainerContextBaselines.at(-1) ?? 0;
+				this.context = this.context.filter(
+					(context, index) =>
+						index < baseline ||
+						(context !== tstc.tc_expr && context !== tstc.tc_oTag && context !== tstc.tc_cTag),
+				);
+			}
+
 			#parseJSXControlFlowExpression() {
 				const start = this.start;
 				const startLoc = this.startLoc;
@@ -1459,10 +1484,7 @@ export function TSRXPlugin(config) {
 				this.startLoc = acorn.getLineInfo(this.input, keywordStart);
 				this.curLine = this.startLoc.line;
 				this.lineStart = keywordStart - this.startLoc.column;
-				this.context = this.context.filter(
-					(context) =>
-						context !== tstc.tc_expr && context !== tstc.tc_oTag && context !== tstc.tc_cTag,
-				);
+				this.#filterTemplateScriptContexts();
 				if (this.curContext() !== b_stat) {
 					this.context.push(b_stat);
 				}
@@ -1573,10 +1595,7 @@ export function TSRXPlugin(config) {
 				this.startLoc = acorn.getLineInfo(this.input, wordStart);
 				this.curLine = this.startLoc.line;
 				this.lineStart = wordStart - this.startLoc.column;
-				this.context = this.context.filter(
-					(context) =>
-						context !== tstc.tc_expr && context !== tstc.tc_oTag && context !== tstc.tc_cTag,
-				);
+				this.#filterTemplateScriptContexts();
 				if (this.curContext() !== b_stat) {
 					this.context.push(b_stat);
 				}
@@ -1612,10 +1631,7 @@ export function TSRXPlugin(config) {
 				this.startLoc = acorn.getLineInfo(this.input, wordStart);
 				this.curLine = this.startLoc.line;
 				this.lineStart = wordStart - this.startLoc.column;
-				this.context = this.context.filter(
-					(context) =>
-						context !== tstc.tc_expr && context !== tstc.tc_oTag && context !== tstc.tc_cTag,
-				);
+				this.#filterTemplateScriptContexts();
 				if (this.curContext() !== b_stat) {
 					this.context.push(b_stat);
 				}
@@ -1785,10 +1801,7 @@ export function TSRXPlugin(config) {
 					if (/^return\b/.test(raw)) {
 						this.raise(this.start, '`return` is invalid inside `@switch` cases.');
 					}
-					this.context = this.context.filter(
-						(context) =>
-							context !== tstc.tc_expr && context !== tstc.tc_oTag && context !== tstc.tc_cTag,
-					);
+					this.#filterTemplateScriptContexts();
 					this.pos = this.start;
 					this.startLoc = this.curPosition();
 					if (this.curContext() !== b_stat) {
@@ -1874,10 +1887,7 @@ export function TSRXPlugin(config) {
 				// token contexts so the statement and the following `}`/`case` tokenize as
 				// code.
 				if (this.type !== tstt.jsxText && this.type !== tt.eof) {
-					this.context = this.context.filter(
-						(context) =>
-							context !== tstc.tc_expr && context !== tstc.tc_oTag && context !== tstc.tc_cTag,
-					);
+					this.#filterTemplateScriptContexts();
 					if (this.curContext() !== b_stat) {
 						this.context.push(b_stat);
 					}
@@ -3181,8 +3191,16 @@ export function TSRXPlugin(config) {
 				this.#consumeContainerBraceAfterScope = false;
 				let node = /** @type {ESTreeJSX.JSXExpressionContainer} */ (this.startNode());
 				this.#jsxExpressionContainerDepth++;
+				let pushed_context_baseline = false;
 				try {
 					this.next();
+
+					// Record the context-stack depth now that the container's `{` brace
+					// context is on the stack. A control-flow directive parsed inside this
+					// container must not strip anything below this floor (see
+					// `#filterTemplateScriptContexts`).
+					this.#expressionContainerContextBaselines.push(this.context.length);
+					pushed_context_baseline = true;
 
 					node.expression =
 						this.type === tt.braceR ? this.jsx_parseEmptyExpression() : this.parseExpression();
@@ -3201,6 +3219,9 @@ export function TSRXPlugin(config) {
 					}
 				} finally {
 					this.#jsxExpressionContainerDepth--;
+					if (pushed_context_baseline) {
+						this.#expressionContainerContextBaselines.pop();
+					}
 				}
 
 				if (consumeBraceAfterScope) {
@@ -3536,12 +3557,7 @@ export function TSRXPlugin(config) {
 								this.startLoc = acorn.getLineInfo(this.input, paramStart);
 								this.curLine = this.startLoc.line;
 								this.lineStart = paramStart - this.startLoc.column;
-								this.context = this.context.filter(
-									(context) =>
-										context !== tstc.tc_expr &&
-										context !== tstc.tc_oTag &&
-										context !== tstc.tc_cTag,
-								);
+								this.#filterTemplateScriptContexts();
 								if (this.curContext() !== b_stat) {
 									this.context.push(b_stat);
 								}

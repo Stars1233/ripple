@@ -289,6 +289,112 @@ abc
 		expect(li.children[0].value).toBe('   ');
 	});
 
+	it('treats backslashes in expression-container element text as literal text', () => {
+		const bare = findElement(`function App() { <div>a\\nb</div> }`, 'div');
+		const wrapped = findElement(`function App() { return <>{<div>a\\nb</div>}</>; }`, 'div');
+
+		expect(bare.children.map((child) => child.type)).toEqual(['JSXText']);
+		expect(bare.children[0].value).toBe('a\\nb');
+		expect(wrapped.children[0].value).toBe(bare.children[0].value);
+	});
+
+	const inExpressionContainer = (body) => `function App() {
+			return <>{<div>${body}</div>}</>;
+		}`;
+
+	it('parses an @{ } code block inside an element nested in an expression container', () => {
+		const block = findNode(
+			inExpressionContainer(`@{ const value = 1; <span>{value}</span> }`),
+			'JSXCodeBlock',
+		);
+
+		expect(block?.type).toBe('JSXCodeBlock');
+		expect(block.body.map((child) => child.type)).toEqual(['VariableDeclaration']);
+		expect(block.render.openingElement.name.name).toBe('span');
+	});
+
+	it('parses an @if directive inside an element nested in an expression container', () => {
+		const directive = findNode(
+			inExpressionContainer(`@if (ok) { <span>x</span> }`),
+			'JSXIfExpression',
+		);
+
+		expect(directive?.type).toBe('JSXIfExpression');
+		expect(directive.consequent.body.map((child) => child.type)).toEqual(['JSXElement']);
+	});
+
+	it('parses an @if/@else directive inside an element nested in an expression container', () => {
+		const directive = findNode(
+			inExpressionContainer(`@if (ok) { <span>a</span> } @else { <span>b</span> }`),
+			'JSXIfExpression',
+		);
+
+		expect(directive?.type).toBe('JSXIfExpression');
+		expect(directive.alternate?.type).toBe('BlockStatement');
+	});
+
+	it('parses an @for directive inside an element nested in an expression container', () => {
+		const directive = findNode(
+			inExpressionContainer(`@for (const item of items) { <li>{item}</li> }`),
+			'JSXForExpression',
+		);
+
+		expect(directive?.type).toBe('JSXForExpression');
+		expect(directive.statementType).toBe('ForOfStatement');
+	});
+
+	it('parses an @switch directive inside an element nested in an expression container', () => {
+		const directive = findNode(
+			inExpressionContainer(
+				`@switch (k) { @case 1: { <span>a</span> } @default: { <span>b</span> } }`,
+			),
+			'JSXSwitchExpression',
+		);
+
+		expect(directive?.type).toBe('JSXSwitchExpression');
+	});
+
+	it('parses an @try/@catch directive inside an element nested in an expression container', () => {
+		const directive = findNode(
+			inExpressionContainer(`@try { <span>a</span> } @catch (e) { <span>b</span> }`),
+			'JSXTryExpression',
+		);
+
+		expect(directive?.type).toBe('JSXTryExpression');
+		expect(directive.handler?.type).toBe('CatchClause');
+	});
+
+	it('preserves element-text whitespace inside a directive in an expression container', () => {
+		const span = findElement(inExpressionContainer(`@if (ok) { <span>   keep</span> }`), 'span');
+
+		expect(span.children.map((child) => child.type)).toEqual(['JSXText']);
+		expect(span.children[0].value).toBe('   keep');
+	});
+
+	// Remaining pre-existing bug, surfaced while fixing the whitespace handling above.
+	// Marked `it.fails` so the suite stays green while it is unfixed: the test asserts
+	// the *intended* behavior and currently throws, so `it.fails` passes today and will
+	// start failing once the parser is fixed — at which point the `.fails` marker should
+	// be removed. Independent of the whitespace fix (it throws on the unmodified parser).
+
+	// A ternary whose branches are both JSX elements with children, inside a `{ … }`
+	// expression container, fails to parse ("Unexpected token"). Self-closing branches
+	// (`<div /> : <span />`) and mixed `element : null` branches parse fine, so the
+	// failure is specific to a closing-tag element appearing after the `:`. It should
+	// parse as a `ConditionalExpression` with `JSXElement` branches.
+	it.fails('parses a ternary with JSX element branches inside an expression container', () => {
+		const returned = getReturned(
+			`function App() {
+				return <>{cond ? <div>yes</div> : <span>no</span>}</>;
+			}`,
+		);
+
+		const expression = returned.children[0].expression;
+		expect(expression.type).toBe('ConditionalExpression');
+		expect(expression.consequent.type).toBe('JSXElement');
+		expect(expression.alternate.type).toBe('JSXElement');
+	});
+
 	it('keeps line comments out of plain JSX fragment output', () => {
 		const ast = parseModule(
 			`export const FeatureCard = () => <>
