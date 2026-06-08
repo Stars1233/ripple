@@ -171,6 +171,15 @@ const ASSIGNED_JSX_CONTROL_FLOW_HTML = highlight_tsrx(
 };`,
 );
 
+const OLD_TEXT_HTML = highlight_tsrx(
+	`const Greeting = (): JSX.Element => <div>"Hello there!"</div>;
+
+const EmptyState = ({ search }: EmptyStateProps): JSX.Element => <section>
+  <h2>"No results for "{search}</h2>
+  <p>"Try a different search term."</p>
+</section>;`,
+);
+
 const REGULAR_TEXT_HTML = highlight_tsrx(
 	`const Greeting = (): JSX.Element => <div>Hello there!</div>;
 
@@ -270,9 +279,18 @@ export function BlogRethinkingTsrxPage() @{
 						</p>
 						<h2>It is JSX again</h2>
 						<p>
-							The most important part is also the most ordinary: if you know JSX, the template
-							surface should now feel familiar. Static text is JSX text. Dynamic values use
-							expression braces. Multiple children live in an element or fragment.
+							Before this change, TSRX static text had to opt out of being parsed as template
+							statements. That meant simple JSX-looking markup often carried extra quotes around the
+							text, even when there was nothing dynamic going on.
+						</p>
+						<pre class="code-block">
+							<code innerHTML={OLD_TEXT_HTML} />
+						</pre>
+						<p>
+							That worked, but it made everyday markup feel like a dialect of JSX instead of JSX
+							itself. The most important part of this update is also the most ordinary: if you know
+							JSX, the template surface should now feel familiar. Static text is JSX text. Dynamic
+							values use expression braces. Multiple children live in an element or fragment.
 						</p>
 						<pre class="code-block">
 							<code innerHTML={REGULAR_TEXT_HTML} />
