@@ -1190,9 +1190,14 @@ function transform_function(node, context) {
 	// render output. The parser already marks the render JSX as native_tsrx, so
 	// from here it flows through the existing native-component machinery exactly
 	// like the older fenced `{ return <> … </> }` shape.
+	const has_jsx_code_block_body = node.body?.type === 'JSXCodeBlock';
 	lower_jsx_code_block_function_body(node);
 
-	if (node.metadata?.native_tsrx_function || function_has_native_tsrx_return(node)) {
+	if (
+		has_jsx_code_block_body ||
+		node.metadata?.native_tsrx_function ||
+		function_has_native_tsrx_return(node)
+	) {
 		return transform_native_tsrx_function(node, context);
 	}
 
@@ -1396,12 +1401,7 @@ function find_native_await_in_statement(statement) {
  */
 function transform_function_with_hook_helpers(node, { next, state }) {
 	const has_hook_bearing_tsrx = function_contains_hook_bearing_tsrx(node, state);
-	const has_hook_split = needs_hook_split(node, state);
-	if (
-		state.helper_state ||
-		!is_uppercase_function_like(node) ||
-		(!has_hook_bearing_tsrx && !has_hook_split)
-	) {
+	if (state.helper_state || !is_uppercase_function_like(node) || !has_hook_bearing_tsrx) {
 		return next() ?? node;
 	}
 
@@ -1412,12 +1412,6 @@ function transform_function_with_hook_helpers(node, { next, state }) {
 
 	state.helper_state = helper_state;
 	state.hook_helpers_enabled = true;
-	if (has_hook_split) {
-		node.metadata = {
-			...(node.metadata || {}),
-			hook_split: true,
-		};
-	}
 	state.available_bindings = collect_function_scope_bindings(node);
 
 	const inner = /** @type {any} */ (next() ?? node);

@@ -513,6 +513,36 @@ describe('@tsrx/react basic', () => {
 		expect(mappings.mappings.length).toBeGreaterThan(0);
 	});
 
+	it('does not split hooks out of ordinary uppercase function bodies', () => {
+		const { code } = compile(
+			`import { useEffect, useState } from 'react';
+
+			export function App() {
+				const [tab, setTab] = useState('overview');
+				const posts = [
+					{ title: 'Compiler update' },
+					{ title: 'Runtime notes' },
+					{ title: 'Hydration deep dive' },
+				];
+
+				if (foo) {
+					return;
+				}
+
+				useEffect(() => {});
+			}`,
+			'App.tsrx',
+		);
+
+		expect(code).toContain('export function App() {');
+		expect(code).toContain("const [tab, setTab] = useState('overview');");
+		expect(code).toContain('if (foo) {');
+		expect(code).toContain('return;');
+		expect(code).toContain('useEffect(() => {});');
+		expect(code).not.toContain('StatementBodyHook');
+		expect(code).not.toContain('return <App__StatementBodyHook');
+	});
+
 	it('keeps setup guard returns while preserving source local names', () => {
 		const source = `import { useEffect } from 'react';
 

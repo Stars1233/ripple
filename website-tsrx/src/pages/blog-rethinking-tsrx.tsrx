@@ -16,13 +16,14 @@ const ProductCard = ({ product }: ProductCardProps): JSX.Element => @{
 );
 
 const FUNCTION_STATEMENT_CONTAINER_BODY_HTML = highlight_tsrx(
-	`export function ProductCard({ product }: ProductCardProps): JSX.Element @{
-  const price = formatCurrency(product.price);
+	`export function UserBadge({ user }: UserBadgeProps): JSX.Element @{
+  if (!user) {
+    return <span class="muted">Signed out</span>;
+  }
 
-  <article>
-    <h2>{product.name}</h2>
-    <p>{price}</p>
-  </article>
+  const initials = user.name.slice(0, 2).toUpperCase();
+
+  <button title={user.name}>{initials}</button>
 }`,
 );
 
@@ -85,7 +86,9 @@ const JSX_COMMENTS_HTML = highlight_tsrx(
   <button>Save</button>
   <button>Publish</button>
 
-  // Secondary actions can be grouped later.
+  /*
+   * Secondary actions can be grouped later.
+   */
   <a href="/settings">Settings</a>
 </nav>;`,
 );
@@ -255,8 +258,9 @@ export function BlogRethinkingTsrxPage() @{
 						</p>
 						<h2>Comments stay comments</h2>
 						<p>
-							TSRX also permits JavaScript line comments between JSX children. They are useful for
-							keeping intent close to a tricky bit of markup, and they do not render as text.
+							TSRX also permits JavaScript comments between JSX children, including multiline block
+							comments. They are useful for keeping intent close to a tricky bit of markup, and they
+							do not render as text.
 						</p>
 						<pre class="code-block">
 							<code innerHTML={JSX_COMMENTS_HTML} />
@@ -302,7 +306,10 @@ export function BlogRethinkingTsrxPage() @{
 						<pre class="code-block">
 							<code innerHTML={STATEMENT_CONTAINER_COMPONENT_BODY_HTML} />
 						</pre>
-						<p>They can also be used as the body of function declarations too.</p>
+						<p>
+							A named function can use the same body shape. Ordinary JavaScript guard returns still
+							work before the final template output.
+						</p>
 						<pre class="code-block">
 							<code innerHTML={FUNCTION_STATEMENT_CONTAINER_BODY_HTML} />
 						</pre>

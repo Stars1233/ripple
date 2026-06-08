@@ -531,9 +531,9 @@ export function SpecificationPage() @{
 							<h2 class="section-heading">4.3 Template Elements</h2>
 							<p class="section-body">
 								Within a returned TSRX template, direct element, fragment, style, text, and
-								expression-container children use the standard JSX node family. JavaScript line
-								comments are permitted between template children and do not render. Template control
-								flow uses directive-prefixed
+								expression-container children use the standard JSX node family. JavaScript line and
+								block comments are permitted between template children and do not render. Template
+								control flow uses directive-prefixed
 								<code class="inline-code">@if</code>
 								,
 								<code class="inline-code">@for</code>

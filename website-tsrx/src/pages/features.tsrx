@@ -69,6 +69,9 @@ const COMMENTS_HTML = highlight_tsrx(
     // Comments can sit between template children.
     <a href="/">Home</a>
 
+    /*
+     * Block comments stay comments too.
+     */
     @if (showAdmin) {
       // Branch comments are allowed too.
       <a href="/admin">Admin</a>
@@ -474,9 +477,9 @@ export const FeaturesPage = () => @{
 						<section class="doc-section" id="comments">
 							<h2 class="section-heading">JS comments</h2>
 							<p class="section-body">
-								JavaScript line comments are valid inside template children. They are comments, not
-								rendered text, so you can annotate element bodies and control-flow branches without
-								wrapping the note in braces.
+								JavaScript line and block comments are valid inside template children. They are
+								comments, not rendered text, so you can annotate element bodies and control-flow
+								branches without wrapping the note in braces.
 							</p>
 							<pre class="code-block">
 								<code innerHTML={COMMENTS_HTML} />
