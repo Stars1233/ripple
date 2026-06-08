@@ -371,18 +371,7 @@ abc
 		expect(span.children[0].value).toBe('   keep');
 	});
 
-	// Remaining pre-existing bug, surfaced while fixing the whitespace handling above.
-	// Marked `it.fails` so the suite stays green while it is unfixed: the test asserts
-	// the *intended* behavior and currently throws, so `it.fails` passes today and will
-	// start failing once the parser is fixed — at which point the `.fails` marker should
-	// be removed. Independent of the whitespace fix (it throws on the unmodified parser).
-
-	// A ternary whose branches are both JSX elements with children, inside a `{ … }`
-	// expression container, fails to parse ("Unexpected token"). Self-closing branches
-	// (`<div /> : <span />`) and mixed `element : null` branches parse fine, so the
-	// failure is specific to a closing-tag element appearing after the `:`. It should
-	// parse as a `ConditionalExpression` with `JSXElement` branches.
-	it.fails('parses a ternary with JSX element branches inside an expression container', () => {
+	it('parses a ternary with JSX element branches inside an expression container', () => {
 		const returned = getReturned(
 			`function App() {
 				return <>{cond ? <div>yes</div> : <span>no</span>}</>;
@@ -393,6 +382,46 @@ abc
 		expect(expression.type).toBe('ConditionalExpression');
 		expect(expression.consequent.type).toBe('JSXElement');
 		expect(expression.alternate.type).toBe('JSXElement');
+	});
+
+	it('parses a ternary with JSX fragment branches inside an expression container', () => {
+		const returned = getReturned(
+			`function App() {
+				return <>{cond ? <>yes</> : <>no</>}</>;
+			}`,
+		);
+
+		const expression = returned.children[0].expression;
+		expect(expression.type).toBe('ConditionalExpression');
+		expect(expression.consequent.type).toBe('JSXFragment');
+		expect(expression.alternate.type).toBe('JSXFragment');
+	});
+
+	it('parses a nested ternary with JSX element branches inside an expression container', () => {
+		const returned = getReturned(
+			`function App() {
+				return <>{a ? <div>1</div> : b ? <div>2</div> : <div>3</div>}</>;
+			}`,
+		);
+
+		const outer = returned.children[0].expression;
+		expect(outer.type).toBe('ConditionalExpression');
+		expect(outer.consequent.type).toBe('JSXElement');
+		expect(outer.alternate.type).toBe('ConditionalExpression');
+		expect(outer.alternate.consequent.type).toBe('JSXElement');
+		expect(outer.alternate.alternate.type).toBe('JSXElement');
+	});
+
+	it('preserves element-text whitespace in ternary branches inside an expression container', () => {
+		const span = findElement(
+			`function App() {
+				return <>{cond ? <div>a</div> : <span>   keep</span>}</>;
+			}`,
+			'span',
+		);
+
+		expect(span.children.map((child) => child.type)).toEqual(['JSXText']);
+		expect(span.children[0].value).toBe('   keep');
 	});
 
 	it('keeps line comments out of plain JSX fragment output', () => {
