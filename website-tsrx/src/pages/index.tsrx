@@ -121,7 +121,7 @@ export const IndexPage = () => @{
 					<p class="section-body what-is-copy">
 						TSRX (TypeScript Render Extensions) is a way to write UI component code that stays
 						readable and co-located. Structure, styling, and control flow live together, and the
-						result stays fully backwards compatible with TypeScript.
+						result stays fully backwards compatible with TypeScript and JSX.
 					</p>
 					<pre class="code-block">
 						<code innerHTML={SNIPPET_HTML} />
@@ -152,10 +152,10 @@ export const IndexPage = () => @{
 						Looking for the formal grammar and AST shape? Read the
 						<a class="supporting-link" href="/specification">specification →</a>
 					</p>
-					<aside class="alpha-notice" role="note" aria-label="Alpha release notice">
-						<span class="alpha-badge">Alpha</span>
+					<aside class="alpha-notice" role="note" aria-label="Beta release notice">
+						<span class="alpha-badge">Beta</span>
 						<p class="alpha-notice-body">
-							TSRX is in active alpha development. Feedback on the
+							TSRX is in active beta development. Feedback on the
 							{' '}
 							<a
 								class="alpha-notice-link"
