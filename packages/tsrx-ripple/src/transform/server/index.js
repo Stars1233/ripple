@@ -74,6 +74,8 @@ import {
 	rewrite_lazy_member_base,
 	should_guard_regular_js_statement,
 	strip_tsrx_style_elements,
+	wrap_code_block_in_iife,
+	is_code_block_function_body,
 } from '../../utils.js';
 
 /**
@@ -1609,6 +1611,19 @@ const visitors = {
 	},
 
 	JSXCodeBlock(node, context) {
+		// A `@{ … }` block that produces render output but sits in a value
+		// position (assigned to a variable, returned, …) is wrapped in an
+		// immediately-invoked arrow so it flows through the function-body path
+		// (`transform_native_tsrx_function`) rather than reaching the printer as a
+		// raw `JSXCodeBlock`. The function-body guard excludes a code block that is
+		// itself the function body (handled by `transform_native_tsrx_function`).
+		if (
+			node.render != null &&
+			!is_code_block_function_body(node, context.path.at(-1)) &&
+			is_native_tsrx_value_position(context.path)
+		) {
+			return context.visit(wrap_code_block_in_iife(node), context.state);
+		}
 		// A code-only `@{ … }` block (no render output) is just a lexical block of
 		// setup statements. Component blocks (with a render template) are handled by
 		// `transform_native_tsrx_function`. Everywhere else, lower it to a plain

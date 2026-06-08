@@ -70,6 +70,65 @@ describe('@tsrx/ripple Volar mappings cover arrow functions', () => {
 	});
 });
 
+describe('@tsrx/ripple lowers `@{ … }` code blocks in expression position', () => {
+	const variants = {
+		'assigned to a variable': `function App() {
+	const view = @{
+		const label = 'hi';
+		<p>{label}</p>
+	};
+	return view;
+}`,
+		returned: `function make() {
+	return @{ <p>{'hi'}</p> };
+}`,
+	};
+
+	for (const [position, source] of Object.entries(variants)) {
+		for (const mode of /** @type {const} */ (['client', 'server'])) {
+			it(`compiles a code block ${position} to a tsrx_element (${mode})`, () => {
+				const { code } = compile(source, 'App.tsrx', { mode });
+				expect(code).toContain('_$_.tsrx_element');
+				expect(code).toContain(`ripple/internal/${mode}`);
+				expect(code).not.toContain('JSXCodeBlock');
+			});
+		}
+
+		it(`emits valid to_ts for a code block ${position}`, () => {
+			const { code } = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
+			// The block lowers to an immediately-invoked arrow so the TSX printer
+			// emits valid TS for type/editor support, rather than leaking a raw
+			// `JSXCodeBlock` that prints as a malformed `= { … }`.
+			expect(code).toContain('(() => {');
+			expect(code).toContain('return <p>');
+			expect(code).not.toContain('JSXCodeBlock');
+			expect(code).not.toMatch(/=\s*\{\s*\n\s*const/);
+		});
+	}
+
+	it('keeps setup and variable identifiers navigable in to_ts output', () => {
+		const source = `function App() {
+	const view = @{
+		const label = 'hi';
+		<p>{label}</p>
+	};
+	return view;
+}`;
+		const result = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
+		for (const token of ['label', 'view']) {
+			const source_offset = source.indexOf(token);
+			const generated_offset = result.code.indexOf(token);
+			const mapping = find_exact_mapping(
+				result.mappings,
+				source_offset,
+				generated_offset,
+				token.length,
+			);
+			expect(mapping?.data.navigation).toBe(true);
+		}
+	});
+});
+
 describe('@tsrx/ripple Volar mappings style anchors', () => {
 	it('omits stylesheet AST children from template style anchors', () => {
 		const source = `function App() @{
