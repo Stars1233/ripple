@@ -27,6 +27,20 @@ const FUNCTION_STATEMENT_CONTAINER_BODY_HTML = highlight_tsrx(
 }`,
 );
 
+const CONDITIONAL_HOOKS_HTML = highlight_tsrx(
+	`const DetailsPanel = ({ open }: DetailsPanelProps): JSX.Element => @{
+  const [selected, setSelected] = useState('summary');
+
+  @if (open) {
+    const [draft, setDraft] = useState('');
+
+    <Editor value={draft} onInput={setDraft} />
+  } @else {
+    <button onClick={() => setSelected('summary')}>Show details</button>
+  }
+};`,
+);
+
 const JSX_CONTROL_FLOW_SCOPE_HTML = highlight_tsrx(
 	`const ActivityPanel = ({ result }: ActivityPanelProps): JSX.Element => @{
   @try {
@@ -302,6 +316,11 @@ export function BlogRethinkingTsrxPage() @{
 							rendering, return a statement container directly instead of wrapping it in an empty
 							fragment. Fragments are still there for real multiple-child output; they just are not
 							ceremony.
+						</p>
+						<p>
+							Hooks can live in that script section too. In React and Preact targets, a hook used
+							inside TSRX control flow is treated as conditional template work, so the compiler can
+							isolate it without making the parent component's hook order conditional.
 						</p>
 						<pre class="code-block">
 							<code innerHTML={STATEMENT_CONTAINER_COMPONENT_BODY_HTML} />
