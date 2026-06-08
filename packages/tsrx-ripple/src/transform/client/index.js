@@ -700,7 +700,7 @@ function visit_function(node, context) {
 		return b.empty;
 	}
 
-	if (is_tsrx_component_function(node, context)) {
+	if (is_tsrx_component_function(node)) {
 		return transform_native_tsrx_function(node, context);
 	}
 
