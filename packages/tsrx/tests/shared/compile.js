@@ -454,6 +454,89 @@ export function runSharedTsxExpressionTsrxTests({ compile, name, classAttrName }
 			expect(code).not.toContain('@for');
 			expect(code).not.toContain('JSXForExpression');
 		});
+
+		it('lowers @if passed as a call argument', () => {
+			const { code } = compile(
+				`function StatusBadge({ status }: { status: string }) {
+						func(@if (status === 'active') {
+							<span class="badge active">Online</span>
+						} @else if (status === 'idle') {
+							<span class="badge idle">Away</span>
+						} @else {
+							<span class="badge">Offline</span>
+						});
+					}`,
+				'App.tsrx',
+			);
+			expect(code).toContain('Online');
+			expect(code).toContain('Away');
+			expect(code).toContain('Offline');
+			expect(code).not.toContain('@if');
+			expect(code).not.toContain('JSXIfExpression');
+		});
+
+		it('lowers @for passed as a call argument', () => {
+			const { code } = compile(
+				`function List({ items }: { items: string[] }) {
+						render(@for (const item of items) {
+							<li>{item}</li>
+						});
+					}`,
+				'App.tsrx',
+			);
+			expect(code).toContain('<li>');
+			expect(code).not.toContain('@for');
+			expect(code).not.toContain('JSXForExpression');
+		});
+
+		it('lowers @switch passed as a call argument', () => {
+			const { code } = compile(
+				`function App({ status }: { status: string }) {
+						render(@switch (status) {
+							@case 'loading': { <p>Loading...</p> }
+							@default: { <p>Unknown status.</p> }
+						});
+					}`,
+				'App.tsrx',
+			);
+			expect(code).toContain('Loading...');
+			expect(code).toContain('Unknown status.');
+			expect(code).not.toContain('@switch');
+			expect(code).not.toContain('JSXSwitchExpression');
+		});
+
+		it('lowers @try passed as a call argument', () => {
+			const { code } = compile(
+				`function App() {
+						render(@try {
+							<p>Loaded</p>
+						} @catch (error) {
+							<p>Failed</p>
+						});
+					}`,
+				'App.tsrx',
+			);
+			expect(code).toContain('Loaded');
+			expect(code).toContain('Failed');
+			expect(code).not.toContain('@try');
+			expect(code).not.toContain('@catch');
+			expect(code).not.toContain('JSXTryExpression');
+		});
+
+		it('lowers a @{ … } code block passed as a call argument', () => {
+			const { code } = compile(
+				`function App() {
+						render(@{
+							const count = 2;
+							<span>{count}</span>
+						});
+					}`,
+				'App.tsrx',
+			);
+			expect(code).toContain('const count = 2;');
+			expect(code).toContain('<span>{count}</span>');
+			expect(code).not.toContain('JSXCodeBlock');
+		});
 	});
 }
 

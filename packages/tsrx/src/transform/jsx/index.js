@@ -254,9 +254,9 @@ function wrap_in_native_tsrx_fragment(node) {
 /**
  * Wrap a bare JSX control-flow directive that sits directly in an expression
  * position — an expression-bodied arrow (`() => @switch (…) { … }`), a
- * `return @switch (…) { … }`, or assignment to a variable
- * (`const x = @switch (…) { … }`, `x = @switch (…) { … }`) — in a native TSRX
- * fragment.
+ * `return @switch (…) { … }`, assignment to a variable
+ * (`const x = @switch (…) { … }`, `x = @switch (…) { … }`), or a call/`new`
+ * argument (`render(@if (…) { … })`) — in a native TSRX fragment.
  * @param {any} node
  * @param {Set<any>} [seen]
  * @returns {void}
@@ -282,6 +282,13 @@ function wrap_control_flow_expression_values(node, seen = new Set()) {
 		node.init = wrap_in_native_tsrx_fragment(node.init);
 	} else if (node.type === 'AssignmentExpression' && is_jsx_control_flow_expression(node.right)) {
 		node.right = wrap_in_native_tsrx_fragment(node.right);
+	} else if (
+		(node.type === 'CallExpression' || node.type === 'NewExpression') &&
+		Array.isArray(node.arguments)
+	) {
+		node.arguments = node.arguments.map((/** @type {any} */ arg) =>
+			is_jsx_control_flow_expression(arg) ? wrap_in_native_tsrx_fragment(arg) : arg,
+		);
 	}
 
 	for (const key of Object.keys(node)) {
