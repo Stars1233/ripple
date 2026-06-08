@@ -2172,6 +2172,15 @@ export function TSRXPlugin(config) {
 				if ((this.type === tt.semi || this.canInsertSemicolon()) && node.type === 'JSXFragment') {
 					this.exprAllowed = true;
 				}
+				// A JSX element/fragment used as a ternary consequent (`cond ? <a>…</a> : …`)
+				// likewise leaves the tokenizer at `exprAllowed === false`, so the `<` after
+				// the `:` would not start a tag. Restore expression position so the alternate
+				// branch parses as JSX too. This applies to both elements and fragments,
+				// unlike the `;`/ASI case above (a `:` only follows a value, so the next
+				// token always begins the alternate expression).
+				if (this.type === tt.colon) {
+					this.exprAllowed = true;
+				}
 				const ctx = this.context;
 				const ci = ctx.length - 1;
 				const top = ctx[ci];
