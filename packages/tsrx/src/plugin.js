@@ -4577,6 +4577,18 @@ export function TSRXPlugin(config) {
 					return node;
 				}
 
+				if (
+					this.input.charCodeAt(this.start) === CharCode.at &&
+					(this.#isCodeBlockStart(this.start) || this.#isJSXControlFlowDirectiveStart())
+				) {
+					const node = /** @type {AST.ExpressionStatement} */ (this.startNode());
+					node.expression = /** @type {AST.Expression} */ (this.parseExpression());
+					this.semicolon();
+					return /** @type {AST.ExpressionStatement} */ (
+						this.finishNode(node, 'ExpressionStatement')
+					);
+				}
+
 				// &[ or &{ at statement level — lazy destructuring assignment
 				// e.g., &[data] = track(0); or &{x, y} = obj;
 				if (this.type === tt.bitwiseAND) {

@@ -254,7 +254,8 @@ function wrap_in_native_tsrx_fragment(node) {
 /**
  * Wrap a bare JSX control-flow directive that sits directly in an expression
  * position — an expression-bodied arrow (`() => @switch (…) { … }`), a
- * `return @switch (…) { … }`, assignment to a variable
+ * `return @switch (…) { … }`, an unused expression statement,
+ * assignment to a variable
  * (`const x = @switch (…) { … }`, `x = @switch (…) { … }`), or a call/`new`
  * argument (`render(@if (…) { … })`) — in a native TSRX fragment.
  * @param {any} node
@@ -278,6 +279,11 @@ function wrap_control_flow_expression_values(node, seen = new Set()) {
 		node.body = wrap_in_native_tsrx_fragment(node.body);
 	} else if (node.type === 'ReturnStatement' && is_jsx_control_flow_expression(node.argument)) {
 		node.argument = wrap_in_native_tsrx_fragment(node.argument);
+	} else if (
+		node.type === 'ExpressionStatement' &&
+		is_jsx_control_flow_expression(node.expression)
+	) {
+		node.expression = wrap_in_native_tsrx_fragment(node.expression);
 	} else if (node.type === 'VariableDeclarator' && is_jsx_control_flow_expression(node.init)) {
 		node.init = wrap_in_native_tsrx_fragment(node.init);
 	} else if (node.type === 'AssignmentExpression' && is_jsx_control_flow_expression(node.right)) {

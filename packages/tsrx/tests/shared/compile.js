@@ -526,7 +526,7 @@ export function runSharedTsxExpressionTsrxTests({ compile, name, classAttrName }
 		it('lowers a @{ … } code block passed as a call argument', () => {
 			const { code } = compile(
 				`function App() {
-						render(@{
+							render(@{
 							const count = 2;
 							<span>{count}</span>
 						});
@@ -536,6 +536,73 @@ export function runSharedTsxExpressionTsrxTests({ compile, name, classAttrName }
 			expect(code).toContain('const count = 2;');
 			expect(code).toContain('<span>{count}</span>');
 			expect(code).not.toContain('JSXCodeBlock');
+		});
+
+		it('lowers a dangling @if expression statement', () => {
+			const { code } = compile(
+				`function StatusBadge({ status }: { status: string }) {
+							@if (status === 'active') {
+								<span class="badge active">Online</span>
+							} @else if (status === 'idle') {
+								<span class="badge idle">Away</span>
+							} @else {
+								<span class="badge">Offline</span>
+							}
+						}`,
+				'App.tsrx',
+			);
+			expect(code).toContain('Online');
+			expect(code).toContain('Away');
+			expect(code).toContain('Offline');
+			expect(code).not.toContain('@if');
+			expect(code).not.toContain('JSXIfExpression');
+		});
+
+		it('lowers dangling @ control expressions and code blocks as expression statements', () => {
+			const cases = [
+				[
+					`function App() {
+								@for (const item of items) {
+									<li>{item}</li>
+								}
+							}`,
+					['<li>', '@for', 'JSXForExpression'],
+				],
+				[
+					`function App() {
+								@switch (status) {
+									@case 'loading': { <p>Loading...</p> }
+									@default: { <p>Unknown status.</p> }
+								}
+							}`,
+					['Loading...', '@switch', 'JSXSwitchExpression'],
+				],
+				[
+					`function App() {
+								@try {
+									<p>Loaded</p>
+								} @catch (error) {
+									<p>Failed</p>
+								}
+							}`,
+					['Loaded', '@try', 'JSXTryExpression'],
+				],
+				[
+					`function App() {
+								@{
+									const count = 2;
+									<span>{count}</span>
+								}
+							}`,
+					['const count = 2;', 'JSXCodeBlock', 'JSXCodeBlock'],
+				],
+			];
+			for (const [source, [expected, rawSyntax, rawNode]] of cases) {
+				const { code } = compile(source, 'App.tsrx');
+				expect(code, source).toContain(expected);
+				expect(code, source).not.toContain(rawSyntax);
+				expect(code, source).not.toContain(rawNode);
+			}
 		});
 	});
 }

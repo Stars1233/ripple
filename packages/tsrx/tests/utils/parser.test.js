@@ -1810,6 +1810,21 @@ foo();`;
 		}
 	});
 
+	it('parses a `@{ }` block and each @-control directive as expression statements', () => {
+		const cases = [
+			['function App() { @{ const a = 5; <div>{a}</div> }; }', 'JSXCodeBlock'],
+			['function App() { @if (c) { <a/> }; }', 'JSXIfExpression'],
+			['function App() { @for (const i of xs) { <li>{i}</li> }; }', 'JSXForExpression'],
+			["function App() { @switch (v) { @case 'a': { <a/> } }; }", 'JSXSwitchExpression'],
+			['function App() { @try { <a/> } @catch (e) { <b/> }; }', 'JSXTryExpression'],
+		];
+		for (const [source, type] of cases) {
+			const statement = parseModule(source, 'App.tsrx').body[0].body.body[0];
+			expect(statement.type, source).toBe('ExpressionStatement');
+			expect(statement.expression.type, source).toBe(type);
+		}
+	});
+
 	it('keeps a decorated class expression parsing as a decorator, not a code block', () => {
 		const ast = parseModule(`const X = @dec class {};`, 'App.tsrx');
 		const init = ast.body[0].declarations[0].init;
