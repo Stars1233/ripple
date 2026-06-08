@@ -2209,7 +2209,11 @@ const visitors = {
 				state.template?.push(`<style>${sanitizeTemplateString(node.css)}</style>`);
 				return;
 			}
-			if (node.id.type === 'Identifier' && node.id.name === 'script') {
+			// Inline scripts (`<script>{code}</script>`) are rendered by injecting
+			// the child content as the script's text. Scripts with no inline body
+			// (e.g. `<script src={...} />`) carry their behavior in attributes, so
+			// they fall through to generic element handling instead.
+			if (node.id.type === 'Identifier' && node.id.name === 'script' && node.children.length > 0) {
 				const id = state.flush_node?.();
 				state.template?.push('<!>');
 				context.state.init?.push(

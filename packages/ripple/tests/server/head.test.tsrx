@@ -90,6 +90,29 @@ describe('head elements', () => {
 		expect(document.title).toBe('');
 	});
 
+	it('renders external scripts with src attributes from a loop', async () => {
+		const Head = ({ scripts }: { scripts: { src: string }[] }) => @{
+			<head>
+				@for (const script of scripts) {
+					<script src={script.src} />
+				}
+			</head>
+		};
+
+		function App() @{
+			<Head scripts={[{ src: '/a.js' }, { src: '/b.js' }]} />
+		}
+
+		const { head, body } = await render(App);
+		const { document } = parseAsFullHtml(head, body);
+
+		const srcs = Array.from(document.querySelectorAll('head script[src]')).map(
+			(node) => node.getAttribute('src'),
+		).sort();
+
+		expect(srcs).toEqual(['/a.js', '/b.js']);
+	});
+
 	it('renders title with conditional content', async () => {
 		function App() @{
 			let &[showPrefix] = track(true);

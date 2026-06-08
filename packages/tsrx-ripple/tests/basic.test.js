@@ -290,6 +290,24 @@ describe('@tsrx/ripple Volar TypeScript output', () => {
 		expect(code).toContain("<option value={1} label={'One'} selected={true}>");
 	});
 
+	it('preserves attribute-only head scripts inside a loop', () => {
+		const { code } = compile_to_volar_mappings(
+			`export const Head = ({ scripts }: { scripts: { src: string }[] }) => @{
+		<head>
+			@for (const script of scripts) {
+				<script src={script.src} />
+			}
+		</head>
+}`,
+			'Head.tsrx',
+			{ loose: true },
+		);
+
+		expect(code).toContain('<script src={script.src} />');
+		expect(code).toContain('for (const script of scripts)');
+		expect(code).not.toContain('JSXCodeBlock');
+	});
+
 	it('does not collect statements from nested ordinary function bodies', () => {
 		const { code } = compile_to_volar_mappings(
 			`import { track } from 'ripple';

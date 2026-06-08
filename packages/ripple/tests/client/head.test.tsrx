@@ -172,6 +172,40 @@ describe('head elements', () => {
 		expect(document.title).toBe('');
 	});
 
+	it('renders external scripts with src attributes from a loop', () => {
+		const added: HTMLScriptElement[] = [];
+		const scripts = [{ src: '/a.js' }, { src: '/b.js' }];
+
+		function App() @{
+			<head>
+				@for (const script of scripts) {
+					<script src={script.src} />
+				}
+			</head>
+		}
+
+		try {
+			render(App);
+
+			const head_scripts = Array.from(
+				document.head.querySelectorAll('script[src]'),
+			) as HTMLScriptElement[];
+
+			for (const node of head_scripts) {
+				if (node.getAttribute('src') === '/a.js' || node.getAttribute('src') === '/b.js') {
+					added.push(node);
+				}
+			}
+
+			const srcs = added.map((node) => node.getAttribute('src')).sort();
+			expect(srcs).toEqual(['/a.js', '/b.js']);
+		} finally {
+			for (const node of added) {
+				node.remove();
+			}
+		}
+	});
+
 	it('renders title with conditional content', () => {
 		function App() @{
 			let &[showPrefix] = track(true);
