@@ -92,6 +92,76 @@ export function runSharedCompileDiagnosticsTests({ compile_to_volar_mappings, na
 			expect(result.errors).toEqual([]);
 		});
 
+		it('allows return statements in arrow function statement-container bodies', () => {
+			const result = compile_to_volar_mappings(
+				`const Test = () => @{
+					if (ready) {
+						return <div>{'early'}</div>;
+					}
+
+					<div>{'ready'}</div>
+				}`,
+				'App.tsrx',
+			);
+
+			expect(result.errors).toEqual([]);
+		});
+
+		it('rejects return statements in expression-position statement containers', () => {
+			for (const source of [
+				`function Test() {
+					return @{
+						if (ready) {
+							return <div>{'early'}</div>;
+						}
+
+						<div>{'ready'}</div>
+					};
+				}`,
+				`function Test() @{
+					const content = @{
+						if (ready) {
+							return <div>{'early'}</div>;
+						}
+
+						<div>{'ready'}</div>
+					};
+
+					<section>{content}</section>
+				}`,
+				`function Test() @{
+					<section>@{
+						if (ready) {
+							return <div>{'early'}</div>;
+						}
+
+						<div>{'ready'}</div>
+					}</section>
+				}`,
+			]) {
+				const result = compile_to_volar_mappings(source, 'App.tsrx');
+
+				expect(result.errors.map((error) => error.message)).toContain(TSRX_TEMPLATE_RETURN_ERROR);
+			}
+		});
+
+		it('allows return statements inside nested ordinary functions in statement containers', () => {
+			const result = compile_to_volar_mappings(
+				`function Test() @{
+					<section>@{
+						function render() {
+							return <div>{'nested'}</div>;
+						}
+
+						<div>{render()}</div>
+					}</section>
+				}`,
+				'App.tsrx',
+			);
+
+			expect(result.errors).toEqual([]);
+		});
+
 		it('parses JSX callback returns in JSX props without semicolons', () => {
 			const result = compile_to_volar_mappings(
 				`class Foo {

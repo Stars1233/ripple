@@ -350,6 +350,20 @@ export function BlogRethinkingTsrxPage() @{
 							<code>{'@{...}'}</code>
 							: TypeScript first (although optional), then an optional rendered template output.
 						</p>
+						<p>
+							The
+							<code>@</code>
+							is doing real work here. A bare
+							<code>for</code>
+							looks like JavaScript control flow, so both humans and AI agents naturally reach for
+							JavaScript rules:
+							<code>break</code>
+							,
+							<code>continue</code>
+							, fallthrough, or branch-local returns. Template control flow is different: it is JSX
+							that chooses what to render. The prefix makes that boundary visible before anyone has
+							to infer it from context.
+						</p>
 						<pre class="code-block">
 							<code innerHTML={JSX_CONTROL_FLOW_SCOPE_HTML} />
 						</pre>

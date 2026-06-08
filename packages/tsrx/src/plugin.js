@@ -1255,7 +1255,7 @@ export function TSRXPlugin(config) {
 			 * `JSXCodeBlock` whose `body` holds the setup statements and `render` the
 			 * single optional render output (§9).
 			 */
-			#parseCodeBlock() {
+			#parseCodeBlock({ allowReturnStatements = false } = {}) {
 				const start = this.start;
 				const startLoc = this.startLoc;
 				const node = /** @type {AST.JSXCodeBlock} */ (this.startNodeAt(start, startLoc));
@@ -1305,6 +1305,9 @@ export function TSRXPlugin(config) {
 					node.body = /** @type {AST.Statement[]} */ (flat.slice(0, -1));
 				} else {
 					node.body = /** @type {AST.Statement[]} */ (flat);
+				}
+				if (!allowReturnStatements) {
+					this.#report_invalid_template_return_statements(node.body);
 				}
 
 				if (this.type !== tt.braceR) {
@@ -3038,10 +3041,9 @@ export function TSRXPlugin(config) {
 			parseFunctionBody(node, isArrowFunction, isMethod, forInit, ...args) {
 				this.#functionBodyDepth++;
 				try {
-					// Allow a `@{ … }` code block as the body of a (non-arrow) function or
-					// method, so a component can be written `function Something() @{ … }` or
-					// `{ Render() @{ … } }`. Arrow concise bodies (`() => @{ … }`) already
-					// route through `parseExprAtom`.
+					// Allow a `@{ … }` code block as the body of a function, method, or
+					// arrow function, so components can be written as `function Something()
+					// @{ … }`, `{ Render() @{ … } }`, or `const Something = () => @{ … }`.
 					//
 					// A return-type annotation sits between the params and the body
 					// (`function f(): T @{ … }`). acorn-typescript parses it inside
@@ -3051,8 +3053,8 @@ export function TSRXPlugin(config) {
 					if (!isArrowFunction && this.match(tt.colon)) {
 						node.returnType = this.tsParseTypeOrTypePredicateAnnotation(tt.colon);
 					}
-					if (!isArrowFunction && this.#isCodeBlockStart(this.start)) {
-						node.body = this.parseMaybeAssign(forInit);
+					if (this.#isCodeBlockStart(this.start)) {
+						node.body = this.#parseCodeBlock({ allowReturnStatements: true });
 						this.checkParams(node, false);
 						this.exitScope();
 						return node;
