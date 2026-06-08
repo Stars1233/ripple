@@ -720,6 +720,9 @@
     "expressionWithoutIdentifiers": {
       "patterns": [
         {
+          "include": "#tsrx-template-child-directive"
+        },
+        {
           "include": "#tsrx-template-block-directive"
         },
         {
@@ -6901,6 +6904,9 @@
     },
     "non-jsx-expression": {
       "patterns": [
+        {
+          "include": "#tsrx-template-child-directive"
+        },
         {
           "include": "#tsrx-template-block-directive"
         },

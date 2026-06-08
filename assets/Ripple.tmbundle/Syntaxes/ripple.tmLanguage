@@ -3146,6 +3146,10 @@
 			<array>
 				<dict>
 					<key>include</key>
+					<string>#tsrx-template-child-directive</string>
+				</dict>
+				<dict>
+					<key>include</key>
 					<string>#tsrx-template-block-directive</string>
 				</dict>
 				<dict>
@@ -6147,6 +6151,10 @@
 		<dict>
 			<key>patterns</key>
 			<array>
+				<dict>
+					<key>include</key>
+					<string>#tsrx-template-child-directive</string>
+				</dict>
 				<dict>
 					<key>include</key>
 					<string>#tsrx-template-block-directive</string>
