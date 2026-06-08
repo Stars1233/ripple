@@ -1272,7 +1272,7 @@ function visit_function(node, context) {
 		path: [...context.path],
 	};
 
-	if (is_tsrx_component_function(node, context)) {
+	if (is_tsrx_component_function(node)) {
 		node.metadata.native_tsrx_function = true;
 		context.state.component = node;
 

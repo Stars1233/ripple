@@ -122,10 +122,9 @@ export function get_tsrx_component_function_name(node, context) {
 
 /**
  * @param {AST.Node | null | undefined} node
- * @param {CommonContext} context
  * @returns {boolean}
  */
-export function is_tsrx_component_function(node, context) {
+export function is_tsrx_component_function(node) {
 	return (
 		is_native_tsrx_function_node(node) ||
 		(!!node &&

@@ -1702,7 +1702,7 @@ const visitors = {
 	},
 
 	FunctionDeclaration(node, context) {
-		if (is_tsrx_component_function(node, context)) {
+		if (is_tsrx_component_function(node)) {
 			if (node.id) {
 				const binding = context.state.scope.get(node.id.name);
 				if (binding) {
@@ -1739,7 +1739,7 @@ const visitors = {
 	},
 
 	FunctionExpression(node, context) {
-		if (is_tsrx_component_function(node, context)) {
+		if (is_tsrx_component_function(node)) {
 			return transform_native_tsrx_function(node, context);
 		}
 		if (!context.state.to_ts) {
@@ -1781,7 +1781,7 @@ const visitors = {
 	},
 
 	ArrowFunctionExpression(node, context) {
-		if (is_tsrx_component_function(node, context)) {
+		if (is_tsrx_component_function(node)) {
 			return transform_native_tsrx_function(node, context);
 		}
 		delete node.returnType;
