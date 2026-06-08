@@ -5608,7 +5608,7 @@ render(App);`;
 			expect(result).toBeWithNewline(expected);
 		});
 
-		it('should preserve the order of try / pending / catch block', async () => {
+		it('should preserve the order of try / pending / catch blocks', async () => {
 			const expected = `function Test() {
   let items: RippleArray<string> | null = null;
   let error: string | null = null;
@@ -5626,8 +5626,6 @@ render(App);`;
     <div>{'Loading...'}</div>
   } @catch (e) {
     error = (e as Error).message;
-  } finally {
-    <div>finally block</div>
   };
 }`;
 

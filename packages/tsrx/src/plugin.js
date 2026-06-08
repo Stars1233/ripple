@@ -1545,7 +1545,7 @@ export function TSRXPlugin(config) {
 						} finally {
 							this.#templateControlFlowBlockDepth--;
 						}
-					} else if (this.#isUnprefixedDirectiveClauseKeyword('empty')) {
+					} else if (this.#isUnprefixedDirectiveClauseContinuation('empty', ['{'])) {
 						this.raise(this.start, 'Expected `@empty` after `@for` block.');
 					} else {
 						/** @type {any} */ (node).empty = null;
@@ -1647,13 +1647,31 @@ export function TSRXPlugin(config) {
 
 			/**
 			 * @param {string} keyword
+			 * @param {string[]} continuations
 			 */
-			#isUnprefixedDirectiveClauseKeyword(keyword) {
+			#isUnprefixedDirectiveClauseContinuation(keyword, continuations) {
 				const keywordStart = skip_whitespace_from(this.input, this.start);
-				return (
-					this.input.slice(keywordStart, keywordStart + keyword.length) === keyword &&
-					!this.#isIdentifierChar(this.input.charCodeAt(keywordStart + keyword.length))
-				);
+				if (
+					this.input.slice(keywordStart, keywordStart + keyword.length) !== keyword ||
+					this.#isIdentifierChar(this.input.charCodeAt(keywordStart + keyword.length))
+				) {
+					return false;
+				}
+
+				const continuationStart = skip_whitespace_from(this.input, keywordStart + keyword.length);
+				for (const continuation of continuations) {
+					if (continuation.length === 1 && this.input[continuationStart] === continuation) {
+						return true;
+					}
+					if (
+						this.input.slice(continuationStart, continuationStart + continuation.length) ===
+							continuation &&
+						!this.#isIdentifierChar(this.input.charCodeAt(continuationStart + continuation.length))
+					) {
+						return true;
+					}
+				}
+				return false;
 			}
 
 			/**
@@ -1693,7 +1711,7 @@ export function TSRXPlugin(config) {
 					node.alternate = this.#eatJSXDirectiveBareClauseKeyword('if')
 						? this.#parseTemplateIfStatement()
 						: /** @type {AST.Statement} */ (this.#parseTemplateControlFlowStatement());
-				} else if (this.#isUnprefixedDirectiveClauseKeyword('else')) {
+				} else if (this.#isUnprefixedDirectiveClauseContinuation('else', ['{', 'if'])) {
 					this.raise(this.start, 'Expected `@else` after `@if` block.');
 				}
 
@@ -3523,7 +3541,7 @@ export function TSRXPlugin(config) {
 			}
 
 			/**
-			 * `@try`/`@pending`/`@catch`/`finally` blocks lower their direct `return`
+			 * `@try`/`@pending`/`@catch` blocks lower their direct `return`
 			 * values into reactive boundary fallbacks, so unlike `@if`/`@for`/`@switch`
 			 * blocks they legitimately allow `return <markup>` statements. Set the flag
 			 * immediately before parsing each such block so its body sees it.
@@ -3547,7 +3565,7 @@ export function TSRXPlugin(config) {
 
 						if (this.#eatJSXDirectiveClauseKeyword('pending')) {
 							node.pending = this.#parseTemplateControlFlowReturnBlock();
-						} else if (this.#isUnprefixedDirectiveClauseKeyword('pending')) {
+						} else if (this.#isUnprefixedDirectiveClauseContinuation('pending', ['{'])) {
 							this.raise(this.start, 'Expected `@pending` after `@try` block.');
 						} else {
 							node.pending = null;
@@ -3624,17 +3642,15 @@ export function TSRXPlugin(config) {
 							clause.body = this.#parseTemplateControlFlowReturnBlock(false);
 							this.exitScope();
 							node.handler = this.finishNode(clause, 'CatchClause');
-						} else if (this.#isUnprefixedDirectiveClauseKeyword('catch')) {
+						} else if (this.#isUnprefixedDirectiveClauseContinuation('catch', ['{', '('])) {
 							this.raise(this.start, 'Expected `@catch` after `@try` block.');
 						}
-						node.finalizer = this.eat(tt._finally)
-							? this.#parseTemplateControlFlowReturnBlock()
-							: null;
+						node.finalizer = null;
 
-						if (!node.handler && !node.finalizer && !node.pending) {
+						if (!node.handler && !node.pending) {
 							this.raise(
 								/** @type {AST.NodeWithLocation} */ (node).start,
-								'Missing catch or finally clause',
+								'Missing `@catch` or `@pending` after `@try` block.',
 							);
 						}
 						return this.finishNode(node, 'TryStatement');

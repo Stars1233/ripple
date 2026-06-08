@@ -824,7 +824,7 @@ describe('@tsrx/vue basic', () => {
 		).toBe(true);
 	});
 
-	it('rejects JavaScript try/finally in component bodies', () => {
+	it('rejects finally clauses in component @try templates', () => {
 		expect(() =>
 			compile(
 				`function App() @{
@@ -838,7 +838,7 @@ describe('@tsrx/vue basic', () => {
 				}`,
 				'App.tsrx',
 			),
-		).toThrow(/does not support JavaScript `try\/finally`/);
+		).toThrow(/Unexpected token/);
 	});
 
 	it('rejects await in component bodies', () => {

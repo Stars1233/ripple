@@ -1244,8 +1244,8 @@ foo();`;
 
 	it('parses @else if as a chained JSXIfExpression alternate', () => {
 		const returned = getReturned(`function App() { return <div>
-			@if (status === 'loading') {
-				<>Loading</>
+				@if (status === 'loading') {
+					<>Loading</>
 			} @else if (status === 'success') {
 				<>Success</>
 			} @else {
@@ -1260,10 +1260,27 @@ foo();`;
 		expect(directive.alternate.alternate.body[0].children[0].value).toContain('Failed');
 	});
 
+	it('parses bare else text after an @if directive', () => {
+		const returned = getReturned(`function App() { return <>
+				@if (ready) {
+					<b>123</b>
+				} else
+			</>; }`);
+
+		const directive = returned.children.find((child) => child.type === 'JSXIfExpression');
+		const text = returned.children.find(
+			(child) => child.type === 'JSXText' && child.value.includes('else'),
+		);
+
+		expect(directive.type).toBe('JSXIfExpression');
+		expect(directive.alternate).toBe(null);
+		expect(text.value).toContain('else');
+	});
+
 	it('rejects braceless @if JSX output', () => {
 		expect(() =>
 			getReturned(`function App() { return <div>
-				@if (visible) <div class="status">Visible: {String(visible)}</div>
+					@if (visible) <div class="status">Visible: {String(visible)}</div>
 			</div>; }`),
 		).toThrow(/Expected `\{` after JSX control-flow directive/);
 	});

@@ -1184,7 +1184,7 @@ describe('@tsrx/react basic', () => {
 		expect(code).toContain('reset');
 	});
 
-	it('rejects JavaScript try/finally in component templates', () => {
+	it('rejects finally clauses in component @try templates', () => {
 		expect(() =>
 			compile(
 				`export function App() @{
@@ -1198,7 +1198,7 @@ describe('@tsrx/react basic', () => {
 				}`,
 				'App.tsrx',
 			),
-		).toThrow('does not support JavaScript `try/finally`');
+		).toThrow(/Unexpected token/);
 	});
 
 	it('transforms try with use() inside for Suspense triggering', () => {
