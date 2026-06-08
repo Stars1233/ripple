@@ -225,7 +225,7 @@ export function BlogRethinkingTsrxPage() @{
 					<a class="back-link" href="/blog">Back to blog</a>
 					<article>
 						<header class="article-header">
-							<p class="eyebrow">June 7, 2026</p>
+							<p class="eyebrow">June 8, 2026</p>
 							<h1>Rethinking TSRX</h1>
 						</header>
 						<p>
