@@ -1,4 +1,4 @@
-import type { PropsWithExtras } from 'ripple';
+import type { PropsWithExtras, RefValue } from 'ripple';
 import { describe, it, expect } from 'vitest';
 import { RippleArray, createRefKey, effect, flushSync, isRefProp, track } from 'ripple';
 import type { Tracked } from 'ripple';
@@ -13,14 +13,12 @@ describe('refs', () => {
 	it('captures a host element with ref={...}', () => {
 		let captured: HTMLInputElement | null = null;
 
-		function App() {
-			return <>
-				let input: HTMLInputElement | undefined;
-				<input type="text" ref={input} />
-				effect(() => {
-					captured = input ?? null;
-				});
-			</>;
+		function App() @{
+			let input: HTMLInputElement | undefined;
+			effect(() => {
+				captured = input ?? null;
+			});
+			<input type="text" ref={input} />
 		}
 
 		render(App);
@@ -32,12 +30,16 @@ describe('refs', () => {
 	it('forwards a named ref prop explicitly through a component', () => {
 		let captured: HTMLInputElement | null = null;
 
-		function Child(props: PropsWithExtras<{}>) {
-			return <><input type="text" ref={props.input_ref} /></>;
+		function Child(props: PropsWithExtras<{ input_ref: RefValue<HTMLInputElement> }>) @{
+			<input type="text" ref={props.input_ref} />
 		}
 
-		function App() {
-			return <><Child input_ref={(node: HTMLInputElement | null) => (captured = node)} /></>;
+		function App() @{
+			<Child
+				input_ref={(node: HTMLInputElement | null) => {
+					captured = node;
+				}}
+			/>
 		}
 
 		render(App);
@@ -49,15 +51,17 @@ describe('refs', () => {
 	it('forwards an ordinary named prop explicitly from a host spread', () => {
 		let captured: HTMLInputElement | null = null;
 
-		function Child(props: PropsWithExtras<{}>) {
-			return <>
-				const { input_ref, ...rest } = props;
-				<input type="text" ref={input_ref} {...rest} />
-			</>;
+		function Child(props: PropsWithExtras<{ input_ref: RefValue<HTMLInputElement> }>) @{
+			const { input_ref, ...rest } = props;
+			<input type="text" ref={input_ref} {...rest} />
 		}
 
-		function App() {
-			return <><Child input_ref={(node: HTMLInputElement | null) => (captured = node)} /></>;
+		function App() @{
+			<Child
+				input_ref={(node: HTMLInputElement | null) => {
+					captured = node;
+				}}
+			/>
 		}
 
 		render(App);
@@ -69,16 +73,12 @@ describe('refs', () => {
 	it('capture a <div>', () => {
 		let div: HTMLDivElement | undefined;
 
-		function Component() {
-			return <>
-				<div
-					ref={(node: HTMLDivElement) => {
-						div = node;
-					}}
-				>
-					{'Hello World'}
-				</div>
-			</>;
+		function Component() @{
+			<div
+				ref={(node: HTMLDivElement) => {
+					div = node;
+				}}
+			>{'Hello World'}</div>
 		}
 		render(Component);
 		flushSync();
@@ -86,25 +86,27 @@ describe('refs', () => {
 	});
 
 	it('works with spreading from composite component', () => {
-		type Child = typeof Child;
-		let _node: Child | undefined;
+		let _node: HTMLPreElement | undefined;
 
-		function Component() {
-			return <>
-				let items = RippleArray.from([1, 2, 3]);
-				function componentRef(node: Child) {
+		function Component() @{
+			let items = RippleArray.from([1, 2, 3]);
+			function componentRef(node: HTMLPreElement | null) {
+				if (node !== null) {
 					_node = node;
 				}
-				<Child ref={componentRef} {items} />
-			</>;
+			}
+			<Child ref={componentRef} {items} />
 		}
 
-		function Child(props: { items: RippleArray<number> }) {
-			return <>
-				const { items, ...rest } = props;
+		function Child(props: PropsWithExtras<{
+			items: RippleArray<number>;
+			ref?: RefValue<HTMLPreElement>;
+		}>) @{
+			const { items, ...rest } = props;
+			<>
 				<pre {...rest}>{JSON.stringify(items)}</pre>
 				<pre>{items.length}</pre>
-			</>;
+			</>
 		}
 
 		render(Component);
@@ -116,24 +118,24 @@ describe('refs', () => {
 	it('should handle spreading into composite refs', () => {
 		let logs: string[] = [];
 
-		function App() {
-			return <>
-				let &[value] = track('test');
-				function inputRef(node: HTMLInputElement) {
-					logs.push('ref called');
-				}
-				const props = {
-					id: 'example',
-					value,
-					[createRefKey()]: inputRef,
-				};
+		function App() @{
+			let &[value] = track('test');
+			function inputRef(node: HTMLInputElement) {
+				logs.push('ref called');
+			}
+			const props = {
+				id: 'example',
+				value,
+				[createRefKey()]: inputRef,
+			};
+			<>
 				<input type="text" {...props} />
 				<Input {...props} />
-			</>;
+			</>
 		}
 
-		function Input({ id, value, ...rest }: PropsWithExtras<{ id: string; value: string }>) {
-			return <><input type="text" {id} {value} {...rest} /></>;
+		function Input({ id, value, ...rest }: PropsWithExtras<{ id: string; value: string }>) @{
+			<input type="text" {id} {value} {...rest} />
 		}
 
 		render(App);
@@ -145,12 +147,10 @@ describe('refs', () => {
 	it('captures a host element into a Tracked via ref={tracker}', () => {
 		let captured: Tracked<HTMLDivElement | null> | undefined;
 
-		function Component() {
-			return <>
-				const tracker = track<HTMLDivElement | null>(null);
-				captured = tracker;
-				<div ref={tracker}>{'Hello World'}</div>
-			</>;
+		function Component() @{
+			const tracker = track<HTMLDivElement | null>(null);
+			captured = tracker;
+			<div ref={tracker}>{'Hello World'}</div>
 		}
 
 		render(Component);
@@ -162,16 +162,14 @@ describe('refs', () => {
 	it('forwards a Tracked through a composite component via prop destructuring + spread', () => {
 		let captured: Tracked<HTMLInputElement | null> | undefined;
 
-		function Child({ id, ...rest }: PropsWithExtras<{ id: string }>) {
-			return <><input type="text" {id} {...rest} /></>;
+		function Child({ id, ...rest }: PropsWithExtras<{ id: string }>) @{
+			<input type="text" {id} {...rest} />
 		}
 
-		function App() {
-			return <>
-				const tracker = track<HTMLInputElement | null>(null);
-				captured = tracker;
-				<Child id="example" ref={tracker} />
-			</>;
+		function App() @{
+			const tracker = track<HTMLInputElement | null>(null);
+			captured = tracker;
+			<Child id="example" ref={tracker} />
 		}
 
 		render(App);
@@ -183,17 +181,15 @@ describe('refs', () => {
 	it('assigns a host element to a plain let variable via ref={var}', () => {
 		let captured: HTMLDivElement | null = null;
 
-		function App() {
-			return <>
-				let div: HTMLDivElement | undefined;
-				<div ref={div}>{'Hello World'}</div>
-				// Read the captured element through an effect so the assertion
-				// observes the post-mount value (component setup runs before the
-				// element is created).
-				effect(() => {
-					captured = div ?? null;
-				});
-			</>;
+		function App() @{
+			let div: HTMLDivElement | undefined;
+			// Read the captured element through an effect so the assertion
+			// observes the post-mount value (component setup runs before the
+			// element is created).
+			effect(() => {
+				captured = div ?? null;
+			});
+			<div ref={div}>{'Hello World'}</div>
 		}
 
 		render(App);
@@ -205,14 +201,12 @@ describe('refs', () => {
 	it('assigns a host element to a plain let variable via ref={var}', () => {
 		let captured: HTMLDivElement | null = null;
 
-		function App() {
-			return <>
-				let div: HTMLDivElement | undefined;
-				<div ref={div}>{'Hello ref attr'}</div>
-				effect(() => {
-					captured = div ?? null;
-				});
-			</>;
+		function App() @{
+			let div: HTMLDivElement | undefined;
+			effect(() => {
+				captured = div ?? null;
+			});
+			<div ref={div}>{'Hello ref attr'}</div>
 		}
 
 		render(App);
@@ -224,14 +218,14 @@ describe('refs', () => {
 	it('clears a plain let variable via ref={var} when the host element unmounts', () => {
 		let div: HTMLDivElement | null | undefined;
 
-		function App() {
-			return <>
-				let &[show] = track(true);
-				if (show) {
+		function App() @{
+			let &[show] = track(true);
+			<>
+				@if (show) {
 					<div ref={div}>{'Hello cleanup'}</div>
 				}
 				<button class="toggle" onClick={() => (show = false)}>{'hide'}</button>
-			</>;
+			</>
 		}
 
 		render(App);
@@ -246,14 +240,12 @@ describe('refs', () => {
 	it('assigns a host element to a member expression via ref={state.var}', () => {
 		let captured: HTMLInputElement | null = null;
 
-		function App() {
-			return <>
-				const state: { input?: HTMLInputElement } = {};
-				<input type="text" ref={state.input} />
-				effect(() => {
-					captured = state.input ?? null;
-				});
-			</>;
+		function App() @{
+			const state: { input?: HTMLInputElement } = {};
+			effect(() => {
+				captured = state.input ?? null;
+			});
+			<input type="text" ref={state.input} />
 		}
 
 		render(App);
@@ -265,18 +257,18 @@ describe('refs', () => {
 		let input: HTMLInputElement | null | undefined;
 		let previous: HTMLInputElement | undefined;
 
-		function Child(props: PropsWithExtras<{}>) {
-			return <><input type="text" value="keep" {...props} /></>;
+		function Child(props: PropsWithExtras<{}>) @{
+			<input type="text" value="keep" {...props} />
 		}
 
-		function App() {
-			return <>
-				let &[show] = track(true);
-				if (show) {
+		function App() @{
+			let &[show] = track(true);
+			<>
+				@if (show) {
 					<Child ref={input} />
 				}
 				<button class="toggle" onClick={() => (show = false)}>{'hide'}</button>
-			</>;
+			</>
 		}
 
 		render(App);
@@ -296,13 +288,11 @@ describe('refs', () => {
 		() => {
 			let logs: string[] = [];
 
-			function App() {
-				return <>
-					let cb = (node: HTMLDivElement) => {
-						logs.push(`mount:${node.textContent}`);
-					};
-					<div ref={cb}>{'Hello'}</div>
-				</>;
+			function App() @{
+				let cb = (node: HTMLDivElement) => {
+					logs.push(`mount:${node.textContent}`);
+				};
+				<div ref={cb}>{'Hello'}</div>
 			}
 
 			render(App);
@@ -316,13 +306,11 @@ describe('refs', () => {
 		() => {
 			let captured: Tracked<HTMLDivElement | null> | undefined;
 
-			function App() {
-				return <>
-					const tracker = track<HTMLDivElement | null>(null);
-					let slot = tracker;
-					captured = tracker;
-					<div ref={slot}>{'Hello'}</div>
-				</>;
+			function App() @{
+				const tracker = track<HTMLDivElement | null>(null);
+				let slot = tracker;
+				captured = tracker;
+				<div ref={slot}>{'Hello'}</div>
 			}
 
 			render(App);
@@ -334,18 +322,16 @@ describe('refs', () => {
 	it('propagates a plain let variable through a composite component via {...rest}', () => {
 		let captured: HTMLInputElement | null = null;
 
-		function Child({ id, ...rest }: PropsWithExtras<{ id: string }>) {
-			return <><input type="text" {id} {...rest} /></>;
+		function Child({ id, ...rest }: PropsWithExtras<{ id: string }>) @{
+			<input type="text" {id} {...rest} />
 		}
 
-		function App() {
-			return <>
-				let input: HTMLInputElement | undefined;
-				<Child id="example" ref={input} />
-				effect(() => {
-					captured = input ?? null;
-				});
-			</>;
+		function App() @{
+			let input: HTMLInputElement | undefined;
+			effect(() => {
+				captured = input ?? null;
+			});
+			<Child id="example" ref={input} />
 		}
 
 		render(App);
@@ -361,14 +347,14 @@ describe('refs', () => {
 			let input: HTMLInputElement | null | undefined;
 			let previous: HTMLInputElement | undefined;
 
-			function Child(props: PropsWithExtras<{}>) {
-				return <><input type="text" value="keep" {...props} /></>;
+			function Child(props: PropsWithExtras<{}>) @{
+				<input type="text" value="keep" {...props} />
 			}
 
-			function App() {
-				return <>
-					let &[show] = track(true);
-					if (show) {
+			function App() @{
+				let &[show] = track(true);
+				<>
+					@if (show) {
 						<Child
 							ref={(node: HTMLInputElement | null) => {
 								input = node;
@@ -379,7 +365,7 @@ describe('refs', () => {
 						/>
 					}
 					<button class="toggle" onClick={() => (show = false)}>{'hide'}</button>
-				</>;
+				</>
 			}
 
 			render(App);
@@ -399,29 +385,27 @@ describe('refs', () => {
 		let input: HTMLInputElement | null | undefined;
 		let previous: HTMLInputElement | undefined;
 
-		function Child(props: PropsWithExtras<{}>) {
-			return <>
-				let &[as_ref] = track(true);
+		function Child(props: PropsWithExtras<{ ref: RefValue<HTMLInputElement> }>) @{
+			let &[as_ref] = track(true);
+			<>
 				<input
 					type="text"
 					value="keep"
 					{...(as_ref ? { ref: props.ref } : { input_ref: 'regular prop' })}
 				/>
 				<button class="toggle" onClick={() => (as_ref = false)}>{'toggle'}</button>
-			</>;
+			</>
 		}
 
-		function App() {
-			return <>
-				<Child
-					ref={(node: HTMLInputElement | null) => {
-						input = node;
-						return () => {
-							input = null;
-						};
-					}}
-				/>
-			</>;
+		function App() @{
+			<Child
+				ref={(node: HTMLInputElement | null) => {
+					input = node;
+					return () => {
+						input = null;
+					};
+				}}
+			/>
 		}
 
 		render(App);
@@ -442,29 +426,27 @@ describe('refs', () => {
 		let input: HTMLInputElement | null | undefined;
 		let previous: HTMLInputElement | undefined;
 
-		function Child(props: PropsWithExtras<{}>) {
-			return <>
-				let &[as_ref] = track(false);
+		function Child(props: PropsWithExtras<{ ref: RefValue<HTMLInputElement> }>) @{
+			let &[as_ref] = track(false);
+			<>
 				<input
 					type="text"
 					value="keep"
 					{...(as_ref ? { ref: props.ref } : { input_ref: 'regular prop' })}
 				/>
 				<button class="toggle" onClick={() => (as_ref = true)}>{'toggle'}</button>
-			</>;
+			</>
 		}
 
-		function App() {
-			return <>
-				<Child
-					ref={(node: HTMLInputElement | null) => {
-						input = node;
-						return () => {
-							input = null;
-						};
-					}}
-				/>
-			</>;
+		function App() @{
+			<Child
+				ref={(node: HTMLInputElement | null) => {
+					input = node;
+					return () => {
+						input = null;
+					};
+				}}
+			/>
 		}
 
 		render(App);
@@ -485,16 +467,14 @@ describe('refs', () => {
 		let captured: Tracked<HTMLDivElement | null> | undefined;
 		let toggle: Tracked<boolean> | undefined;
 
-		function Component() {
-			return <>
-				const tracker = track<HTMLDivElement | null>(null);
-				const show = track(true);
-				captured = tracker;
-				toggle = show;
-				if (show.value) {
-					<div ref={tracker}>{'Hello World'}</div>
-				}
-			</>;
+		function Component() @{
+			const tracker = track<HTMLDivElement | null>(null);
+			const show = track(true);
+			captured = tracker;
+			toggle = show;
+			@if (show.value) {
+				<div ref={tracker}>{'Hello World'}</div>
+			}
 		}
 
 		render(Component);
@@ -509,23 +489,23 @@ describe('refs', () => {
 	it('should handle spreading props with a static ref', () => {
 		let logs: string[] = [];
 
-		function App() {
-			return <>
-				let &[value] = track('test');
-				function inputRef(node: HTMLInputElement) {
-					logs.push('ref called');
-				}
-				const props = {
-					id: 'example',
-					value,
-				};
+		function App() @{
+			let &[value] = track('test');
+			function inputRef(node: HTMLInputElement) {
+				logs.push('ref called');
+			}
+			const props = {
+				id: 'example',
+				value,
+			};
+			<>
 				<input type="text" ref={inputRef} {...props} />
 				<Input ref={inputRef} {...props} />
-			</>;
+			</>
 		}
 
-		function Input({ id, value, ...rest }: PropsWithExtras<{ id: string; value: string }>) {
-			return <><input type="text" {id} {value} {...rest} /></>;
+		function Input({ id, value, ...rest }: PropsWithExtras<{ id: string; value: string }>) @{
+			<input type="text" {id} {value} {...rest} />
 		}
 
 		render(App);

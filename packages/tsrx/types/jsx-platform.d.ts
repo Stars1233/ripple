@@ -197,7 +197,7 @@ export interface JsxPlatformHooks {
 	renderForOf?: (node: any, loopParams: any[], bodyStatements: any[], ctx: any) => any | null;
 	/**
 	 * Optionally replace the default React-style pending lowering for
-	 * `try { ... } pending { ... }`. The default emits
+	 * `@try { ... } @pending { ... }`. The default emits
 	 * `<Suspense fallback={fallbackContent}>tryContent</Suspense>`.
 	 * Vue Vapor uses this to provide `default` and `fallback` slots via
 	 * `v-slots`.
@@ -241,11 +241,11 @@ export interface JsxPlatformHooks {
 	 */
 	createErrorBoundaryContent?: (tryContent: any, ctx: any, node: any) => any | null;
 	/**
-	 * Lower a Ripple `Element` node to a JSXElement. Default is the
+	 * Customize lowering for a native JSX element. Default is the
 	 * factory's `to_jsx_element`. The hook receives the walker-transformed
 	 * node (`inner`, with children already lowered) plus the element's
 	 * raw pre-walk children — Solid uses the latter to detect a lone
-	 * `Text` child it can hoist to a `textContent` attribute before the
+	 * `JSXText` child it can hoist to a `textContent` attribute before the
 	 * generic text→JSXExpressionContainer transform runs.
 	 */
 	transformElement?: (inner: any, ctx: any, rawChildren: any[]) => any;
@@ -314,12 +314,12 @@ export interface JsxPlatform {
 		 */
 		fragment?: string;
 		/**
-		 * Module to import `Suspense` from when a `try { ... } pending { ... }`
+		 * Module to import `Suspense` from when an `@try { ... } @pending { ... }`
 		 * block appears. React: `'react'`. Preact: `'preact/compat'`.
 		 */
 		suspense: string;
 		/**
-		 * Module to import `TsrxErrorBoundary` from when a `try { ... } catch (...)`
+		 * Module to import `TsrxErrorBoundary` from when an `@try { ... } @catch (...)`
 		 * block appears. Usually `'@tsrx/<platform>/error-boundary'`.
 		 */
 		errorBoundary: string;
@@ -403,7 +403,7 @@ export interface JsxPlatform {
 		scanUseServerDirectiveForAwaitWithCustomValidator?: boolean;
 		/**
 		 * Optional branded compiler error for targets that cannot lower
-		 * `try { ... } pending { ... }` in component template context.
+		 * `@try { ... } @pending { ... }` in component template context.
 		 *
 		 * When provided, the shared try-block lowering rejects any `pending`
 		 * block with this message instead of emitting a React-style

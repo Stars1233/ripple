@@ -1,89 +1,85 @@
 import { highlight_tsrx } from '../lib/code-highlight.ts';
 
 const SNIPPET_HTML = highlight_tsrx(
-	`export function Greeting({ name }: { name?: string }) {
-  return <>
+	`export function Greeting({ name }: { name?: string }) @{
+  const message = name ? \`Hello, \${name}\` : 'Hello, stranger';
+
+  <>
     <div class="card">
-      if (name) {
-        <p>"Hello, "{name}</p>
-      } else {
-        <p>"Hello, stranger"</p>
-      }
+      <p>{message}</p>
     </div>
 
     <style>
       .card { padding: 1rem; }
     </style>
-  </>;
+  </>
 }`,
 );
 
 const REACT_HOOKS_HTML = highlight_tsrx(
-	`function Profile({ userId }: { userId: string | null }) {
-  return <>
-    if (userId) {
-      const user = useUser(userId);
-      <h1>{user.name}</h1>
-    } else {
-      <a href="/login">"Sign in"</a>
-    }
-  </>;
+	`function Profile({ userId }: { userId: string | null }) @{
+  @if (userId) {
+    const user = useUser(userId);
+
+    <h1>{user.name}</h1>
+  } @else {
+    <a href="/login">Sign in</a>
+  }
 }`,
 );
 
 const SOLID_LAZY_HTML = highlight_tsrx(
-	`function Counter(&{ count, label }: Props) {
-  return <section>
+	`function Counter(&{ count, label }: Props) @{
+  <section>
     <h2>{label}</h2>
-    <p>"Count: "{count}</p>
-  </section>;
+    <p>Count: {count}</p>
+  </section>
 }`,
 );
 
 const INLINE_LOCALS_HTML = highlight_tsrx(
-	`function Cart({ items }: { items: Item[] }) {
-  return <div>
-    <h2>"Your cart"</h2>
+	`function Cart({ items }: { items: Item[] }) @{
+  const subtotal = items.reduce((sum, item) => sum + item.price, 0);
+  const discount = subtotal > 100 ? 0.1 : 0;
 
-    const subtotal = items.reduce((sum, item) => sum + item.price, 0);
-    const discount = subtotal > 100 ? 0.1 : 0;
-
-    <p>"Subtotal: $"{subtotal}</p>
-    <p>"Save: $"{(subtotal * discount).toFixed(2)}</p>
-  </div>;
+  <div>
+    <h2>Your cart</h2>
+    <p>Subtotal: \${subtotal}</p>
+    <p>Save: \${(subtotal * discount).toFixed(2)}</p>
+  </div>
 }`,
 );
 
 const COLOCATION_HTML = highlight_tsrx(
-	`function UserList({ users, showBio }: Props) {
-  return <>
-    for (const user of users) {
-      const initials = user.name.slice(0, 2).toUpperCase();
-      const role = user.admin ? 'Admin' : 'Member';
+	`function UserList({ users, showBio }: Props) @{
+  @for (const user of users) {
+    const initials = user.name.slice(0, 2).toUpperCase();
+    const role = user.admin ? 'Admin' : 'Member';
 
-      <div class="user-row">
-        <span class="avatar">{initials}</span>
-        <strong>{user.name}</strong>
-        <span class="badge">{role}</span>
+    <div class="user-row">
+      <span class="avatar">{initials}</span>
+      <strong>{user.name}</strong>
+      <span class="badge">{role}</span>
 
-        if (showBio && user.bio) {
-          const short_bio = user.bio.slice(0, 140);
-          const report = () => console.log('viewed ' + user.name);
+      @if (showBio && user.bio) {
+        const short_bio = user.bio.slice(0, 140);
+        const report = () => console.log('viewed ' + user.name);
 
+        <div class="bio-detail">
           <p class="bio">{short_bio}</p>
-          <button onClick={report}>"Viewed"</button>
-        }
-      </div>
-    }
-  </>;
+          <button onClick={report}>Viewed</button>
+        </div>
+      }
+    </div>
+  }
 }`,
 );
 
-export function IndexPage() {
-	return <>
+export const IndexPage = () => @{
+	<>
 		<head>
 			<title>
-				{'TSRX | A TypeScript language extension for building declarative UIs in an agentic era.'}
+				TSRX | A TypeScript language extension for building declarative UIs in an agentic era.
 			</title>
 			<meta
 				name="description"
@@ -97,95 +93,103 @@ export function IndexPage() {
 						<img class="header-logo" src="/images/tsrx-mark.svg?v=4" alt="TSRX logo" />
 					</a>
 					<nav class="masthead-nav">
-						<a href="/getting-started">{'Getting Started'}</a>
-						<a href="/features">{'Features'}</a>
-						<a href="/specification">{'Specification'}</a>
-						<a href="/playground">{'Playground'}</a>
-						<a href="/blog">{'Blog'}</a>
+						<a href="/getting-started">Getting Started</a>
+						<a href="/features">Features</a>
+						<a href="/specification">Specification</a>
+						<a href="/playground">Playground</a>
+						<a href="/blog">Blog</a>
 						<a href="https://discord.gg/HCYpT5QHQR" target="_blank" rel="noopener noreferrer">
-							{'Discord'}
+							Discord
 						</a>
 						<a
 							href="https://github.com/Ripple-TS/ripple/tree/main/packages/tsrx"
 							target="_blank"
 							rel="noopener noreferrer"
-						>
-							{'GitHub'}
-						</a>
-						<a href="/llms.txt" target="_blank" rel="noopener noreferrer">{'llms.txt'}</a>
+						>GitHub</a>
+						<a href="/llms.txt" target="_blank" rel="noopener noreferrer">llms.txt</a>
 					</nav>
 				</header>
-
 				<section class="hero" id="top">
 					<div class="hero-copy">
 						<h1>
-							{'TSRX is a TypeScript language extension for building declarative UIs in an agentic era.'}
+							TSRX is a TypeScript language extension for building declarative UIs in an agentic
+							era.
 						</h1>
 					</div>
 				</section>
-
 				<section class="readable-section section-shell what-is-section" aria-label="What is TSRX">
 					<p class="section-body what-is-copy">
-						{'TSRX (TypeScript Render Extensions) is a way to write UI component code that stays readable and co-located. Structure, styling, and control flow live together, and the result stays fully backwards compatible with TypeScript.'}
+						TSRX (TypeScript Render Extensions) is a way to write UI component code that stays
+						readable and co-located. Structure, styling, and control flow live together, and the
+						result stays fully backwards compatible with TypeScript.
 					</p>
 					<pre class="code-block">
 						<code innerHTML={SNIPPET_HTML} />
 					</pre>
 					<p class="section-body what-is-copy">
-						{'You can think of TSRX as a spiritual successor to JSX — the same mental model of embedding UI directly inside TypeScript, but with its own flavor. Control flow, scoped styles, and locals sit in the template as first-class syntax instead of being squeezed through expression slots, and the language stays aware of them through to the compiled output.'}
+						You can think of TSRX as a spiritual successor to JSX — the same mental model of
+						embedding UI directly inside TypeScript, but with its own flavor. Control flow, scoped
+						styles, and statement containers sit in the template as first-class syntax instead of
+						being squeezed through expression slots, and the language stays aware of them through to
+						the compiled output.
 					</p>
 					<p class="section-body what-is-copy">
-						{'TSRX is framework-agnostic and interoperable. Today it compiles to React, Preact, Ripple, Solid, and Vue, with room for more targets over time. You can import '}
-						<code class="inline-code">{'.tsrx'}</code>
-						{' modules from JS, TS, and TSX files and it just works.'}
+						TSRX is framework-agnostic and interoperable. Today it compiles to React, Preact,
+						Ripple, Solid, and Vue, with room for more targets over time. You can import
+						<code class="inline-code">.tsrx</code>
+						modules from JS, TS, and TSX files and it just works.
 					</p>
 					<div class="hero-actions">
-						<a class="cta-link" href="/getting-started">{'Get started →'}</a>
+						<a class="cta-link" href="/getting-started">Get started →</a>
 						<a
 							class="secondary-cta-link"
 							href="https://github.com/Ripple-TS/ripple/tree/main/packages/tsrx"
 							target="_blank"
 							rel="noopener noreferrer"
-						>
-							{'View Source'}
-						</a>
+						>View Source</a>
 					</div>
 					<p class="section-body what-is-copy compact-link-copy">
-						{'Looking for the formal grammar and AST shape? Read the '}
-						<a class="supporting-link" href="/specification">{'specification →'}</a>
+						Looking for the formal grammar and AST shape? Read the
+						<a class="supporting-link" href="/specification">specification →</a>
 					</p>
-
 					<aside class="alpha-notice" role="note" aria-label="Alpha release notice">
-						<span class="alpha-badge">{'Alpha'}</span>
+						<span class="alpha-badge">Alpha</span>
 						<p class="alpha-notice-body">
-							{'TSRX is in active alpha development. Feedback on the '}
+							TSRX is in active alpha development. Feedback on the
+							{' '}
 							<a
 								class="alpha-notice-link"
 								href="https://github.com/Ripple-TS/ripple/issues"
 								target="_blank"
 								rel="noopener noreferrer"
-							>
-								{'issue tracker'}
-							</a>
-							{' is very welcome.'}
+							>issue tracker</a>
+							{' '}
+							is very welcome.
 						</p>
 					</aside>
 				</section>
-
 				<section class="readable-section section-shell">
-					<p class="eyebrow">{'Benefits of TSRX'}</p>
-					<h2 class="section-heading">{'Co-location helps engineers and AI systems alike.'}</h2>
+					<p class="eyebrow">Benefits of TSRX</p>
+					<h2 class="section-heading">Co-location helps engineers and AI systems alike.</h2>
 					<p class="section-body">
-						{'When structure, control flow, styling, and component shape live in the same file, the source reads closer to the interface it describes. That cuts down on ternaries, map chains, and render helpers. It also makes refactors and onboarding less brittle.'}
+						When structure, control flow, styling, and component shape live in the same file, the
+						source reads closer to the interface it describes. TSRX keeps that co-location legible
+						with a structural rule: TypeScript setup stays first, then the scope resolves to one
+						output node. That cuts down on ternaries, map chains, and render helpers while making
+						refactors and onboarding less brittle.
 					</p>
 					<pre class="code-block">
 						<code innerHTML={COLOCATION_HTML} />
 					</pre>
 					<p class="section-body">
-						{'Code is increasingly written, reviewed, and transformed with machine assistance. When UI structure is more explicit, editors, compilers, and code generation tools have a better surface to work with without changing the framework semantics underneath.'}
+						Code is increasingly written, reviewed, and transformed with machine assistance. When UI
+						structure is more explicit, editors, compilers, and code generation tools have a better
+						surface to work with without changing the framework semantics underneath.
 					</p>
 					<p class="section-body">
-						{'This is consistent with findings that language models attend unevenly to long contexts, performing best when relevant information sits close together rather than scattered across a window.'}
+						This is consistent with findings that language models attend unevenly to long contexts,
+						performing best when relevant information sits close together rather than scattered
+						across a window.
 					</p>
 					<p class="section-body">
 						<a
@@ -193,84 +197,93 @@ export function IndexPage() {
 							href="https://arxiv.org/abs/2307.03172"
 							target="_blank"
 							rel="noopener noreferrer"
-						>
-							{'Lost in the Middle (Liu et al., TACL 2024) →'}
-						</a>
+						>Lost in the Middle (Liu et al., TACL 2024) →</a>
 					</p>
 				</section>
-
 				<section class="readable-section section-shell">
-					<p class="eyebrow">{'Ergonomics'}</p>
-					<h2 class="section-heading">{'Better ergonomics for today\'s frameworks.'}</h2>
+					<p class="eyebrow">Ergonomics</p>
+					<h2 class="section-heading">Better ergonomics for today's frameworks.</h2>
 					<p class="section-body">
-						{'TSRX takes care of the awkward parts each framework asks you to work around. Patterns that are natural to write — but fragile or illegal in the target runtime — get rewritten at compile time into the exact shape React, Preact, Solid, Ripple, or Vue expects. The source stays readable for humans and predictable for language models; the compiler handles the footguns.'}
+						TSRX takes care of the awkward parts each framework asks you to work around. Patterns
+						that are natural to write — but fragile or illegal in the target runtime — get rewritten
+						at compile time into the exact shape React, Preact, Solid, Ripple, or Vue expects. The
+						source stays readable for humans and predictable for language models; the compiler
+						handles the footguns.
 					</p>
-
 					<p class="section-body">
-						{'React hooks can be called conditionally. The compiler lifts the conditional branch into its own component so the rules of hooks are satisfied by construction — no more manually splitting components just to gate a '}
-						<code class="inline-code">{'useUser(...)'}</code>
-						{' call behind an '}
-						<code class="inline-code">{'if'}</code>
-						{'.'}
+						React hooks can be called conditionally inside JSX control-flow expressions. The
+						compiler lifts the conditional branch into its own component so the rules of hooks are
+						satisfied by construction — no more manually splitting components just to gate a
+						<code class="inline-code">useUser(...)</code>
+						call behind an
+						<code class="inline-code">if</code>
+						.
 					</p>
 					<pre class="code-block">
 						<code innerHTML={REACT_HOOKS_HTML} />
 					</pre>
-
 					<p class="section-body">
-						{'Solid props can be destructured eagerly. The '}
+						Solid props can be destructured eagerly. The
 						<code class="inline-code">{'&{ ... }'}</code>
-						{' pattern compiles to lazy getters, so reads stay reactive without forcing '}
-						<code class="inline-code">{'props.count'}</code>
-						{' everywhere and without losing type inference on the destructured names.'}
+						pattern compiles to lazy getters, so reads stay reactive without forcing
+						<code class="inline-code">props.count</code>
+						everywhere and without losing type inference on the destructured names.
 					</p>
 					<pre class="code-block">
 						<code innerHTML={SOLID_LAZY_HTML} />
 					</pre>
-
 					<p class="section-body">
-						{'Locals can live next to the JSX that uses them. Variables declared mid-template stay scoped to their surrounding block, so derived values sit beside the markup they feed instead of piling up at the top of the component. Concerns stay together; readers (and LLMs) do less bookkeeping to follow the data flow.'}
+						Locals can live next to the JSX that uses them. A statement container starts with
+						TypeScript setup and ends with one output node, so derived values sit beside the markup
+						they feed instead of piling up at the top of the component. Concerns stay together;
+						readers (and LLMs) do less bookkeeping to follow the data flow.
 					</p>
 					<pre class="code-block">
 						<code innerHTML={INLINE_LOCALS_HTML} />
 					</pre>
 				</section>
-
 				<section class="readable-section section-shell" id="tooling">
-					<p class="eyebrow">{'Tooling and adoption'}</p>
-					<h2 class="section-heading">{'Rich integration with existing tooling.'}</h2>
+					<p class="eyebrow">Tooling and adoption</p>
+					<h2 class="section-heading">Rich integration with existing tooling.</h2>
 					<p class="section-body">
-						{'TSRX ships with a language server for editor diagnostics, navigation, and completion. Prettier and ESLint plugins keep formatting and linting consistent inside existing repositories, so the language can be adopted seriously instead of treated like a compiler experiment. Plus support for many IDEs and editors including VS Code, Zed, Neovim, IntelliJ and Sublime.'}
+						TSRX ships with a language server for editor diagnostics, navigation, and completion.
+						Prettier and ESLint plugins keep formatting and linting consistent inside existing
+						repositories, so the language can be adopted seriously instead of treated like a
+						compiler experiment. Plus support for many IDEs and editors including VS Code, Zed,
+						Neovim, IntelliJ and Sublime.
 					</p>
 					<p class="section-body">
-						{'It interoperates with existing TypeScript and TSX codebases rather than demanding a full rewrite. Teams can adopt it where ergonomics matter most while keeping the surrounding code familiar. '}
+						It interoperates with existing TypeScript and TSX codebases rather than demanding a full
+						rewrite. Teams can adopt it where ergonomics matter most while keeping the surrounding
+						code familiar.
 					</p>
 				</section>
-
 				<section class="readable-section section-shell">
-					<p class="eyebrow">{'Smart compilation'}</p>
-					<h2 class="section-heading">{'TSRX compiles to multiple framework runtime outputs.'}</h2>
+					<p class="eyebrow">Smart compilation</p>
+					<h2 class="section-heading">TSRX compiles to multiple framework runtime outputs.</h2>
 					<p class="section-body">
-						{'The TSRX compiler parses component source into an AST and hands it off to framework-specific plugins for code generation. Plugins such as '}
-						<code class="inline-code">{'@tsrx/react'}</code>
-						{', '}
-						<code class="inline-code">{'@tsrx/preact'}</code>
-						{', '}
-						<code class="inline-code">{'@tsrx/ripple'}</code>
-						{', '}
-						<code class="inline-code">{'@tsrx/solid'}</code>
-						{', and '}
-						<code class="inline-code">{'@tsrx/vue'}</code>
-						{' transform the same AST into idiomatic output for their target runtimes, including scoped CSS. New targets can be added as standalone compiler plugins without changing the language itself.'}
+						The TSRX compiler parses component source into an AST and hands it off to
+						framework-specific plugins for code generation. Plugins such as
+						<code class="inline-code">@tsrx/react</code>
+						,
+						<code class="inline-code">@tsrx/preact</code>
+						,
+						<code class="inline-code">@tsrx/ripple</code>
+						,
+						<code class="inline-code">@tsrx/solid</code>
+						, and
+						<code class="inline-code">@tsrx/vue</code>
+						transform the same AST into idiomatic output for their target runtimes, including scoped
+						CSS. New targets can be added as standalone compiler plugins without changing the
+						language itself.
 					</p>
 					<p class="section-body">
-						<a class="cta-link" href="/playground">{'Try it in the playground →'}</a>
+						<a class="cta-link" href="/playground">Try it in the playground →</a>
 					</p>
 				</section>
-
 				<footer class="site-footer">
-					<p>{'Released under the MIT License.'}</p>
-					<p>{'Copyright © 2025-present Dominic Gannaway'}</p>
+					<p>Released under the MIT License.</p>
+					<p>Copyright © 2025-present Dominic Gannaway</p>
 				</footer>
 			</div>
 		</div>
@@ -413,6 +426,8 @@ export function IndexPage() {
 			}
 
 			.alpha-notice-link {
+				display: inline-block;
+				margin: 0 0.18em;
 				color: #5e2cff;
 				text-decoration: underline;
 				text-underline-offset: 2px;
@@ -423,6 +438,8 @@ export function IndexPage() {
 			}
 
 			.supporting-link {
+				display: inline-block;
+				margin: 0 0.18em;
 				color: #5e2cff;
 				font-weight: 500;
 				text-decoration: underline;
@@ -538,6 +555,10 @@ export function IndexPage() {
 			:global(.code-block .str) {
 				color: #ce9178;
 			}
+			:global(.code-block .comment),
+			:global(.code-block .cmt) {
+				color: #808080;
+			}
 			:global(.code-block .val) {
 				color: #b5cea8;
 			}
@@ -588,9 +609,11 @@ export function IndexPage() {
 			}
 
 			.inline-code {
+				display: inline-block;
 				background: rgba(94, 44, 255, 0.1);
 				color: #5e2cff;
-				padding: 0.12em 0.4em;
+				padding: 0.16em 0.48em;
+				margin: 0 0.18em;
 				border-radius: 4px;
 				font-size: 0.92em;
 			}
@@ -840,5 +863,5 @@ export function IndexPage() {
 				}
 			}
 		</style>
-	</>;
-}
+	</>
+};

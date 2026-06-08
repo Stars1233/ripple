@@ -33,9 +33,9 @@ runSharedNestedLazyDestructuringTests({ compile, name: 'vue' });
 describe('@tsrx/vue basic', () => {
 	it('wraps named component exports in defineVaporComponent', () => {
 		const { code } = compile(
-			`export function App() { return <>
+			`export function App() @{
 				<div>{'Hello'}</div>
-			</>; }`,
+			}`,
 			'App.tsrx',
 		);
 
@@ -44,9 +44,9 @@ describe('@tsrx/vue basic', () => {
 
 	it('wraps default component exports in defineVaporComponent', () => {
 		const { code } = compile(
-			`export default function App() { return <>
+			`export default function App() @{
 				<div>{'Hello'}</div>
-			</>; }`,
+			}`,
 			'App.tsrx',
 		);
 
@@ -57,10 +57,10 @@ describe('@tsrx/vue basic', () => {
 		const { code } = compile(
 			`import { ref } from 'vue';
 
-			function App() { return <>
+			function App() @{
 				const count = ref(0);
 				<button>{count.value}</button>
-			</>; }`,
+			}`,
 			'App.tsrx',
 		);
 
@@ -71,9 +71,9 @@ describe('@tsrx/vue basic', () => {
 
 	it('supports lazy destructuring in Vue component params', () => {
 		const { code } = compile(
-			`function Child(&{ count }: { count: number }) { return <>
+			`function Child(&{ count }: { count: number }) @{
 				<pre>{count}</pre>
-			</>; }`,
+			}`,
 			'App.tsrx',
 		);
 
@@ -85,12 +85,12 @@ describe('@tsrx/vue basic', () => {
 		const { code } = compile(
 			`import { reactive } from 'vue';
 
-			function App() { return <>
+			function App() @{
 				const state = reactive({ count: 1 });
 				let &{ count } = state;
 				count++;
 				<pre>{count}</pre>
-			</>; }`,
+			}`,
 			'App.tsrx',
 		);
 
@@ -101,7 +101,7 @@ describe('@tsrx/vue basic', () => {
 
 	it('keeps return-value branches in component callback props as plain conditionals', () => {
 		const { code } = compile(
-			`function Test() { return <>
+			`function Test() @{
 				<Page
 					params={{
 						menuAlt: (isAdmin) => {
@@ -138,7 +138,7 @@ describe('@tsrx/vue basic', () => {
 						},
 					}}
 				/>
-			</>; }`,
+			}`,
 			'App.tsrx',
 		);
 
@@ -156,37 +156,40 @@ describe('@tsrx/vue basic', () => {
 		expect(code).toContain("return ['Error'];");
 	});
 
-	it('keeps expression child arrays in fragment and native callback props', () => {
+	it('keeps expression child arrays in fragment and JSX callback props', () => {
 		const { code } = compile(
-			`function Child(props) { return <>
+			`function Child(props) @{
 					<section />
-				</>; }
+				}
 
-			function App() { return <>
+			function App() @{
 					<Child
-						fragment={() => <>{[<>"Delete"</>, <>"Edit"</>]}</>}
-							native={() => <>{[<>"Delete"</>, <>"Edit"</>]}</>}
+							fragment={() => <>{[<>Delete</>, <>Edit</>]}</>}
+							native={() => <>{[<>Delete</>, <>Edit</>]}</>}
 				/>
-			</>; }`,
+			}`,
 			'App.tsrx',
 		);
 
-		expect(code).toContain('fragment={() => {');
-		expect(code).toContain('return ["Delete", "Edit"];');
-		expect(code).toContain('native={() => {');
+		expect(code).toContain('fragment={() => <>');
+		expect(code).toContain('<>Delete</>');
+		expect(code).toContain('<>Edit</>');
+		expect(code).toContain('native={() => <>');
 	});
 
 	it('emits scoped CSS and applies the scope hash to host elements', () => {
 		const { code, css, cssHash } = compile(
-			`function App() { return <>
-				<div class="card">{'Hi'}</div>
+			`function App() @{
+				<>
+					<div class="card">{'Hi'}</div>
 
-				<style>
-					.card {
-						color: red;
-					}
-				</style>
-			</>; }`,
+					<style>
+						.card {
+							color: red;
+						}
+					</style>
+				</>
+			}`,
 			'App.tsrx',
 		);
 
@@ -198,10 +201,10 @@ describe('@tsrx/vue basic', () => {
 
 	it('ref={fn} on a DOM element compiles to ref={fn}', () => {
 		const { code } = compile(
-			`function App() { return <>
+			`function App() @{
 				function capture(node: HTMLDivElement) {}
 				<div ref={capture}>{'x'}</div>
-			</>; }`,
+			}`,
 			'App.tsrx',
 		);
 
@@ -209,9 +212,9 @@ describe('@tsrx/vue basic', () => {
 	});
 
 	it('keeps Vue host ref expressions clean in Volar TSX while disabling prop verification', () => {
-		const source = `function App() { return <>
+		const source = `function App() @{
 			<div ref={(node: HTMLDivElement) => {}}>{'x'}</div>
-		</>; }`;
+		}`;
 		const result = compile_to_volar_mappings(source, 'App.tsrx');
 		const generated_ref_offset = result.code.indexOf('ref=');
 		const ref_mapping = result.mappings.find(
@@ -228,15 +231,15 @@ describe('@tsrx/vue basic', () => {
 	it('keeps named component ref props direct in Volar TSX for completions', () => {
 		const source = `import { ref } from 'vue';
 
-		function NamedForwardInput(props: { type: string; input_ref?: any }) { return <>
+		function NamedForwardInput(props: { type: string; input_ref?: any }) @{
 			<input type={props.type} ref={props.input_ref} />
-		</>; }
+		}
 
 		const named_vue_ref_object = ref<HTMLInputElement | null>(null);
 
-		function App() { return <>
+		function App() @{
 			<NamedForwardInput type="text" input_ref={named_vue_ref_object} />
-		</>; }`;
+		}`;
 		const result = compile_to_volar_mappings(source, 'App.tsrx');
 		const source_prop_offset = source.indexOf('input_ref={named_vue_ref_object');
 		const generated_prop_offset = result.code.indexOf('input_ref={named_vue_ref_object');
@@ -258,10 +261,10 @@ describe('@tsrx/vue basic', () => {
 	it('maps Vue function components to the generated function in Volar TSX', () => {
 		const source = `import { ref } from 'vue';
 
-		function App() { return <>
+		function App() @{
 			const count = ref(0);
 			<button>{count.value}</button>
-		</>; }`;
+		}`;
 		const result = compile_to_volar_mappings(source, 'App.tsrx');
 		const source_function_offset = source.indexOf('function');
 		const source_name_offset = source.indexOf('App');
@@ -294,14 +297,14 @@ describe('@tsrx/vue basic', () => {
 
 	it('allows ref={...} on composite components as normal Vue JSX', () => {
 		const { code } = compile(
-			`function Child(props) { return <>
+			`function Child(props) @{
 					<input {...props} />
-				</>; }
+				}
 
-				function App() { return <>
+				function App() @{
 					function inputRef(node: HTMLInputElement | null) {}
 					<Child ref={inputRef} />
-				</>; }`,
+				}`,
 			'App.tsrx',
 		);
 
@@ -312,12 +315,12 @@ describe('@tsrx/vue basic', () => {
 		const { code } = compile(
 			`import { mergeRefs } from '@tsrx/vue/ref';
 
-			function App() { return <>
+			function App() @{
 				function a(node: HTMLInputElement | null) {}
 				function b(node: HTMLInputElement | null) {}
 				function c(node: HTMLInputElement | null) {}
 				<input ref={mergeRefs(a, b, c)} />
-			</>; }`,
+			}`,
 			'App.tsrx',
 		);
 
@@ -327,14 +330,14 @@ describe('@tsrx/vue basic', () => {
 
 	it('allows named ref props through components and normalizes host spreads', () => {
 		const { code } = compile(
-			`function Child(props) { return <>
+			`function Child(props) @{
 				<input {...props} />
-			</>; }
+			}
 
-			function App() { return <>
+			function App() @{
 				let input;
 				<Child input_ref={input} />
-			</>; }`,
+			}`,
 			'App.tsrx',
 		);
 
@@ -350,14 +353,14 @@ describe('@tsrx/vue basic', () => {
 
 	it('keeps component ref-like props ordinary without host spreads', () => {
 		const { code } = compile(
-			`function Child(props) { return <>
+			`function Child(props) @{
 				<span>{'child'}</span>
-			</>; }
+			}
 
-			function App() { return <>
+			function App() @{
 				let input;
 				<Child input_ref={input} />
-			</>; }`,
+			}`,
 			'App.tsrx',
 		);
 
@@ -368,12 +371,12 @@ describe('@tsrx/vue basic', () => {
 
 	it('normalizes multiple host spreads once while merging one explicit ref', () => {
 		const { code } = compile(
-			`function App() { return <>
+			`function App() @{
 			const first = {};
 			const second = {};
 			function cb(_node) {}
 			<input {...first} {...second} ref={cb} />
-		</>; }`,
+		}`,
 			'App.tsrx',
 		);
 
@@ -395,11 +398,11 @@ describe('@tsrx/vue basic', () => {
 	it('rejects multiple ref={...} attributes on the same element', () => {
 		expect(() =>
 			compile(
-				`function App() { return <>
+				`function App() @{
 					function a(node: HTMLInputElement | null) {}
 					function b(node: HTMLInputElement | null) {}
 					<input ref={a} ref={b} />
-				</>; }`,
+				}`,
 				'App.tsrx',
 			),
 		).toThrow(/multiple `ref=\{\.\.\.\}` attributes/);
@@ -408,15 +411,15 @@ describe('@tsrx/vue basic', () => {
 	it('rejects multiple ref={...} on the same composite component', () => {
 		expect(() =>
 			compile(
-				`function Child(props) { return <>
+				`function Child(props) @{
 					<input {...props} />
-				</>; }
+				}
 
-				function App() { return <>
+				function App() @{
 					function a(node: HTMLInputElement | null) {}
 					function b(node: HTMLInputElement | null) {}
 					<Child ref={a} ref={b} />
-				</>; }`,
+				}`,
 				'App.tsrx',
 			),
 		).toThrow(/multiple `ref=\{\.\.\.\}` attributes/);
@@ -424,10 +427,10 @@ describe('@tsrx/vue basic', () => {
 
 	it('preserves host innerHTML props', () => {
 		const { code } = compile(
-			`function App() { return <>
+			`function App() @{
 				const markup = '<strong>safe enough</strong>';
 				<div class="target" innerHTML={markup} />
-			</>; }`,
+			}`,
 			'App.tsrx',
 		);
 
@@ -437,10 +440,10 @@ describe('@tsrx/vue basic', () => {
 	it('rejects removed {html expr} syntax', () => {
 		expect(() =>
 			compile(
-				`function App() { return <>
+				`function App() @{
 					const markup = '<strong>safe enough</strong>';
 					<div>{html markup}</div>
-				</>; }`,
+				}`,
 				'App.tsrx',
 			),
 		).toThrow();
@@ -448,11 +451,11 @@ describe('@tsrx/vue basic', () => {
 
 	it('compiles a simple if block in component bodies', () => {
 		const { code } = compile(
-			`function App({ visible }) { return <>
-				if (visible) {
+			`function App({ visible }) @{
+				@if (visible) {
 					<div>{'Visible'}</div>
 				}
-			</>; }`,
+			}`,
 			'App.tsrx',
 		);
 
@@ -463,13 +466,13 @@ describe('@tsrx/vue basic', () => {
 
 	it('compiles if/else chains in component bodies', () => {
 		const { code } = compile(
-			`function App({ visible }) { return <>
-				if (visible) {
+			`function App({ visible }) @{
+				@if (visible) {
 					<div>{'Visible'}</div>
-				} else {
+				} @else {
 					<div>{'Hidden'}</div>
 				}
-			</>; }`,
+			}`,
 			'App.tsrx',
 		);
 
@@ -478,21 +481,23 @@ describe('@tsrx/vue basic', () => {
 		expect(code).toMatch(/return visible \? App__static\d+ : App__static\d+;/);
 	});
 
-	it('rejects return statements inside TSRX templates', () => {
+	it('rejects return statements inside template @if branches', () => {
 		expect(() =>
 			compile(
-				`function App() { return <>
+				`function App() @{
 					const count = 0;
 
-					if (count > 2) {
-						return;
-					}
+					<>
+						@if (count > 2) {
+							return;
+						}
 
-					<button>{count}</button>
-				</>; }`,
+						<button>{count}</button>
+					</>
+				}`,
 				'App.tsrx',
 			),
-		).toThrow('Return statements are not allowed inside TSRX templates.');
+		).toThrow(/Return statements are not allowed inside TSRX template @if blocks/);
 	});
 
 	it('allows component-body guard returns before TSRX output', () => {
@@ -506,7 +511,7 @@ describe('@tsrx/vue basic', () => {
 				}
 
 				const count = ref(0);
-				return <><button>{count.value}</button></>;
+				return <button>{count.value}</button>;
 			}`,
 			'App.tsrx',
 		);
@@ -519,11 +524,11 @@ describe('@tsrx/vue basic', () => {
 
 	it('compiles for...of statements in component bodies', () => {
 		const { code } = compile(
-			`function App({ items }) { return <>
-				for (const item of items) {
+			`function App({ items }) @{
+				@for (const item of items) {
 					<div>{item}</div>
 				}
-			</>; }`,
+			}`,
 			'App.tsrx',
 		);
 
@@ -534,11 +539,11 @@ describe('@tsrx/vue basic', () => {
 
 	it('compiles keyed for...of statements in component bodies', () => {
 		const { code } = compile(
-			`function App({ items }: { items: { id: string, text: string }[] }) { return <>
-				for (const item of items; key item.id) {
+			`function App({ items }: { items: { id: string, text: string }[] }) @{
+				@for (const item of items; key item.id) {
 					<div>{item.text}</div>
 				}
-			</>; }`,
+			}`,
 			'App.tsrx',
 		);
 
@@ -548,14 +553,14 @@ describe('@tsrx/vue basic', () => {
 
 	it('does not rewrite shadowed loop params inside nested keyed slot functions', () => {
 		const { code } = compile(
-			`function App({ items, getNew, use }: { items: { id: string, text: string }[], getNew: () => unknown, use: (item: unknown) => void }) { return <>
-				for (const item of items; key item.id) {
+			`function App({ items, getNew, use }: { items: { id: string, text: string }[], getNew: () => unknown, use: (item: unknown) => void }) @{
+				@for (const item of items; key item.id) {
 					<button onClick={() => {
 						const item = getNew();
 						use(item);
 					}}>{item.text}</button>
 				}
-			</>; }`,
+			}`,
 			'App.tsrx',
 		);
 
@@ -567,11 +572,11 @@ describe('@tsrx/vue basic', () => {
 
 	it('compiles indexed keyed for...of statements in component bodies', () => {
 		const { code } = compile(
-			`function App({ items }: { items: { id: string, text: string }[] }) { return <>
-				for (const item of items; index i; key item.id) {
+			`function App({ items }: { items: { id: string, text: string }[] }) @{
+				@for (const item of items; index i; key item.id) {
 					<div>{i}{item.text}</div>
 				}
-			</>; }`,
+			}`,
 			'App.tsrx',
 		);
 
@@ -583,16 +588,16 @@ describe('@tsrx/vue basic', () => {
 
 	it('keeps explicit loop keys on single static for...of templates', () => {
 		const { code } = compile(
-			`function App({ items }: { items: string[] }) { return <>
-				for (const item of items; index i; key i) {
+			`function App({ items }: { items: string[] }) @{
+				@for (const item of items; index i; key i) {
 					<div>{'test'}</div>
 				}
-			</>; }`,
+			}`,
 			'App.tsrx',
 		);
 
 		expect(code).toContain('<VaporFor in={items} getKey={(item, i) => i}>');
-		expect(code).toContain('{(item, i) => <div>');
+		expect(code).toContain("{(item, i) => <div>{'test'}</div>}");
 		expect(code).toContain("<div>{'test'}</div>");
 		expect(code).not.toContain('<div key={i}>');
 		expect(code).not.toContain('<Fragment');
@@ -600,29 +605,31 @@ describe('@tsrx/vue basic', () => {
 
 	it('keeps implicit index keys on multi-child for...of templates', () => {
 		const { code } = compile(
-			`function App({ items }: { items: string[] }) { return <>
-				for (const item of items; index i) {
-					<div>{'one'}</div>
-					<div>{'two'}</div>
+			`function App({ items }: { items: string[] }) @{
+				@for (const item of items; index i) {
+					<>
+						<div>{'one'}</div>
+						<div>{'two'}</div>
+					</>
 				}
-			</>; }`,
+			}`,
 			'App.tsrx',
 		);
 
 		expect(code).toContain('<VaporFor in={items} getKey={(item, i) => i}>');
 		expect(code).toContain('{(item, i) => <>');
-		expect(code).toContain('App__static1');
-		expect(code).toContain('App__static2');
+		expect(code).toContain("<div>{'one'}</div>");
+		expect(code).toContain("<div>{'two'}</div>");
 		expect(code).not.toContain('<Fragment');
 	});
 
 	it('falls back without injecting VaporFor for keyed destructuring patterns it cannot rewrite', () => {
 		const { code } = compile(
-			`function App({ items, keyName }: { items: Array<Record<string, string>>, keyName: string }) { return <>
-				for (const { [keyName]: label } of items) {
+			`function App({ items, keyName }: { items: Array<Record<string, string>>, keyName: string }) @{
+				@for (const { [keyName]: label } of items) {
 					<div key={label}>{label}</div>
 				}
-			</>; }`,
+			}`,
 			'App.tsrx',
 		);
 
@@ -633,15 +640,16 @@ describe('@tsrx/vue basic', () => {
 
 	it('compiles switch statements in component bodies', () => {
 		const { code } = compile(
-			`function App({ value }) { return <>
-				switch (value) {
-					case 'a':
+			`function App({ value }) @{
+				@switch (value) {
+					@case 'a': {
 						<div>{'A'}</div>
-						break;
-					default:
+					}
+					@default: {
 						<div>{'Fallback'}</div>
 					}
-				</>; }`,
+				}
+				}`,
 			'App.tsrx',
 		);
 
@@ -655,16 +663,17 @@ describe('@tsrx/vue basic', () => {
 
 	it('compiles switch statements with inline case statements before JSX', () => {
 		const { code } = compile(
-			`function App({ value }) { return <>
-					switch (value) {
-						case 'a':
+			`function App({ value }) @{
+					@switch (value) {
+						@case 'a': {
 							const label = 'A';
 							<div>{label}</div>
-							break;
-						default:
+						}
+						@default: {
 							<div>{'Fallback'}</div>
 						}
-				</>; }`,
+					}
+				}`,
 			'App.tsrx',
 		);
 
@@ -675,17 +684,17 @@ describe('@tsrx/vue basic', () => {
 
 	it('compiles try/catch into a Vue error boundary wrapper', () => {
 		const { code } = compile(
-			`function ThrowingChild() { return <>
+			`function ThrowingChild() @{
 				<div>{'might throw'}</div>
-			</>; }
+			}
 
-			function App() { return <>
-				try {
+			function App() @{
+				@try {
 					<ThrowingChild />
-				} catch (error) {
+				} @catch (error) {
 					<div>{error.message}</div>
 				}
-			</>; }`,
+			}`,
 			'App.tsrx',
 		);
 
@@ -699,13 +708,13 @@ describe('@tsrx/vue basic', () => {
 
 	it('compiles try/pending into a Vue Suspense slot boundary', () => {
 		const { code } = compile(
-			`function App() { return <>
-				try {
+			`function App() @{
+				@try {
 					<div>{'Async content'}</div>
-				} pending {
+				} @pending {
 					<div>{'Loading...'}</div>
 				}
-			</>; }`,
+			}`,
 			'App.tsrx',
 		);
 
@@ -721,11 +730,11 @@ describe('@tsrx/vue basic', () => {
 
 	it('compiles empty pending blocks as null Vue Suspense fallbacks', () => {
 		const { code } = compile(
-			`function App() { return <>
-				try {
+			`function App() @{
+				@try {
 					<div>{'Async content'}</div>
-				} pending {}
-			</>; }`,
+				} @pending {}
+			}`,
 			'App.tsrx',
 		);
 
@@ -738,17 +747,17 @@ describe('@tsrx/vue basic', () => {
 
 	it('compiles try/pending/catch into an error boundary around Suspense', () => {
 		const { code } = compile(
-			`function App() { return <>
+			`function App() @{
 				const suffix = '!';
 
-				try {
+				@try {
 					<div>{'Async content'}</div>
-				} pending {
+				} @pending {
 					<div>{'Loading...'}</div>
-				} catch (error, reset) {
+				} @catch (error, reset) {
 					<button onClick={reset}>{error.message}{suffix}</button>
 				}
-			</>; }`,
+			}`,
 			'App.tsrx',
 		);
 
@@ -773,22 +782,22 @@ describe('@tsrx/vue basic', () => {
 	it('keeps try/pending/catch Suspense lowering valid in type-only output', () => {
 		const source = `import { defineVaporAsyncComponent } from 'vue';
 
-			function AsyncResolvedChild(props: { value: string }) { return <>
+			function AsyncResolvedChild(props: { value: string }) @{
 				<p class="async-resolved">{props.value}</p>
-			</>; }
+			}
 
-			function App(props: { promise: Promise<typeof AsyncResolvedChild> }) { return <>
+			function App(props: { promise: Promise<typeof AsyncResolvedChild> }) @{
 				const suffix = '!';
 				const AsyncChild = defineVaporAsyncComponent(() => props.promise);
 
-				try {
+				@try {
 					<AsyncChild value="hello" />
-				} pending {
+				} @pending {
 					<p class="async-pending">{'loading...'}</p>
-				} catch (err) {
+				} @catch (err) {
 					<p class="async-caught">{(err as Error).message}{suffix}</p>
 				}
-			</>; }`;
+			}`;
 		const { code, errors, mappings } = compile_to_volar_mappings(source, 'App.tsrx');
 
 		expect(errors).toHaveLength(0);
@@ -818,15 +827,15 @@ describe('@tsrx/vue basic', () => {
 	it('rejects JavaScript try/finally in component bodies', () => {
 		expect(() =>
 			compile(
-				`function App() { return <>
-					try {
+				`function App() @{
+					@try {
 						<div>{'content'}</div>
-					} catch (error) {
+					} @catch (error) {
 						<div>{error.message}</div>
 					} finally {
 						log(error)
 					}
-				</>; }`,
+				}`,
 				'App.tsrx',
 			),
 		).toThrow(/does not support JavaScript `try\/finally`/);
@@ -835,10 +844,10 @@ describe('@tsrx/vue basic', () => {
 	it('rejects await in component bodies', () => {
 		expect(() =>
 			compile(
-				`async function App() { return <>
+				`async function App() @{
 						const data = await fetchData();
 						<div>{data}</div>
-					</>; }`,
+					}`,
 				'App.tsrx',
 			),
 		).toThrow(/`await` is not yet supported in Vue TSRX components\./);
@@ -847,10 +856,10 @@ describe('@tsrx/vue basic', () => {
 	it('allows await in nested async functions inside component bodies', () => {
 		expect(() =>
 			compile(
-				`function App() { return <>
+				`function App() @{
 					const load = async () => await fetchData();
 					<button onClick={load}>{'Load'}</button>
-				</>; }`,
+				}`,
 				'App.tsrx',
 			),
 		).not.toThrow();

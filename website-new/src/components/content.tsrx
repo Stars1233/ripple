@@ -2,57 +2,69 @@ export function Content() {
 	return <>
 		<div class="content-section">
 			<h2 class="description">
-				{'Ripple is a TypeScript UI framework that combines the best parts of React, Solid, and Svelte into one package.'}
+				Ripple is a TypeScript UI framework that combines the best parts of React, Solid, and Svelte
+				into one package.
 			</h2>
-
 			<ul class="features">
 				<li>
-					<strong>{'Reactive State Management'}</strong>
-					{'- Built-in reactivity with'}
-					<code>{'track()'}</code>
-					{'function and'}
+					<strong>Reactive State Management</strong>
+					{' - Built-in reactivity with '}
+					<code>track()</code>
+					{' function and '}
 					<code>{'@'}</code>
-					{'access syntax'}
+					{' access syntax'}
 				</li>
 				<li>
-					<strong>{'Component-Based Architecture'}</strong>
-					{'- Clean, reusable components with props and children'}
+					<strong>Component-Based Architecture</strong>
+					{' - Clean, reusable components with props and children'}
 				</li>
 				<li>
-					<strong>{'Template Syntax<'}</strong>
-					{'- Familiar templating with Ripple-specific enhancements'}
+					<strong>Statement Containers</strong>
+					{' - Use '}
+					<code>{'@{...}'}</code>
+					{' for scripting, then finish with one JSX element, fragment, or control-flow expression'}
 				</li>
 				<li>
-					<strong>{'Performance'}</strong>
-					{'- Fine-grain rendering, with industry-leading performance, bundle-size and memory usage'}
+					<strong>Performance</strong>
+					{' - Fine-grain rendering, with industry-leading performance, bundle-size and memory usage'}
 				</li>
 				<li>
-					<strong>{'TypeScript Support'}</strong>
-					{'- Full TypeScript integration with type checking'}
+					<strong>TypeScript Support</strong>
+					{' - Full TypeScript integration with type checking'}
 				</li>
 				<li>
-					<strong>{'VSCode Integration'}</strong>
-					{'- Rich editor support with diagnostics and IntelliSense'}
+					<strong>VSCode Integration</strong>
+					{' - Rich editor support with diagnostics and IntelliSense'}
 				</li>
 				<li>
-					<strong>{'Control Flow'}</strong>
-					{'- Native <code>if</code>, <code>for</code>, and <code>try</code> in templates'}
+					<strong>Control Flow</strong>
+					{' - Inline '}
+					<code>{'@if'}</code>
+					{', '}
+					<code>{'@for'}</code>
+					{', '}
+					<code>{'@switch'}</code>
+					{', and '}
+					<code>{'@try'}</code>
+					{' in templates'}
 				</li>
 				<li>
-					<strong>{'Scoped Styling'}</strong>
-					{'- Component-local CSS with <code>&lt;style&gt;</code> elements'}
+					<strong>Scoped Styling</strong>
+					{' - Component-local CSS with '}
+					<code>{'<style>'}</code>
+					{' elements'}
 				</li>
 				<li>
-					<strong>{'Prettier Support'}</strong>
-					{'- Full Prettier formatting support for'}
-					<code>{'.tsrx'}</code>
-					{'modules'}
+					<strong>Prettier Support</strong>
+					{' - Full Prettier formatting support for '}
+					<code>.tsrx</code>
+					{' modules'}
 				</li>
 				<li>
-					<strong>{'ESLint Support'}</strong>
-					{'- Full ESLint integration for'}
-					<code>{'.tsrx'}</code>
-					{'modules'}
+					<strong>ESLint Support</strong>
+					{' - Full ESLint integration for '}
+					<code>.tsrx</code>
+					{' modules'}
 				</li>
 			</ul>
 		</div>

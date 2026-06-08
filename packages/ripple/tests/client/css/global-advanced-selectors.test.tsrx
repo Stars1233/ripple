@@ -3,21 +3,23 @@ import { compile } from '@tsrx/ripple';
 describe('CSS :global with advanced selectors', () => {
 	it('handles :global with ::slotted()', () => {
 		const source = `
-export function Test() { return <>
-	<div>
-		<slot />
-	</div>
+export function Test() @{
+	<>
+		<div>
+			<slot />
+		</div>
 
-	<style>
-		:global(::slotted(*)) {
-			color: red;
-		}
+		<style>
+			:global(::slotted(*)) {
+				color: red;
+			}
 
-		div :global(::slotted(span)) {
-			color: blue;
-		}
-	</style>
-</>; }`;
+			div :global(::slotted(span)) {
+				color: blue;
+			}
+		</style>
+	</>
+}`;
 		const { css } = compile(source, 'test.tsrx');
 
 		expect(css).toMatch(/div\.tsrx-[a-z0-9]+ ::slotted\(span\) {/);
@@ -26,19 +28,21 @@ export function Test() { return <>
 
 	it('handles :global with ::part()', () => {
 		const source = `
-export function Test() { return <>
-	<div>{'content'}</div>
+export function Test() @{
+	<>
+		<div>{'content'}</div>
 
-	<style>
-		:global(::part(button)) {
-			color: red;
-		}
+		<style>
+			:global(::part(button)) {
+				color: red;
+			}
 
-		div :global(::part(input)) {
-			border: 1px solid blue;
-		}
-	</style>
-</>; }`;
+			div :global(::part(input)) {
+				border: 1px solid blue;
+			}
+		</style>
+	</>
+}`;
 		const { css } = compile(source, 'test.tsrx');
 
 		expect(css).toMatch(/div\.tsrx-[a-z0-9]+ ::part\(input\) {/);
@@ -47,23 +51,25 @@ export function Test() { return <>
 
 	it('handles :global with :host and :host-context', () => {
 		const source = `
-export function Test() { return <>
-	<div>{'content'}</div>
+export function Test() @{
+	<>
+		<div>{'content'}</div>
 
-	<style>
-		:global(:host) {
-			display: block;
-		}
+		<style>
+			:global(:host) {
+				display: block;
+			}
 
-		:global(:host(.active)) {
-			color: red;
-		}
+			:global(:host(.active)) {
+				color: red;
+			}
 
-		:global(:host-context(.dark)) {
-			background: black;
-		}
-	</style>
-</>; }`;
+			:global(:host-context(.dark)) {
+				background: black;
+			}
+		</style>
+	</>
+}`;
 		const { css } = compile(source, 'test.tsrx');
 
 		expect(css).toContain(':host {');
@@ -73,27 +79,29 @@ export function Test() { return <>
 
 	it('handles :global with complex :nth-* selectors', () => {
 		const source = `
-export function Test() { return <>
-	<div>
-		<span>{'one'}</span>
-		<span>{'two'}</span>
-		<span>{'three'}</span>
-	</div>
+export function Test() @{
+	<>
+		<div>
+			<span>{'one'}</span>
+			<span>{'two'}</span>
+			<span>{'three'}</span>
+		</div>
 
-	<style>
-		:global(span:nth-child(odd)) {
-			color: red;
-		}
+		<style>
+			:global(span:nth-child(odd)) {
+				color: red;
+			}
 
-		:global(span:nth-last-child(2)) {
-			color: blue;
-		}
+			:global(span:nth-last-child(2)) {
+				color: blue;
+			}
 
-		:global(div:nth-of-type(3n+1)) {
-			margin-top: 10px;
-		}
-	</style>
-</>; }`;
+			:global(div:nth-of-type(3n+1)) {
+				margin-top: 10px;
+			}
+		</style>
+	</>
+}`;
 		const { css } = compile(source, 'test.tsrx');
 
 		expect(css).toContain('span:nth-child(odd) {');
@@ -103,23 +111,25 @@ export function Test() { return <>
 
 	it('handles :global with language and directional pseudo-classes', () => {
 		const source = `
-export function Test() { return <>
-	<div>{'content'}</div>
+export function Test() @{
+	<>
+		<div>{'content'}</div>
 
-	<style>
-		:global(:lang(en)) {
-			quotes: '"' '"';
-		}
+		<style>
+			:global(:lang(en)) {
+				quotes: '"' '"';
+			}
 
-		:global(:dir(rtl)) {
-			direction: rtl;
-		}
+			:global(:dir(rtl)) {
+				direction: rtl;
+			}
 
-		:global(div:lang(fr)) {
-			quotes: '«' '»';
-		}
-	</style>
-</>; }`;
+			:global(div:lang(fr)) {
+				quotes: '«' '»';
+			}
+		</style>
+	</>
+}`;
 		const { css } = compile(source, 'test.tsrx');
 
 		expect(css).toContain(':lang(en) {');
@@ -129,21 +139,23 @@ export function Test() { return <>
 
 	it('handles :global with :focus-within and :focus-visible', () => {
 		const source = `
-export function Test() { return <>
-	<div>
-		<input type="text" />
-	</div>
+export function Test() @{
+	<>
+		<div>
+			<input type="text" />
+		</div>
 
-	<style>
-		:global(div:focus-within) {
-			border: 2px solid blue;
-		}
+		<style>
+			:global(div:focus-within) {
+				border: 2px solid blue;
+			}
 
-		:global(input:focus-visible) {
-			outline: 2px solid red;
-		}
-	</style>
-</>; }`;
+			:global(input:focus-visible) {
+				outline: 2px solid red;
+			}
+		</style>
+	</>
+}`;
 		const { css } = compile(source, 'test.tsrx');
 
 		expect(css).toContain('div:focus-within {');
@@ -152,25 +164,27 @@ export function Test() { return <>
 
 	it('handles :global with :any-link, :target, :scope', () => {
 		const source = `
-export function Test() { return <>
-	<div>
-		<a href="#">{'link'}</a>
-	</div>
+export function Test() @{
+	<>
+		<div>
+			<a href="#">{'link'}</a>
+		</div>
 
-	<style>
-		:global(:any-link) {
-			color: blue;
-		}
+		<style>
+			:global(:any-link) {
+				color: blue;
+			}
 
-		:global(:target) {
-			background: yellow;
-		}
+			:global(:target) {
+				background: yellow;
+			}
 
-		:global(:scope) {
-			border: 1px solid black;
-		}
-	</style>
-</>; }`;
+			:global(:scope) {
+				border: 1px solid black;
+			}
+		</style>
+	</>
+}`;
 		const { css } = compile(source, 'test.tsrx');
 
 		expect(css).toContain(':any-link {');
@@ -180,42 +194,44 @@ export function Test() { return <>
 
 	it('handles :global with form-related pseudo-classes', () => {
 		const source = `
-export function Test() { return <>
-	<form>
-		<input type="text" required />
-		<input type="checkbox" checked />
-	</form>
+export function Test() @{
+	<>
+		<form>
+			<input type="text" required />
+			<input type="checkbox" checked />
+		</form>
 
-	<style>
-		:global(input:required) {
-			border-color: red;
-		}
+		<style>
+			:global(input:required) {
+				border-color: red;
+			}
 
-		:global(input:optional) {
-			border-color: gray;
-		}
+			:global(input:optional) {
+				border-color: gray;
+			}
 
-		:global(input:checked) {
-			background: blue;
-		}
+			:global(input:checked) {
+				background: blue;
+			}
 
-		:global(input:disabled) {
-			opacity: 0.5;
-		}
+			:global(input:disabled) {
+				opacity: 0.5;
+			}
 
-		:global(input:read-only) {
-			background: lightgray;
-		}
+			:global(input:read-only) {
+				background: lightgray;
+			}
 
-		:global(input:valid) {
-			border-color: green;
-		}
+			:global(input:valid) {
+				border-color: green;
+			}
 
-		:global(input:invalid) {
-			border-color: red;
-		}
-	</style>
-</>; }`;
+			:global(input:invalid) {
+				border-color: red;
+			}
+		</style>
+	</>
+}`;
 		const { css } = compile(source, 'test.tsrx');
 
 		expect(css).toContain('input:required {');

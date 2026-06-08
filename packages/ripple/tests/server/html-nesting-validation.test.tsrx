@@ -180,11 +180,13 @@ describe('HTML nesting validation', () => {
 	describe('compiler dev mode output', () => {
 		it('emits push_element and pop_element calls in dev mode', () => {
 			const lines = [];
-			lines.push('function App() { return <>');
+			lines.push('function App() @{');
+			lines.push('  <>');
 			lines.push('  <div>');
 			lines.push('    <span>{"Hello"}</span>');
 			lines.push('  </div>');
-			lines.push('</>; }');
+			lines.push('  </>');
+			lines.push('}');
 			const source = lines.join('\n');
 
 			const result = compile(source, 'test.tsrx', { mode: 'server', dev: true });
@@ -195,11 +197,13 @@ describe('HTML nesting validation', () => {
 
 		it('does not emit push_element or pop_element in non-dev mode', () => {
 			const lines = [];
-			lines.push('function App() { return <>');
+			lines.push('function App() @{');
+			lines.push('  <>');
 			lines.push('  <div>');
 			lines.push('    <span>{"Hello"}</span>');
 			lines.push('  </div>');
-			lines.push('</>; }');
+			lines.push('  </>');
+			lines.push('}');
 			const source = lines.join('\n');
 
 			const result = compile(source, 'test.tsrx', { mode: 'server', dev: false });
@@ -210,9 +214,11 @@ describe('HTML nesting validation', () => {
 
 		it('emits push_element with correct tag name', () => {
 			const lines = [];
-			lines.push('function App() { return <>');
+			lines.push('function App() @{');
+			lines.push('  <>');
 			lines.push('  <button>{"Click"}</button>');
-			lines.push('</>; }');
+			lines.push('  </>');
+			lines.push('}');
 			const source = lines.join('\n');
 
 			const result = compile(source, 'test.tsrx', { mode: 'server', dev: true });
@@ -222,9 +228,11 @@ describe('HTML nesting validation', () => {
 
 		it('does not emit push_element for client mode', () => {
 			const lines = [];
-			lines.push('function App() { return <>');
+			lines.push('function App() @{');
+			lines.push('  <>');
 			lines.push('  <div>{"Hello"}</div>');
-			lines.push('</>; }');
+			lines.push('  </>');
+			lines.push('}');
 			const source = lines.join('\n');
 
 			const result = compile(source, 'test.tsrx', { mode: 'client', dev: true });

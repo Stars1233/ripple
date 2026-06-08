@@ -21,10 +21,7 @@ export function DocsLayout({
 }) {
 	return <>
 		<head>
-			<title>
-				{title}
-				{' | Ripple'}
-			</title>
+			<title>{title} | Ripple</title>
 			<link rel="preconnect" href="https://fonts.googleapis.com" />
 			<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
 			<link
@@ -43,7 +40,7 @@ export function DocsLayout({
 								<article class="doc-content">
 									<div>{children}</div>
 								</article>
-								if (editPath) {
+								@if (editPath) {
 									<div class="edit-link">
 										<a
 											href={`https://github.com/Ripple-TS/ripple/edit/main/website/${editPath}`}
@@ -63,23 +60,23 @@ export function DocsLayout({
 												<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
 												<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
 											</svg>
-											{'Edit this page on GitHub'}
+											Edit this page on GitHub
 										</a>
 									</div>
 								}
-								if (prevLink || nextLink) {
+								@if (prevLink || nextLink) {
 									<nav class="prev-next">
-										if (prevLink) {
+										@if (prevLink) {
 											<a href={prevLink.href} class="pager prev">
-												<span class="desc">{'Previous page'}</span>
+												<span class="desc">Previous page</span>
 												<span class="title">{prevLink.text}</span>
 											</a>
-										} else {
+										} @else {
 											<span />
 										}
-										if (nextLink) {
+										@if (nextLink) {
 											<a href={nextLink.href} class="pager next">
-												<span class="desc">{'Next page'}</span>
+												<span class="desc">Next page</span>
 												<span class="title">{nextLink.text}</span>
 											</a>
 										}
@@ -89,40 +86,42 @@ export function DocsLayout({
 							</div>
 						</div>
 						<aside class="aside">
-							if (toc.length > 0) {
-								<div class="aside-curtain" />
-								<div class="aside-container">
-									<div class="aside-content">
-										<div class="DocumentAside">
-											<nav
-												class="DocumentAsideOutline has-outline"
-												aria-labelledby="doc-outline-aria-label"
-											>
-												<div class="outline-content">
-													<div class="outline-marker" />
-													<div
-														class="outline-title"
-														id="doc-outline-aria-label"
-														role="heading"
-														aria-level="2"
-													>
-														{'Features'}
+							@if (toc.length > 0) {
+								<>
+									<div class="aside-curtain" />
+									<div class="aside-container">
+										<div class="aside-content">
+											<div class="DocumentAside">
+												<nav
+													class="DocumentAsideOutline has-outline"
+													aria-labelledby="doc-outline-aria-label"
+												>
+													<div class="outline-content">
+														<div class="outline-marker" />
+														<div
+															class="outline-title"
+															id="doc-outline-aria-label"
+															role="heading"
+															aria-level="2"
+														>Features</div>
+														<ul class="DocumentOutlineItem root">
+															@for (const item of toc) {
+																<li>
+																	<a
+																		class="outline-link"
+																		href={item.href}
+																		title={item.text}
+																	>{item.text}</a>
+																</li>
+															}
+														</ul>
 													</div>
-													<ul class="DocumentOutlineItem root">
-														for (const item of toc) {
-															<li>
-																<a class="outline-link" href={item.href} title={item.text}>
-																	{item.text}
-																</a>
-															</li>
-														}
-													</ul>
-												</div>
-											</nav>
-											<div class="aside-spacer" />
+												</nav>
+												<div class="aside-spacer" />
+											</div>
 										</div>
 									</div>
-								</div>
+								</>
 							}
 						</aside>
 					</div>

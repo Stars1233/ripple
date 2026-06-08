@@ -420,37 +420,35 @@ function WithFragment() {
 ---
 
 (program
-  (expression_statement
-    (function_expression
-      name: (identifier)
-      parameters: (formal_parameters)
-      body: (statement_block
-        (return_statement
-          (jsx_self_closing_element
-            name: (jsx_non_namespaced_element_name
-              (identifier)))))))
-  (expression_statement
-    (function_expression
-      name: (identifier)
-      parameters: (formal_parameters)
-      body: (statement_block
-        (return_statement
-          (jsx_fragment
-            open_tag: (jsx_opening_fragment)
+  (function_declaration
+    name: (identifier)
+    parameters: (formal_parameters)
+    body: (statement_block
+      (return_statement
+        (jsx_self_closing_element
+          name: (jsx_non_namespaced_element_name
+            (identifier))))))
+  (function_declaration
+    name: (identifier)
+    parameters: (formal_parameters)
+    body: (statement_block
+      (return_statement
+        (jsx_fragment
+          open_tag: (jsx_opening_fragment)
+          children: (jsx_text)
+          children: (jsx_element
+            open_tag: (jsx_opening_element
+              name: (jsx_element_name
+                (identifier)))
             children: (jsx_text)
-            children: (jsx_element
-              open_tag: (jsx_opening_element
-                name: (jsx_element_name
-                  (identifier)))
-              children: (jsx_text)
-              close_tag: (jsx_closing_element
-                name: (jsx_element_name
-                  (identifier))))
-            children: (jsx_text)
-            children: (style_element
-              (raw_text))
-            children: (jsx_text)
-            close_tag: (jsx_closing_fragment)))))))
+            close_tag: (jsx_closing_element
+              name: (jsx_element_name
+                (identifier))))
+          children: (jsx_text)
+          children: (style_element
+            (raw_text))
+          children: (jsx_text)
+          close_tag: (jsx_closing_fragment))))))
 
 ====================================
 Function Return Native Control Flow
@@ -458,10 +456,10 @@ Function Return Native Control Flow
 
 function WithControlFlow(x) {
   return <>
-    if (x) {
+    @if (x) {
       <div>"works"</div>
-    } else {
-      return null;
+    } @else {
+      {null}
     }
   </>;
 }
@@ -469,67 +467,111 @@ function WithControlFlow(x) {
 ---
 
 (program
-  (expression_statement
-    (function_expression
+  (function_declaration
+    name: (identifier)
+    parameters: (formal_parameters
+      (required_parameter
+        pattern: (identifier)))
+    body: (statement_block
+      (return_statement
+        (jsx_fragment
+          open_tag: (jsx_opening_fragment)
+          children: (jsx_if_expression
+            condition: (parenthesized_expression
+              (identifier))
+            consequence: (jsx_template_block
+              children: (jsx_text)
+              children: (jsx_element
+                open_tag: (jsx_opening_element
+                  name: (jsx_element_name
+                    (identifier)))
+                children: (jsx_text)
+                close_tag: (jsx_closing_element
+                  name: (jsx_element_name
+                    (identifier))))
+              children: (jsx_text))
+            (jsx_else_clause
+              alternative: (jsx_template_block
+                children: (jsx_text)
+                children: (jsx_expression
+                  (component_statement
+                    (expression_statement
+                      (null))))
+                children: (jsx_text))))
+          children: (jsx_text)
+          close_tag: (jsx_closing_fragment))))))
+
+==================
+Statement Container Child
+==================
+
+const App = () => <>
+  @{
+    <div>Ready</div>
+  }
+</>;
+
+---
+
+(program
+  (variable_declaration
+    (variable_declarator
       name: (identifier)
-      parameters: (formal_parameters
-        (required_parameter
-          pattern: (identifier)))
-      body: (statement_block
-        (return_statement
-          (jsx_fragment
+      (initializer
+        (arrow_function
+          parameters: (formal_parameters)
+          body: (jsx_fragment
             open_tag: (jsx_opening_fragment)
-            children: (if_statement
-              condition: (parenthesized_expression
-                (identifier))
-              consequence: (statement_block
-                (expression_statement
-                  (jsx_element
-                    open_tag: (jsx_opening_element
-                      name: (jsx_element_name
-                        (identifier)))
-                    children: (jsx_text)
-                    close_tag: (jsx_closing_element
-                      name: (jsx_element_name
-                        (identifier))))))
-              alternative: (statement_block
-                (return_statement
-                  (null))))
+            children: (jsx_statement_container
+              children: (jsx_element
+                open_tag: (jsx_opening_element
+                  name: (jsx_element_name
+                    (identifier)))
+                children: (jsx_text)
+                close_tag: (jsx_closing_element
+                  name: (jsx_element_name
+                    (identifier)))))
             children: (jsx_text)
             close_tag: (jsx_closing_fragment)))))))
 
 ==========================================
-Function Return Async Native Declaration
+Function Return Statement Container
 ==========================================
 
 function WithAsyncDeclaration() {
-  return <>
+  return <>@{
     async function load() {
       return 1;
     }
-    async work
-  </>;
+
+    <>
+      async work
+    </>
+  }</>;
 }
 
 ---
 
 (program
-  (expression_statement
-    (function_expression
-      name: (identifier)
-      parameters: (formal_parameters)
-      body: (statement_block
-        (return_statement
-          (jsx_fragment
-            open_tag: (jsx_opening_fragment)
-            children: (function_declaration
+  (function_declaration
+    name: (identifier)
+    parameters: (formal_parameters)
+    body: (statement_block
+      (return_statement
+        (jsx_fragment
+          open_tag: (jsx_opening_fragment)
+          children: (jsx_statement_container
+            statement: (function_declaration
               name: (identifier)
               parameters: (formal_parameters)
               body: (statement_block
                 (return_statement
                   (number))))
-            children: (jsx_text)
-            close_tag: (jsx_closing_fragment)))))))
+            children: (jsx_fragment
+              open_tag: (jsx_opening_fragment)
+              children: (jsx_text)
+              close_tag: (jsx_closing_fragment)))
+          close_tag: (jsx_closing_fragment))))))
 
 ==================
 Server Module
@@ -570,6 +612,50 @@ fragment App() {
               (component_statement
                 (expression_statement
                   (string))))
+            close_tag: (jsx_closing_element
+              name: (jsx_element_name
+                (identifier)))))))))
+
+=================================
+Code Element Control Flow Text
+=================================
+
+fragment App() {
+  <p><code>if</code><code>{'@if'}</code></p>
+}
+
+---
+
+(program
+  (fragment_declaration
+    name: (identifier)
+    parameters: (formal_parameters)
+    body: (component_body
+      (component_statement
+        (expression_statement
+          (jsx_element
+            open_tag: (jsx_opening_element
+              name: (jsx_element_name
+                (identifier)))
+            children: (jsx_element
+              open_tag: (jsx_opening_element
+                name: (jsx_element_name
+                  (identifier)))
+              children: (jsx_text)
+              close_tag: (jsx_closing_element
+                name: (jsx_element_name
+                  (identifier))))
+            children: (jsx_element
+              open_tag: (jsx_opening_element
+                name: (jsx_element_name
+                  (identifier)))
+              children: (jsx_expression
+                (component_statement
+                  (expression_statement
+                    (string))))
+              close_tag: (jsx_closing_element
+                name: (jsx_element_name
+                  (identifier))))
             close_tag: (jsx_closing_element
               name: (jsx_element_name
                 (identifier)))))))))

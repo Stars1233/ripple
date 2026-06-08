@@ -30,8 +30,8 @@ var root_26 = _$_.template(`<div class="vp-doc"></div>`, 0);
 var root_25 = _$_.template(`<!>`, 1, 1);
 var root_28 = _$_.template(`<div class="vp-doc"></div>`, 0);
 var root_27 = _$_.template(`<!>`, 1, 1);
-var root_30 = _$_.template(`<h1 class="heading"><!></h1>`, 1, 1);
-var root_31 = _$_.template(`<h2 class="heading"><!></h2>`, 1, 1);
+var root_30 = _$_.template(`<h1 class="heading"><!></h1>`, 0);
+var root_31 = _$_.template(`<h2 class="heading"><!></h2>`, 0);
 var root_29 = _$_.template(`<!>`, 1, 1);
 var root_32 = _$_.template(`<div class="code-block"><div class="header"><button>Copy</button><span class="lang">js</span></div><div class="content"></div></div>`, 0);
 var root_33 = _$_.template(`<div class="wrapper"><div class="inner"><!></div></div>`, 0);
@@ -315,7 +315,7 @@ function DocFooter() {
 	});
 }
 
-export function DocLayout({ children, editPath = '', nextLink = null, toc = [] }) {
+export function DocLayout(__props) {
 	return _$_.tsrx_element((__anchor, __block) => {
 		var div_14 = root_18();
 
@@ -331,7 +331,7 @@ export function DocLayout({ children, editPath = '', nextLink = null, toc = [] }
 					{
 						var expression_1 = _$_.child(div_15);
 
-						_$_.expression(expression_1, () => children);
+						_$_.expression(expression_1, () => __props.children);
 						_$_.pop(div_15);
 					}
 				}
@@ -346,15 +346,17 @@ export function DocLayout({ children, editPath = '', nextLink = null, toc = [] }
 
 						{
 							var a_1 = _$_.child(div_17);
-
-							_$_.set_attribute(a_1, 'href', `https://github.com/edit/${editPath}`);
 						}
+
+						_$_.render(() => {
+							_$_.set_attribute(a_1, 'href', `https://github.com/edit/${_$_.fallback(__props.editPath, '')}`);
+						});
 
 						_$_.append(__anchor, div_17);
 					};
 
 					_$_.if(node_9, (__render) => {
-						if (editPath) __render(consequent);
+						if (_$_.fallback(__props.editPath, '')) __render(consequent);
 					});
 				}
 
@@ -370,20 +372,20 @@ export function DocLayout({ children, editPath = '', nextLink = null, toc = [] }
 							{
 								var expression_2 = _$_.child(a_2);
 
-								_$_.expression(expression_2, () => nextLink.text);
+								_$_.expression(expression_2, () => _$_.fallback(__props.nextLink, null).text);
 								_$_.pop(a_2);
 							}
 						}
 
 						_$_.render(() => {
-							_$_.set_attribute(a_2, 'href', nextLink.href);
+							_$_.set_attribute(a_2, 'href', _$_.fallback(__props.nextLink, null).href);
 						});
 
 						_$_.append(__anchor, nav_1);
 					};
 
 					_$_.if(node_10, (__render) => {
-						if (nextLink) __render(consequent_1);
+						if (_$_.fallback(__props.nextLink, null)) __render(consequent_1);
 					});
 				}
 
@@ -408,7 +410,7 @@ export function DocLayout({ children, editPath = '', nextLink = null, toc = [] }
 							{
 								_$_.for(
 									ul_1,
-									() => toc,
+									() => _$_.fallback(__props.toc, []),
 									(__anchor, item) => {
 										var li_1 = root_22();
 
@@ -440,7 +442,7 @@ export function DocLayout({ children, editPath = '', nextLink = null, toc = [] }
 					};
 
 					_$_.if(node_12, (__render) => {
-						if (toc.length > 0) __render(consequent_2);
+						if (_$_.fallback(__props.toc, []).length > 0) __render(consequent_2);
 					});
 				}
 
@@ -523,8 +525,7 @@ function DynamicHeading({ level, children }) {
 
 		{
 			var switch_case_0 = (__anchor) => {
-				var fragment_9 = root_30();
-				var h1_2 = _$_.first_child_frag(fragment_9);
+				var h1_2 = root_30();
 
 				{
 					var expression_4 = _$_.child(h1_2);
@@ -533,12 +534,11 @@ function DynamicHeading({ level, children }) {
 					_$_.pop(h1_2);
 				}
 
-				_$_.append(__anchor, fragment_9);
+				_$_.append(__anchor, h1_2);
 			};
 
 			var switch_case_1 = (__anchor) => {
-				var fragment_10 = root_31();
-				var h2_1 = _$_.first_child_frag(fragment_10);
+				var h2_1 = root_31();
 
 				{
 					var expression_5 = _$_.child(h2_1);
@@ -547,7 +547,7 @@ function DynamicHeading({ level, children }) {
 					_$_.pop(h2_1);
 				}
 
-				_$_.append(__anchor, fragment_10);
+				_$_.append(__anchor, h2_1);
 			};
 
 			_$_.switch(node_16, () => {
@@ -609,13 +609,13 @@ function ContentWrapper({ children }) {
 
 export function HtmlAfterSwitchInChildren() {
 	return _$_.tsrx_element((__anchor, __block) => {
-		var fragment_11 = root_34();
-		var node_17 = _$_.first_child_frag(fragment_11);
+		var fragment_9 = root_34();
+		var node_17 = _$_.first_child_frag(fragment_9);
 
 		_$_.render_component(ContentWrapper, node_17, {
 			children: _$_.tsrx_element((__anchor, __block) => {
-				var fragment_12 = root_35();
-				var node_18 = _$_.first_child_frag(fragment_12);
+				var fragment_10 = root_35();
+				var node_18 = _$_.first_child_frag(fragment_10);
 
 				_$_.render_component(DynamicHeading, node_18, {
 					level: 1,
@@ -631,19 +631,17 @@ export function HtmlAfterSwitchInChildren() {
 				var node_19 = _$_.sibling(p_1);
 
 				_$_.render_component(CodeBlock, node_19, { code: "const x = 1;" });
-				_$_.append(__anchor, fragment_12);
+				_$_.append(__anchor, fragment_10);
 			})
 		});
 
-		_$_.append(__anchor, fragment_11);
+		_$_.append(__anchor, fragment_9);
 	});
 }
 
-function NavItem({ href, text: label, active = false }) {
+function NavItem(__props) {
 	return _$_.tsrx_element((__anchor, __block) => {
 		var div_27 = root_36();
-
-		_$_.set_class(div_27, `nav-item${active ? ' active' : ''}`, void 0, true);
 
 		{
 			var node_20 = _$_.child(div_27);
@@ -656,27 +654,42 @@ function NavItem({ href, text: label, active = false }) {
 				};
 
 				_$_.if(node_20, (__render) => {
-					if (active) __render(consequent_3);
+					if (_$_.fallback(__props.active, false)) __render(consequent_3);
 				});
 			}
 
 			var a_4 = _$_.sibling(node_20);
 
-			_$_.set_attribute(a_4, 'href', href);
-
 			{
 				var span_1 = _$_.child(a_4);
 
 				{
-					var expression_8 = _$_.child(span_1, true);
+					var expression_8 = _$_.child(span_1);
 
-					expression_8.nodeValue = label;
+					_$_.expression(expression_8, () => __props.text);
 					_$_.pop(span_1);
 				}
 			}
 
 			_$_.pop(div_27);
 		}
+
+		_$_.render(
+			(__prev) => {
+				var __a = __props.href;
+
+				if (__prev.a !== __a) {
+					_$_.set_attribute(a_4, 'href', __prev.a = __a);
+				}
+
+				var __b = `nav-item${_$_.fallback(__props.active, false) ? ' active' : ''}`;
+
+				if (__prev.b !== __b) {
+					_$_.set_class(div_27, __prev.b = __b, void 0, true);
+				}
+			},
+			{ a: void 0, b: Symbol() }
+		);
 
 		_$_.append(__anchor, div_27);
 	});
@@ -751,8 +764,8 @@ function SideNav({ currentPath }) {
 					_$_.render_component(SidebarSection, node_22, {
 						title: "Getting Started",
 						children: _$_.tsrx_element((__anchor, __block) => {
-							var fragment_13 = root_41();
-							var node_23 = _$_.first_child_frag(fragment_13);
+							var fragment_11 = root_41();
+							var node_23 = _$_.first_child_frag(fragment_11);
 
 							_$_.render_component(NavItem, node_23, {
 								href: "/intro",
@@ -768,7 +781,7 @@ function SideNav({ currentPath }) {
 								active: currentPath === '/start'
 							});
 
-							_$_.append(__anchor, fragment_13);
+							_$_.append(__anchor, fragment_11);
 						})
 					});
 
@@ -783,8 +796,8 @@ function SideNav({ currentPath }) {
 					_$_.render_component(SidebarSection, node_25, {
 						title: "Guide",
 						children: _$_.tsrx_element((__anchor, __block) => {
-							var fragment_14 = root_42();
-							var node_26 = _$_.first_child_frag(fragment_14);
+							var fragment_12 = root_42();
+							var node_26 = _$_.first_child_frag(fragment_12);
 
 							_$_.render_component(NavItem, node_26, {
 								href: "/guide/app",
@@ -800,7 +813,7 @@ function SideNav({ currentPath }) {
 								active: currentPath === '/guide/syntax'
 							});
 
-							_$_.append(__anchor, fragment_14);
+							_$_.append(__anchor, fragment_12);
 						})
 					});
 
@@ -910,9 +923,9 @@ export function ArticleWithChildrenThenSibling() {
 
 			_$_.render_component(ArticleWrapper, node_32, {
 				children: _$_.tsrx_element((__anchor, __block) => {
-					var fragment_15 = root_49();
+					var fragment_13 = root_49();
 
-					_$_.append(__anchor, fragment_15);
+					_$_.append(__anchor, fragment_13);
 				})
 			});
 
@@ -1042,8 +1055,8 @@ function InlineArticleLayout({ children }) {
 export function InlineArticleWithHtmlChild() {
 	return _$_.tsrx_element((__anchor, __block) => {
 		const htmlContent = '<pre><code>const x = 1;</code></pre>';
-		var fragment_16 = root_57();
-		var node_41 = _$_.first_child_frag(fragment_16);
+		var fragment_14 = root_57();
+		var node_41 = _$_.first_child_frag(fragment_14);
 
 		_$_.render_component(InlineArticleLayout, node_41, {
 			children: _$_.tsrx_element((__anchor, __block) => {
@@ -1054,7 +1067,7 @@ export function InlineArticleWithHtmlChild() {
 			})
 		});
 
-		_$_.append(__anchor, fragment_16);
+		_$_.append(__anchor, fragment_14);
 	});
 }
 
@@ -1082,7 +1095,7 @@ function FooterStub() {
 	});
 }
 
-function DocsLayoutInner({ children, editPath = '', nextLink = null }) {
+function DocsLayoutInner(__props) {
 	return _$_.tsrx_element((__anchor, __block) => {
 		var div_47 = root_62();
 
@@ -1118,7 +1131,7 @@ function DocsLayoutInner({ children, editPath = '', nextLink = null }) {
 									{
 										var expression_13 = _$_.child(div_49);
 
-										_$_.expression(expression_13, () => children);
+										_$_.expression(expression_13, () => __props.children);
 										_$_.pop(div_49);
 									}
 								}
@@ -1135,7 +1148,7 @@ function DocsLayoutInner({ children, editPath = '', nextLink = null }) {
 									};
 
 									_$_.if(node_44, (__render) => {
-										if (editPath) __render(consequent_10);
+										if (_$_.fallback(__props.editPath, '')) __render(consequent_10);
 									});
 								}
 
@@ -1151,20 +1164,20 @@ function DocsLayoutInner({ children, editPath = '', nextLink = null }) {
 											{
 												var expression_14 = _$_.child(a_5);
 
-												_$_.expression(expression_14, () => nextLink.text);
+												_$_.expression(expression_14, () => _$_.fallback(__props.nextLink, null).text);
 												_$_.pop(a_5);
 											}
 										}
 
 										_$_.render(() => {
-											_$_.set_attribute(a_5, 'href', nextLink.href);
+											_$_.set_attribute(a_5, 'href', _$_.fallback(__props.nextLink, null).href);
 										});
 
 										_$_.append(__anchor, nav_4);
 									};
 
 									_$_.if(node_45, (__render) => {
-										if (nextLink) __render(consequent_11);
+										if (_$_.fallback(__props.nextLink, null)) __render(consequent_11);
 									});
 								}
 
@@ -1190,8 +1203,8 @@ function DocsLayoutInner({ children, editPath = '', nextLink = null }) {
 export function DocsLayoutWithData() {
 	return _$_.tsrx_element((__anchor, __block) => {
 		const htmlContent = '<h1>Title</h1><p>Content</p>';
-		var fragment_17 = root_65();
-		var node_47 = _$_.first_child_frag(fragment_17);
+		var fragment_15 = root_65();
+		var node_47 = _$_.first_child_frag(fragment_15);
 
 		_$_.render_component(DocsLayoutInner, node_47, {
 			editPath: "docs/styling.md",
@@ -1204,15 +1217,15 @@ export function DocsLayoutWithData() {
 			})
 		});
 
-		_$_.append(__anchor, fragment_17);
+		_$_.append(__anchor, fragment_15);
 	});
 }
 
 export function DocsLayoutWithoutData() {
 	return _$_.tsrx_element((__anchor, __block) => {
 		const htmlContent = undefined;
-		var fragment_18 = root_67();
-		var node_48 = _$_.first_child_frag(fragment_18);
+		var fragment_16 = root_67();
+		var node_48 = _$_.first_child_frag(fragment_16);
 
 		_$_.render_component(DocsLayoutInner, node_48, {
 			children: _$_.tsrx_element((__anchor, __block) => {
@@ -1223,19 +1236,11 @@ export function DocsLayoutWithoutData() {
 			})
 		});
 
-		_$_.append(__anchor, fragment_18);
+		_$_.append(__anchor, fragment_16);
 	});
 }
 
-function DocsLayoutExact(
-	{
-		children,
-		editPath = '',
-		prevLink = null,
-		nextLink = null,
-		toc = []
-	}
-) {
+function DocsLayoutExact(__props) {
 	return _$_.tsrx_element((__anchor, __block) => {
 		var div_56 = root_69();
 
@@ -1271,7 +1276,7 @@ function DocsLayoutExact(
 									{
 										var expression_15 = _$_.child(div_58);
 
-										_$_.expression(expression_15, () => children);
+										_$_.expression(expression_15, () => __props.children);
 										_$_.pop(div_58);
 									}
 								}
@@ -1286,15 +1291,17 @@ function DocsLayoutExact(
 
 										{
 											var a_6 = _$_.child(div_62);
-
-											_$_.set_attribute(a_6, 'href', `/edit/${editPath}`);
 										}
+
+										_$_.render(() => {
+											_$_.set_attribute(a_6, 'href', `/edit/${_$_.fallback(__props.editPath, '')}`);
+										});
 
 										_$_.append(__anchor, div_62);
 									};
 
 									_$_.if(node_51, (__render) => {
-										if (editPath) __render(consequent_12);
+										if (_$_.fallback(__props.editPath, '')) __render(consequent_12);
 									});
 								}
 
@@ -1317,13 +1324,13 @@ function DocsLayoutExact(
 														{
 															var expression_16 = _$_.child(span_2);
 
-															_$_.expression(expression_16, () => prevLink.text);
+															_$_.expression(expression_16, () => _$_.fallback(__props.prevLink, null).text);
 															_$_.pop(span_2);
 														}
 													}
 
 													_$_.render(() => {
-														_$_.set_attribute(a_7, 'href', prevLink.href);
+														_$_.set_attribute(a_7, 'href', _$_.fallback(__props.prevLink, null).href);
 													});
 
 													_$_.append(__anchor, a_7);
@@ -1336,7 +1343,7 @@ function DocsLayoutExact(
 												};
 
 												_$_.if(node_53, (__render) => {
-													if (prevLink) __render(consequent_13); else __render(alternate, false);
+													if (_$_.fallback(__props.prevLink, null)) __render(consequent_13); else __render(alternate, false);
 												});
 											}
 
@@ -1352,20 +1359,20 @@ function DocsLayoutExact(
 														{
 															var expression_17 = _$_.child(span_4);
 
-															_$_.expression(expression_17, () => nextLink.text);
+															_$_.expression(expression_17, () => _$_.fallback(__props.nextLink, null).text);
 															_$_.pop(span_4);
 														}
 													}
 
 													_$_.render(() => {
-														_$_.set_attribute(a_8, 'href', nextLink.href);
+														_$_.set_attribute(a_8, 'href', _$_.fallback(__props.nextLink, null).href);
 													});
 
 													_$_.append(__anchor, a_8);
 												};
 
 												_$_.if(node_54, (__render) => {
-													if (nextLink) __render(consequent_14);
+													if (_$_.fallback(__props.nextLink, null)) __render(consequent_14);
 												});
 											}
 
@@ -1376,7 +1383,7 @@ function DocsLayoutExact(
 									};
 
 									_$_.if(node_52, (__render) => {
-										if (prevLink || nextLink) __render(consequent_15);
+										if (_$_.fallback(__props.prevLink, null) || _$_.fallback(__props.nextLink, null)) __render(consequent_15);
 									});
 								}
 
@@ -1404,7 +1411,7 @@ function DocsLayoutExact(
 										{
 											_$_.for(
 												nav_6,
-												() => toc,
+												() => _$_.fallback(__props.toc, []),
 												(__anchor, item) => {
 													var a_9 = root_76();
 
@@ -1432,7 +1439,7 @@ function DocsLayoutExact(
 								};
 
 								_$_.if(node_56, (__render) => {
-									if (toc.length > 0) __render(consequent_16);
+									if (_$_.fallback(__props.toc, []).length > 0) __render(consequent_16);
 								});
 							}
 
@@ -1454,8 +1461,8 @@ function DocsLayoutExact(
 export function DocsLayoutExactWithData() {
 	return _$_.tsrx_element((__anchor, __block) => {
 		const htmlContent = '<h1>Styling Guide</h1><p>Content</p>';
-		var fragment_19 = root_77();
-		var node_57 = _$_.first_child_frag(fragment_19);
+		var fragment_17 = root_77();
+		var node_57 = _$_.first_child_frag(fragment_17);
 
 		_$_.render_component(DocsLayoutExact, node_57, {
 			editPath: "docs/guide/styling.md",
@@ -1474,7 +1481,7 @@ export function DocsLayoutExactWithData() {
 			})
 		});
 
-		_$_.append(__anchor, fragment_19);
+		_$_.append(__anchor, fragment_17);
 	});
 }
 
@@ -1485,8 +1492,8 @@ export function DocsLayoutExactWithoutData() {
 		const prevLink = undefined;
 		const nextLink = undefined;
 		const toc = undefined;
-		var fragment_20 = root_79();
-		var node_58 = _$_.first_child_frag(fragment_20);
+		var fragment_18 = root_79();
+		var node_58 = _$_.first_child_frag(fragment_18);
 
 		_$_.render_component(DocsLayoutExact, node_58, {
 			editPath,
@@ -1501,7 +1508,7 @@ export function DocsLayoutExactWithoutData() {
 			})
 		});
 
-		_$_.append(__anchor, fragment_20);
+		_$_.append(__anchor, fragment_18);
 	});
 }
 
@@ -1567,8 +1574,8 @@ function LayoutWithTemplate({ children, data }) {
 export function NestedTemplateInLayout() {
 	return _$_.tsrx_element((__anchor, __block) => {
 		const doc = { title: 'Comparison', html: '<p>Content</p>' };
-		var fragment_21 = root_84();
-		var node_59 = _$_.first_child_frag(fragment_21);
+		var fragment_19 = root_84();
+		var node_59 = _$_.first_child_frag(fragment_19);
 
 		_$_.render_component(LayoutWithTemplate, node_59, {
 			data: doc,
@@ -1583,7 +1590,7 @@ export function NestedTemplateInLayout() {
 			})
 		});
 
-		_$_.append(__anchor, fragment_21);
+		_$_.append(__anchor, fragment_19);
 	});
 }
 

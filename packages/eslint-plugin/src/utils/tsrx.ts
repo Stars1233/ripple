@@ -13,8 +13,25 @@ const NESTED_BOUNDARY_TYPES = new Set([
 	'StaticBlock',
 ]);
 
-export function isNativeTsrxNode(node: AST.Node | null | undefined): boolean {
-	return node?.type === 'Element' || node?.type === 'TsrxFragment';
+export function isNativeTsrxJsxNode(node: AST.Node | null | undefined): boolean {
+	if (!node) return false;
+
+	if (
+		node.type === ('JSXCodeBlock' as string) ||
+		node.type === ('JSXIfExpression' as string) ||
+		node.type === ('JSXForExpression' as string) ||
+		node.type === ('JSXSwitchExpression' as string) ||
+		node.type === ('JSXTryExpression' as string)
+	) {
+		return true;
+	}
+
+	return (
+		(node.type === ('JSXElement' as string) ||
+			node.type === ('JSXFragment' as string) ||
+			node.type === ('JSXStyleElement' as string)) &&
+		!!(node as AnyNode).metadata?.native_tsrx
+	);
 }
 
 export function functionReturnsNativeTsrx(node: AST.Node): boolean {
@@ -25,7 +42,7 @@ export function functionReturnsNativeTsrx(node: AST.Node): boolean {
 		return false;
 	}
 
-	if (isNativeTsrxNode(body)) {
+	if (isNativeTsrxJsxNode(body)) {
 		return true;
 	}
 
@@ -41,7 +58,7 @@ function containsNativeTsrxReturn(node: AnyNode): boolean {
 		return false;
 	}
 
-	if (node.type === 'ReturnStatement' && isNativeTsrxNode(node.argument)) {
+	if (node.type === 'ReturnStatement' && isNativeTsrxJsxNode(node.argument)) {
 		return true;
 	}
 

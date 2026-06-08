@@ -907,104 +907,6 @@
 				</dict>
 			</array>
 		</dict>
-		<key>component-control-statement</key>
-		<dict>
-			<key>patterns</key>
-			<array>
-				<dict>
-					<key>include</key>
-					<string>#component-switch-statement</string>
-				</dict>
-				<dict>
-					<key>include</key>
-					<string>#for-loop</string>
-				</dict>
-				<dict>
-					<key>match</key>
-					<string>(?&lt;![_$[:alnum:]])(?:(?&lt;=\.\.\.)|(?&lt;!\.))(catch|finally|pending|throw|try)(?![_$[:alnum:]])(?:(?=\.\.\.)|(?!\.))</string>
-					<key>name</key>
-					<string>keyword.control.trycatch.js</string>
-				</dict>
-				<dict>
-					<key>captures</key>
-					<dict>
-						<key>1</key>
-						<dict>
-							<key>name</key>
-							<string>keyword.control.loop.js</string>
-						</dict>
-						<key>2</key>
-						<dict>
-							<key>name</key>
-							<string>entity.name.label.js</string>
-						</dict>
-					</dict>
-					<key>match</key>
-					<string>(?&lt;![_$[:alnum:]])(?:(?&lt;=\.\.\.)|(?&lt;!\.))(break|continue|goto)\s+([_$[:alpha:]][_$[:alnum:]]*)(?![_$[:alnum:]])(?:(?=\.\.\.)|(?!\.))</string>
-				</dict>
-				<dict>
-					<key>match</key>
-					<string>(?&lt;![_$[:alnum:]])(?:(?&lt;=\.\.\.)|(?&lt;!\.))(break|continue|do|goto|while)(?![_$[:alnum:]])(?:(?=\.\.\.)|(?!\.))</string>
-					<key>name</key>
-					<string>keyword.control.loop.js</string>
-				</dict>
-				<dict>
-					<key>begin</key>
-					<string>(?&lt;![_$[:alnum:]])(?:(?&lt;=\.\.\.)|(?&lt;!\.))(return)(?![_$[:alnum:]])(?:(?=\.\.\.)|(?!\.))</string>
-					<key>beginCaptures</key>
-					<dict>
-						<key>0</key>
-						<dict>
-							<key>name</key>
-							<string>keyword.control.flow.js</string>
-						</dict>
-					</dict>
-					<key>end</key>
-					<string>(?=[;}]|$|;|^\s*$|(?:^\s*(?:abstract|async|(?:\bawait\s+(?:\busing(?=\s+(?!in\b|of\b(?!\s*(?:of\b|=)))[_$[:alpha:]])\b)\b)|break|case|catch|class|const|continue|declare|do|else|enum|export|finally|function|for|goto|if|import|interface|let|module|namespace|pending|switch|return|throw|try|type|(?:\busing(?=\s+(?!in\b|of\b(?!\s*(?:of\b|=)))[_$[:alpha:]])\b)|var|while)\b))</string>
-					<key>patterns</key>
-					<array>
-						<dict>
-							<key>include</key>
-							<string>#expression</string>
-						</dict>
-					</array>
-				</dict>
-				<dict>
-					<key>match</key>
-					<string>(?&lt;![_$[:alnum:]])(?:(?&lt;=\.\.\.)|(?&lt;!\.))(case|default|switch)(?![_$[:alnum:]])(?:(?=\.\.\.)|(?!\.))</string>
-					<key>name</key>
-					<string>keyword.control.switch.js</string>
-				</dict>
-				<dict>
-					<key>include</key>
-					<string>#component-if-statement</string>
-				</dict>
-				<dict>
-					<key>match</key>
-					<string>(?&lt;![_$[:alnum:]])(?:(?&lt;=\.\.\.)|(?&lt;!\.))(else|if)(?![_$[:alnum:]])(?:(?=\.\.\.)|(?!\.))</string>
-					<key>name</key>
-					<string>keyword.control.conditional.js</string>
-				</dict>
-				<dict>
-					<key>match</key>
-					<string>(?&lt;![_$[:alnum:]])(?:(?&lt;=\.\.\.)|(?&lt;!\.))(with)(?![_$[:alnum:]])(?:(?=\.\.\.)|(?!\.))</string>
-					<key>name</key>
-					<string>keyword.control.with.js</string>
-				</dict>
-				<dict>
-					<key>match</key>
-					<string>(?&lt;![_$[:alnum:]])(?:(?&lt;=\.\.\.)|(?&lt;!\.))(package)(?![_$[:alnum:]])(?:(?=\.\.\.)|(?!\.))</string>
-					<key>name</key>
-					<string>keyword.control.js</string>
-				</dict>
-				<dict>
-					<key>match</key>
-					<string>(?&lt;![_$[:alnum:]])(?:(?&lt;=\.\.\.)|(?&lt;!\.))(debugger)(?![_$[:alnum:]])(?:(?=\.\.\.)|(?!\.))</string>
-					<key>name</key>
-					<string>keyword.other.debugger.js</string>
-				</dict>
-			</array>
-		</dict>
 		<key>component-decl-block</key>
 		<dict>
 			<key>begin</key>
@@ -1136,6 +1038,10 @@
 			<array>
 				<dict>
 					<key>include</key>
+					<string>#tsrx-template-child-directive</string>
+				</dict>
+				<dict>
+					<key>include</key>
 					<string>#jsx</string>
 				</dict>
 				<dict>
@@ -1144,7 +1050,11 @@
 				</dict>
 				<dict>
 					<key>include</key>
-					<string>#component-control-statement</string>
+					<string>#component-if-statement</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#control-statement</string>
 				</dict>
 				<dict>
 					<key>include</key>
@@ -1169,160 +1079,6 @@
 				<dict>
 					<key>include</key>
 					<string>#comment</string>
-				</dict>
-			</array>
-		</dict>
-		<key>component-switch-statement</key>
-		<dict>
-			<key>begin</key>
-			<string>(?&lt;![_$[:alnum:]])(?:(?&lt;=\.\.\.)|(?&lt;!\.))(?=\bswitch\s*\()</string>
-			<key>end</key>
-			<string>\}</string>
-			<key>endCaptures</key>
-			<dict>
-				<key>0</key>
-				<dict>
-					<key>name</key>
-					<string>punctuation.definition.block.js</string>
-				</dict>
-			</dict>
-			<key>name</key>
-			<string>switch-statement.expr.js</string>
-			<key>patterns</key>
-			<array>
-				<dict>
-					<key>include</key>
-					<string>#comment</string>
-				</dict>
-				<dict>
-					<key>begin</key>
-					<string>(?&lt;![_$[:alnum:]])(?:(?&lt;=\.\.\.)|(?&lt;!\.))(switch)\s*(\()</string>
-					<key>beginCaptures</key>
-					<dict>
-						<key>1</key>
-						<dict>
-							<key>name</key>
-							<string>keyword.control.switch.js</string>
-						</dict>
-						<key>2</key>
-						<dict>
-							<key>name</key>
-							<string>meta.brace.round.js</string>
-						</dict>
-					</dict>
-					<key>end</key>
-					<string>\)</string>
-					<key>endCaptures</key>
-					<dict>
-						<key>0</key>
-						<dict>
-							<key>name</key>
-							<string>meta.brace.round.js</string>
-						</dict>
-					</dict>
-					<key>name</key>
-					<string>switch-expression.expr.js</string>
-					<key>patterns</key>
-					<array>
-						<dict>
-							<key>include</key>
-							<string>#expression</string>
-						</dict>
-					</array>
-				</dict>
-				<dict>
-					<key>begin</key>
-					<string>\{</string>
-					<key>beginCaptures</key>
-					<dict>
-						<key>0</key>
-						<dict>
-							<key>name</key>
-							<string>punctuation.definition.block.js</string>
-						</dict>
-					</dict>
-					<key>end</key>
-					<string>(?=\})</string>
-					<key>name</key>
-					<string>switch-block.expr.js</string>
-					<key>patterns</key>
-					<array>
-						<dict>
-							<key>begin</key>
-							<string>(?&lt;![_$[:alnum:]])(?:(?&lt;=\.\.\.)|(?&lt;!\.))(case|default(?=:))(?![_$[:alnum:]])(?:(?=\.\.\.)|(?!\.))</string>
-							<key>beginCaptures</key>
-							<dict>
-								<key>1</key>
-								<dict>
-									<key>name</key>
-									<string>keyword.control.switch.js</string>
-								</dict>
-							</dict>
-							<key>end</key>
-							<string>(?=:)</string>
-							<key>name</key>
-							<string>case-clause.expr.js</string>
-							<key>patterns</key>
-							<array>
-								<dict>
-									<key>include</key>
-									<string>#expression</string>
-								</dict>
-							</array>
-						</dict>
-						<dict>
-							<key>begin</key>
-							<string>(:)\s*(\{)</string>
-							<key>beginCaptures</key>
-							<dict>
-								<key>1</key>
-								<dict>
-									<key>name</key>
-									<string>case-clause.expr.js punctuation.definition.section.case-statement.js</string>
-								</dict>
-								<key>2</key>
-								<dict>
-									<key>name</key>
-									<string>meta.block.js punctuation.definition.block.js</string>
-								</dict>
-							</dict>
-							<key>contentName</key>
-							<string>meta.block.js</string>
-							<key>end</key>
-							<string>\}</string>
-							<key>endCaptures</key>
-							<dict>
-								<key>0</key>
-								<dict>
-									<key>name</key>
-									<string>meta.block.js punctuation.definition.block.js</string>
-								</dict>
-							</dict>
-							<key>patterns</key>
-							<array>
-								<dict>
-									<key>include</key>
-									<string>#statements</string>
-								</dict>
-							</array>
-						</dict>
-						<dict>
-							<key>captures</key>
-							<dict>
-								<key>0</key>
-								<dict>
-									<key>name</key>
-									<string>case-clause.expr.js punctuation.definition.section.case-statement.js</string>
-								</dict>
-							</dict>
-							<key>match</key>
-							<string>(:)</string>
-						</dict>
-						<dict>
-							<key>include</key>
-							<string>#component-statements</string>
-						</dict>
-					</array>
 				</dict>
 			</array>
 		</dict>
@@ -2893,6 +2649,10 @@
 			<array>
 				<dict>
 					<key>include</key>
+					<string>#tsrx-template-block-directive</string>
+				</dict>
+				<dict>
+					<key>include</key>
 					<string>#jsx-tag-fragment</string>
 				</dict>
 				<dict>
@@ -3386,6 +3146,10 @@
 			<array>
 				<dict>
 					<key>include</key>
+					<string>#tsrx-template-block-directive</string>
+				</dict>
+				<dict>
+					<key>include</key>
 					<string>#string</string>
 				</dict>
 				<dict>
@@ -3833,6 +3597,10 @@
 				<dict>
 					<key>include</key>
 					<string>#type-function-return-type</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#tsrx-template-block-directive</string>
 				</dict>
 				<dict>
 					<key>include</key>
@@ -5153,6 +4921,10 @@
 			<array>
 				<dict>
 					<key>include</key>
+					<string>#jsx-tag-code</string>
+				</dict>
+				<dict>
+					<key>include</key>
 					<string>#jsx-tag-style</string>
 				</dict>
 				<dict>
@@ -5173,6 +4945,14 @@
 		<dict>
 			<key>patterns</key>
 			<array>
+				<dict>
+					<key>include</key>
+					<string>#tsrx-template-block-directive</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#jsx-tag-code-in-expression</string>
+				</dict>
 				<dict>
 					<key>include</key>
 					<string>#jsx-tag-style-in-expression</string>
@@ -5213,19 +4993,23 @@
 				</dict>
 				<dict>
 					<key>include</key>
+					<string>#tsrx-template-comment</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#tsrx-template-child-directive</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#jsx-tag-code</string>
+				</dict>
+				<dict>
+					<key>include</key>
 					<string>#jsx-tag-style</string>
 				</dict>
 				<dict>
 					<key>include</key>
 					<string>#jsx-tag-fragment</string>
-				</dict>
-				<dict>
-					<key>include</key>
-					<string>#jsx-double-quoted-text-child</string>
-				</dict>
-				<dict>
-					<key>include</key>
-					<string>#jsx-children-statements</string>
 				</dict>
 				<dict>
 					<key>include</key>
@@ -5239,78 +5023,16 @@
 					<key>include</key>
 					<string>#jsx-entities</string>
 				</dict>
-			</array>
-		</dict>
-		<key>jsx-children-statements</key>
-		<dict>
-			<key>patterns</key>
-			<array>
-				<dict>
-					<key>begin</key>
-					<string>(?=\w|\$|//|/\*)</string>
-					<key>beginCaptures</key>
-					<dict>
-						<key>0</key>
-						<dict>
-							<key>name</key>
-							<string>punctuation.section.embedded.begin.ripple-ts</string>
-						</dict>
-					</dict>
-					<key>contentName</key>
-					<string>source.js.embedded.ripple-isolated</string>
-					<key>end</key>
-					<string>(?=&lt;[a-zA-Z]|&lt;/)</string>
-					<key>endCaptures</key>
-					<dict>
-						<key>0</key>
-						<dict>
-							<key>name</key>
-							<string>punctuation.section.embedded.end.ripple-ts</string>
-						</dict>
-					</dict>
-					<key>patterns</key>
-					<array>
-						<dict>
-							<key>include</key>
-							<string>#component-statements</string>
-						</dict>
-					</array>
-				</dict>
-			</array>
-		</dict>
-		<key>jsx-double-quoted-text-child</key>
-		<dict>
-			<key>begin</key>
-			<string>"</string>
-			<key>beginCaptures</key>
-			<dict>
-				<key>0</key>
-				<dict>
-					<key>name</key>
-					<string>punctuation.definition.jsx.text.begin.js</string>
-				</dict>
-			</dict>
-			<key>contentName</key>
-			<string>string.unquoted.jsx.text.js</string>
-			<key>end</key>
-			<string>"</string>
-			<key>endCaptures</key>
-			<dict>
-				<key>0</key>
-				<dict>
-					<key>name</key>
-					<string>punctuation.definition.jsx.text.end.js</string>
-				</dict>
-			</dict>
-			<key>name</key>
-			<string>meta.jsx.text.quoted.js</string>
-			<key>patterns</key>
-			<array>
 				<dict>
 					<key>include</key>
-					<string>#jsx-entities</string>
+					<string>#jsx-text</string>
 				</dict>
 			</array>
+		</dict>
+		<key>jsx-code-text</key>
+		<dict>
+			<key>match</key>
+			<string>[^&lt;&gt;{}&amp;]+</string>
 		</dict>
 		<key>jsx-entities</key>
 		<dict>
@@ -5350,7 +5072,7 @@
 				</dict>
 			</dict>
 			<key>contentName</key>
-			<string>meta.embedded.expression.js source.js.embedded.ripple</string>
+			<string>meta.embedded.expression.js source.js.embedded.tsrx</string>
 			<key>end</key>
 			<string>\}</string>
 			<key>endCaptures</key>
@@ -5636,6 +5358,116 @@
 			<key>name</key>
 			<string>invalid.illegal.attribute.js</string>
 		</dict>
+		<key>jsx-tag-code</key>
+		<dict>
+			<key>begin</key>
+			<string>(?=(&lt;)\s*(code)\b(?=[\s&gt;/]))</string>
+			<key>end</key>
+			<string>(/&gt;)|(?:(&lt;/)\s*(code)\s*(&gt;))</string>
+			<key>endCaptures</key>
+			<dict>
+				<key>1</key>
+				<dict>
+					<key>name</key>
+					<string>punctuation.definition.tag.end.js</string>
+				</dict>
+				<key>2</key>
+				<dict>
+					<key>name</key>
+					<string>punctuation.definition.tag.begin.js</string>
+				</dict>
+				<key>3</key>
+				<dict>
+					<key>name</key>
+					<string>entity.name.tag.js</string>
+				</dict>
+				<key>4</key>
+				<dict>
+					<key>name</key>
+					<string>punctuation.definition.tag.end.js</string>
+				</dict>
+			</dict>
+			<key>name</key>
+			<string>meta.tag.js</string>
+			<key>patterns</key>
+			<array>
+				<dict>
+					<key>begin</key>
+					<string>(&lt;)\s*(code)\b(?=[\s&gt;/])</string>
+					<key>beginCaptures</key>
+					<dict>
+						<key>1</key>
+						<dict>
+							<key>name</key>
+							<string>punctuation.definition.tag.begin.js</string>
+						</dict>
+						<key>2</key>
+						<dict>
+							<key>name</key>
+							<string>entity.name.tag.js</string>
+						</dict>
+					</dict>
+					<key>end</key>
+					<string>(?=[/]?&gt;)</string>
+					<key>patterns</key>
+					<array>
+						<dict>
+							<key>include</key>
+							<string>#comment</string>
+						</dict>
+						<dict>
+							<key>include</key>
+							<string>#jsx-tag-attributes</string>
+						</dict>
+					</array>
+				</dict>
+				<dict>
+					<key>begin</key>
+					<string>(&gt;)</string>
+					<key>beginCaptures</key>
+					<dict>
+						<key>1</key>
+						<dict>
+							<key>name</key>
+							<string>punctuation.definition.tag.end.js</string>
+						</dict>
+					</dict>
+					<key>contentName</key>
+					<string>meta.jsx.children.js</string>
+					<key>end</key>
+					<string>(?=&lt;/\s*code\s*&gt;)</string>
+					<key>patterns</key>
+					<array>
+						<dict>
+							<key>include</key>
+							<string>#jsx-evaluated-code</string>
+						</dict>
+						<dict>
+							<key>include</key>
+							<string>#jsx-entities</string>
+						</dict>
+						<dict>
+							<key>include</key>
+							<string>#jsx-code-text</string>
+						</dict>
+					</array>
+				</dict>
+			</array>
+		</dict>
+		<key>jsx-tag-code-in-expression</key>
+		<dict>
+			<key>begin</key>
+			<string>(?&lt;!\+\+|--)(?&lt;=[({\[,?=&gt;:*]|&amp;&amp;|\|\||\?|\*\/|^await|[^\._$[:alnum:]]await|^return|[^\._$[:alnum:]]return|^default|[^\._$[:alnum:]]default|^yield|[^\._$[:alnum:]]yield|^)\s*(?=(&lt;)\s*(code)\b(?=[\s&gt;/]))</string>
+			<key>end</key>
+			<string>(?!(&lt;)\s*(code)\b(?=[\s&gt;/]))</string>
+			<key>patterns</key>
+			<array>
+				<dict>
+					<key>include</key>
+					<string>#jsx-tag-code</string>
+				</dict>
+			</array>
+		</dict>
 		<key>jsx-tag-fragment</key>
 		<dict>
 			<key>begin</key>
@@ -5887,6 +5719,11 @@
 					<string>#jsx-tag-without-attributes</string>
 				</dict>
 			</array>
+		</dict>
+		<key>jsx-text</key>
+		<dict>
+			<key>match</key>
+			<string>(?:(?![ \t]*(?://|/\*))(?![ \t]*@(?:\{|if|for|switch|try)(?![_$[:alnum:]]))(?![ \t]*@(?:case|default)(?![_$[:alnum:]])(?=[^\n{}]*:))(?![ \t]*@(?:else|empty|pending|catch)(?![_$[:alnum:]])(?=[ \t]*(?:\(|\{|[^\n{}]+\{)))(?:@(?!(?:\{|if|for|switch|try|case|default|else|empty|pending|catch)(?![_$[:alnum:]]))|[^&lt;&gt;{}&amp;@]))+</string>
 		</dict>
 		<key>label</key>
 		<dict>
@@ -6306,6 +6143,14 @@
 		<dict>
 			<key>patterns</key>
 			<array>
+				<dict>
+					<key>include</key>
+					<string>#tsrx-template-block-directive</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#jsx-tag-code-in-expression</string>
+				</dict>
 				<dict>
 					<key>include</key>
 					<string>#jsx-tag-style-in-expression</string>
@@ -9082,6 +8927,627 @@
 			<string>(?&lt;![_$[:alnum:]])(?:(?&lt;=\.\.\.)|(?&lt;!\.))this\b(?!\$)</string>
 			<key>name</key>
 			<string>variable.language.this.js</string>
+		</dict>
+		<key>tsrx-template-abrupt-statement</key>
+		<dict>
+			<key>begin</key>
+			<string>(?=[ \t]*(?:(?:continue|break)(?:\s+[_$[:alpha:]][_$[:alnum:]]*)?|return(?:\s+[^\n]*)?|throw(?:\s+[^\n]*)?)\s*;?\s*(?://.*)?$)</string>
+			<key>contentName</key>
+			<string>source.js.embedded.tsrx-isolated</string>
+			<key>end</key>
+			<string>(?=$)</string>
+			<key>name</key>
+			<string>meta.directive.setup.tsrx</string>
+			<key>patterns</key>
+			<array>
+				<dict>
+					<key>include</key>
+					<string>#component-statements</string>
+				</dict>
+			</array>
+		</dict>
+		<key>tsrx-template-block-directive</key>
+		<dict>
+			<key>begin</key>
+			<string>(@)(\{)</string>
+			<key>beginCaptures</key>
+			<dict>
+				<key>1</key>
+				<dict>
+					<key>name</key>
+					<string>punctuation.definition.block.tsrx punctuation.definition.block.js</string>
+				</dict>
+				<key>2</key>
+				<dict>
+					<key>name</key>
+					<string>punctuation.definition.block.tsrx punctuation.definition.block.js</string>
+				</dict>
+			</dict>
+			<key>contentName</key>
+			<string>source.js.embedded.tsrx-isolated</string>
+			<key>end</key>
+			<string>(\})</string>
+			<key>endCaptures</key>
+			<dict>
+				<key>1</key>
+				<dict>
+					<key>name</key>
+					<string>punctuation.definition.block.tsrx punctuation.definition.block.js</string>
+				</dict>
+			</dict>
+			<key>name</key>
+			<string>meta.directive.block.tsrx</string>
+			<key>patterns</key>
+			<array>
+				<dict>
+					<key>include</key>
+					<string>#component-statements</string>
+				</dict>
+			</array>
+		</dict>
+		<key>tsrx-template-branch-directive</key>
+		<dict>
+			<key>begin</key>
+			<string>(?:(@)(else|empty|pending|catch)|(finally))(?![_$[:alnum:]])(?=\s*(?:\(|\{|[^\n{}]+\{))</string>
+			<key>beginCaptures</key>
+			<dict>
+				<key>1</key>
+				<dict>
+					<key>name</key>
+					<string>keyword.control.directive.tsrx</string>
+				</dict>
+				<key>2</key>
+				<dict>
+					<key>name</key>
+					<string>keyword.control.directive.tsrx</string>
+				</dict>
+				<key>3</key>
+				<dict>
+					<key>name</key>
+					<string>keyword.control.directive.tsrx</string>
+				</dict>
+			</dict>
+			<key>end</key>
+			<string>(?&lt;=\})</string>
+			<key>name</key>
+			<string>meta.directive.branch.tsrx</string>
+			<key>patterns</key>
+			<array>
+				<dict>
+					<key>include</key>
+					<string>#tsrx-template-directive-header</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#tsrx-template-directive-block</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#comment</string>
+				</dict>
+			</array>
+		</dict>
+		<key>tsrx-template-child-directive</key>
+		<dict>
+			<key>patterns</key>
+			<array>
+				<dict>
+					<key>include</key>
+					<string>#tsrx-template-directive</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#tsrx-template-branch-directive</string>
+				</dict>
+			</array>
+		</dict>
+		<key>tsrx-template-children</key>
+		<dict>
+			<key>patterns</key>
+			<array>
+				<dict>
+					<key>include</key>
+					<string>#jsx-evaluated-code</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#tsrx-template-comment</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#tsrx-template-switch-case-label</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#tsrx-template-child-directive</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#jsx-tag-code</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#jsx-tag-style</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#jsx-tag-fragment</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#jsx-tag-without-attributes</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#jsx-tag</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#jsx-entities</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#tsrx-template-abrupt-statement</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#tsrx-template-setup-statement</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#jsx-text</string>
+				</dict>
+			</array>
+		</dict>
+		<key>tsrx-template-comment</key>
+		<dict>
+			<key>patterns</key>
+			<array>
+				<dict>
+					<key>begin</key>
+					<string>^[ \t]*(/\*)</string>
+					<key>beginCaptures</key>
+					<dict>
+						<key>1</key>
+						<dict>
+							<key>name</key>
+							<string>punctuation.definition.comment.js</string>
+						</dict>
+					</dict>
+					<key>end</key>
+					<string>\*/</string>
+					<key>endCaptures</key>
+					<dict>
+						<key>0</key>
+						<dict>
+							<key>name</key>
+							<string>punctuation.definition.comment.js</string>
+						</dict>
+					</dict>
+					<key>name</key>
+					<string>comment.block.js</string>
+				</dict>
+				<dict>
+					<key>begin</key>
+					<string>^[ \t]*(//)</string>
+					<key>beginCaptures</key>
+					<dict>
+						<key>1</key>
+						<dict>
+							<key>name</key>
+							<string>punctuation.definition.comment.js</string>
+						</dict>
+					</dict>
+					<key>contentName</key>
+					<string>comment.line.double-slash.js</string>
+					<key>end</key>
+					<string>(?=$)</string>
+					<key>name</key>
+					<string>comment.line.double-slash.js</string>
+				</dict>
+			</array>
+		</dict>
+		<key>tsrx-template-conditional-directive</key>
+		<dict>
+			<key>begin</key>
+			<string>(@)(if)(?![_$[:alnum:]])</string>
+			<key>beginCaptures</key>
+			<dict>
+				<key>0</key>
+				<dict>
+					<key>name</key>
+					<string>keyword.control.directive.tsrx</string>
+				</dict>
+				<key>1</key>
+				<dict>
+					<key>name</key>
+					<string>keyword.control.directive.tsrx</string>
+				</dict>
+				<key>2</key>
+				<dict>
+					<key>name</key>
+					<string>keyword.control.directive.tsrx</string>
+				</dict>
+			</dict>
+			<key>end</key>
+			<string>(?&lt;=\})</string>
+			<key>name</key>
+			<string>meta.directive.if.tsrx</string>
+			<key>patterns</key>
+			<array>
+				<dict>
+					<key>include</key>
+					<string>#tsrx-template-directive-header</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#tsrx-template-directive-block</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#comment</string>
+				</dict>
+			</array>
+		</dict>
+		<key>tsrx-template-directive</key>
+		<dict>
+			<key>patterns</key>
+			<array>
+				<dict>
+					<key>include</key>
+					<string>#tsrx-template-block-directive</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#tsrx-template-inline-conditional-directive</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#tsrx-template-conditional-directive</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#tsrx-template-loop-directive</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#tsrx-template-switch-directive</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#tsrx-template-try-directive</string>
+				</dict>
+				<dict>
+					<key>captures</key>
+					<dict>
+						<key>0</key>
+						<dict>
+							<key>name</key>
+							<string>keyword.control.directive.tsrx</string>
+						</dict>
+						<key>1</key>
+						<dict>
+							<key>name</key>
+							<string>keyword.control.directive.tsrx</string>
+						</dict>
+					</dict>
+					<key>match</key>
+					<string>(@)(if|for|switch|try)(?![_$[:alnum:]])</string>
+					<key>name</key>
+					<string>keyword.control.directive.tsrx</string>
+				</dict>
+			</array>
+		</dict>
+		<key>tsrx-template-directive-block</key>
+		<dict>
+			<key>begin</key>
+			<string>\{</string>
+			<key>beginCaptures</key>
+			<dict>
+				<key>0</key>
+				<dict>
+					<key>name</key>
+					<string>punctuation.definition.block.tsrx punctuation.definition.block.js</string>
+				</dict>
+			</dict>
+			<key>end</key>
+			<string>\}</string>
+			<key>endCaptures</key>
+			<dict>
+				<key>0</key>
+				<dict>
+					<key>name</key>
+					<string>punctuation.definition.block.tsrx punctuation.definition.block.js</string>
+				</dict>
+			</dict>
+			<key>name</key>
+			<string>meta.directive.block.tsrx</string>
+			<key>patterns</key>
+			<array>
+				<dict>
+					<key>include</key>
+					<string>#component-statements</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#tsrx-template-children</string>
+				</dict>
+			</array>
+		</dict>
+		<key>tsrx-template-directive-header</key>
+		<dict>
+			<key>begin</key>
+			<string>\(</string>
+			<key>beginCaptures</key>
+			<dict>
+				<key>0</key>
+				<dict>
+					<key>name</key>
+					<string>meta.brace.round.js</string>
+				</dict>
+			</dict>
+			<key>end</key>
+			<string>\)</string>
+			<key>endCaptures</key>
+			<dict>
+				<key>0</key>
+				<dict>
+					<key>name</key>
+					<string>meta.brace.round.js</string>
+				</dict>
+			</dict>
+			<key>name</key>
+			<string>meta.directive.header.tsrx</string>
+			<key>patterns</key>
+			<array>
+				<dict>
+					<key>match</key>
+					<string>(?&lt;![_$[:alnum:]])(const|let|var)(?![_$[:alnum:]])</string>
+					<key>name</key>
+					<string>storage.type.js</string>
+				</dict>
+				<dict>
+					<key>match</key>
+					<string>(?&lt;![_$[:alnum:]])(of|in|key|index)(?![_$[:alnum:]])</string>
+					<key>name</key>
+					<string>keyword.operator.expression.js</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#expression</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#punctuation-semicolon</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#comment</string>
+				</dict>
+			</array>
+		</dict>
+		<key>tsrx-template-inline-conditional-directive</key>
+		<dict>
+			<key>begin</key>
+			<string>(@)(if)(?![_$[:alnum:]])(?=\s*(\(([^\(\)]|(\(([^\(\)]|\([^\(\)]*\))*\)))*\))\s*(?!\{))</string>
+			<key>beginCaptures</key>
+			<dict>
+				<key>0</key>
+				<dict>
+					<key>name</key>
+					<string>keyword.control.directive.tsrx</string>
+				</dict>
+				<key>1</key>
+				<dict>
+					<key>name</key>
+					<string>keyword.control.directive.tsrx</string>
+				</dict>
+				<key>2</key>
+				<dict>
+					<key>name</key>
+					<string>keyword.control.directive.tsrx</string>
+				</dict>
+			</dict>
+			<key>end</key>
+			<string>(?=$|(?=\s+@else\b)|(?=\}))</string>
+			<key>name</key>
+			<string>meta.directive.if.tsrx</string>
+			<key>patterns</key>
+			<array>
+				<dict>
+					<key>include</key>
+					<string>#tsrx-template-directive-header</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#component-statements</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#comment</string>
+				</dict>
+			</array>
+		</dict>
+		<key>tsrx-template-loop-directive</key>
+		<dict>
+			<key>begin</key>
+			<string>(@)(for)(?![_$[:alnum:]])</string>
+			<key>beginCaptures</key>
+			<dict>
+				<key>0</key>
+				<dict>
+					<key>name</key>
+					<string>keyword.control.directive.tsrx</string>
+				</dict>
+				<key>1</key>
+				<dict>
+					<key>name</key>
+					<string>keyword.control.directive.tsrx</string>
+				</dict>
+				<key>2</key>
+				<dict>
+					<key>name</key>
+					<string>keyword.control.directive.tsrx</string>
+				</dict>
+			</dict>
+			<key>end</key>
+			<string>(?&lt;=\})</string>
+			<key>name</key>
+			<string>meta.directive.for.tsrx</string>
+			<key>patterns</key>
+			<array>
+				<dict>
+					<key>include</key>
+					<string>#tsrx-template-directive-header</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#tsrx-template-directive-block</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#comment</string>
+				</dict>
+			</array>
+		</dict>
+		<key>tsrx-template-setup-statement</key>
+		<dict>
+			<key>begin</key>
+			<string>(?=[ \t]*(?:if|continue|break|return|throw)(?![_$[:alnum:]]))</string>
+			<key>contentName</key>
+			<string>source.js.embedded.tsrx-isolated</string>
+			<key>end</key>
+			<string>(?&lt;=;)|(?=\})</string>
+			<key>name</key>
+			<string>meta.directive.setup.tsrx</string>
+			<key>patterns</key>
+			<array>
+				<dict>
+					<key>include</key>
+					<string>#component-statements</string>
+				</dict>
+			</array>
+		</dict>
+		<key>tsrx-template-switch-case-label</key>
+		<dict>
+			<key>begin</key>
+			<string>(@)(case|default)(?![_$[:alnum:]])(?=[^\n{}]*:)</string>
+			<key>beginCaptures</key>
+			<dict>
+				<key>1</key>
+				<dict>
+					<key>name</key>
+					<string>keyword.control.directive.tsrx</string>
+				</dict>
+				<key>2</key>
+				<dict>
+					<key>name</key>
+					<string>keyword.control.directive.tsrx</string>
+				</dict>
+			</dict>
+			<key>end</key>
+			<string>(:)</string>
+			<key>endCaptures</key>
+			<dict>
+				<key>1</key>
+				<dict>
+					<key>name</key>
+					<string>punctuation.definition.section.case-statement.js</string>
+				</dict>
+			</dict>
+			<key>name</key>
+			<string>meta.directive.switch.case.tsrx</string>
+			<key>patterns</key>
+			<array>
+				<dict>
+					<key>include</key>
+					<string>#expression</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#comment</string>
+				</dict>
+			</array>
+		</dict>
+		<key>tsrx-template-switch-directive</key>
+		<dict>
+			<key>begin</key>
+			<string>(@)(switch)(?![_$[:alnum:]])</string>
+			<key>beginCaptures</key>
+			<dict>
+				<key>0</key>
+				<dict>
+					<key>name</key>
+					<string>keyword.control.directive.tsrx</string>
+				</dict>
+				<key>1</key>
+				<dict>
+					<key>name</key>
+					<string>keyword.control.directive.tsrx</string>
+				</dict>
+				<key>2</key>
+				<dict>
+					<key>name</key>
+					<string>keyword.control.directive.tsrx</string>
+				</dict>
+			</dict>
+			<key>end</key>
+			<string>(?&lt;=\})</string>
+			<key>name</key>
+			<string>meta.directive.switch.tsrx</string>
+			<key>patterns</key>
+			<array>
+				<dict>
+					<key>include</key>
+					<string>#tsrx-template-directive-header</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#tsrx-template-directive-block</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#comment</string>
+				</dict>
+			</array>
+		</dict>
+		<key>tsrx-template-try-directive</key>
+		<dict>
+			<key>begin</key>
+			<string>(@)(try)(?![_$[:alnum:]])</string>
+			<key>beginCaptures</key>
+			<dict>
+				<key>0</key>
+				<dict>
+					<key>name</key>
+					<string>keyword.control.directive.tsrx</string>
+				</dict>
+				<key>1</key>
+				<dict>
+					<key>name</key>
+					<string>keyword.control.directive.tsrx</string>
+				</dict>
+				<key>2</key>
+				<dict>
+					<key>name</key>
+					<string>keyword.control.directive.tsrx</string>
+				</dict>
+			</dict>
+			<key>end</key>
+			<string>(?&lt;=\})</string>
+			<key>name</key>
+			<string>meta.directive.try.tsrx</string>
+			<key>patterns</key>
+			<array>
+				<dict>
+					<key>include</key>
+					<string>#tsrx-template-directive-block</string>
+				</dict>
+				<dict>
+					<key>include</key>
+					<string>#comment</string>
+				</dict>
+			</array>
 		</dict>
 		<key>type</key>
 		<dict>

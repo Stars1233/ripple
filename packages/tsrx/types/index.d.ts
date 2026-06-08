@@ -82,6 +82,19 @@ interface BaseNodeMetaData {
 	is_capitalized?: boolean;
 	commentContainerId?: number;
 	parenthesized?: boolean;
+	native_tsrx?: boolean;
+	native_tsrx_template_block?: boolean;
+	templateMode?: 'script' | 'template';
+	script_only?: boolean;
+	tsrxDirective?: 'if' | 'for' | 'switch' | 'try';
+	ts_name?: string;
+	delegated?: any;
+	returned_tsrx_return?: AST.ReturnStatement;
+	styleScopeHash?: string;
+	css?: {
+		scopedClasses: Map<string, { start: number; end: number; selector: any }>;
+		hash: string;
+	};
 	elementLeadingComments?: AST.Comment[];
 	returns?: AST.ReturnStatement[];
 	has_return?: boolean;
@@ -92,6 +105,7 @@ interface BaseNodeMetaData {
 	regular_js?: boolean;
 	returned_tsrx_child?: boolean;
 	forceMapping?: boolean;
+	generated_loop_skip_if?: boolean;
 	lazy_id?: string;
 	disable_verification?: boolean;
 	lazy_param_binding_mappings?: Array<{
@@ -170,6 +184,8 @@ declare module 'estree' {
 		metadata: BaseNodeMetaData & {
 			hook_split_block?: boolean;
 			native_return_block?: boolean;
+			native_tsrx_template_block?: boolean;
+			allows_native_return?: boolean;
 		};
 	}
 
@@ -235,25 +251,175 @@ declare module 'estree' {
 
 	// Include TypeScript node types and TSRX-specific nodes in NodeMap
 	interface NodeMap {
-		TsrxFragment: TsrxFragment;
-		TSRXExpression: TSRXExpression;
 		Element: Element;
-		Text: TextNode;
+		TsrxFragment: TsrxFragment;
+		Text: Text;
+		TSRXJSXElement: TSRXJSXElement;
+		TSRXExpression: TSRXExpression;
 		Attribute: Attribute;
 		SpreadAttribute: SpreadAttribute;
+		JSXCodeBlock: JSXCodeBlock;
+		JSXStyleElement: JSXStyleElement;
+		JSXIfExpression: JSXIfExpression;
+		JSXForExpression: JSXForExpression;
+		JSXSwitchExpression: JSXSwitchExpression;
+		JSXTryExpression: JSXTryExpression;
 		ParenthesizedExpression: ParenthesizedExpression;
-		ScriptContent: ScriptContent;
 	}
 
 	interface ExpressionMap {
+		Element: Element;
 		TsrxFragment: TsrxFragment;
-		Text: TextNode;
+		Text: Text;
+		TSRXExpression: TSRXExpression;
+		JSXCodeBlock: JSXCodeBlock;
+		JSXStyleElement: JSXStyleElement;
+		JSXIfExpression: JSXIfExpression;
+		JSXForExpression: JSXForExpression;
+		JSXSwitchExpression: JSXSwitchExpression;
+		JSXTryExpression: JSXTryExpression;
 		JSXEmptyExpression: ESTreeJSX.JSXEmptyExpression;
 		ParenthesizedExpression: ParenthesizedExpression;
 		TSAsExpression: TSAsExpression;
 	}
 
-	// Missing estree type
+	// Ripple-normalized template node shapes. The core parser emits JSX-shaped
+	// TSRX nodes; @tsrx/ripple creates these during its normalization pass.
+	interface Attribute extends AST.BaseNode {
+		type: 'Attribute';
+		name: AST.Identifier;
+		value: any;
+		shorthand?: boolean;
+		metadata: BaseNodeMetaData;
+	}
+
+	interface SpreadAttribute extends AST.BaseNode {
+		type: 'SpreadAttribute';
+		argument: AST.Expression;
+		metadata: BaseNodeMetaData;
+	}
+
+	interface Element extends AST.BaseExpression {
+		type: 'Element';
+		id: AST.Identifier | AST.MemberExpression | AST.Literal;
+		attributes: Array<Attribute | SpreadAttribute>;
+		children: AST.Node[];
+		openingElement: ESTreeJSX.JSXOpeningElement;
+		closingElement: ESTreeJSX.JSXClosingElement | null;
+		selfClosing?: boolean;
+		unclosed?: boolean;
+		css?: string;
+		metadata: BaseNodeMetaData;
+		start: number;
+		end: number;
+	}
+
+	interface TsrxFragment extends AST.BaseExpression {
+		type: 'TsrxFragment';
+		children: AST.Node[];
+		openingElement?: ESTreeJSX.JSXOpeningFragment;
+		closingElement?: ESTreeJSX.JSXClosingFragment | null;
+		selfClosing?: boolean;
+		attributes?: Array<Attribute | SpreadAttribute>;
+		metadata: BaseNodeMetaData;
+		start: number;
+		end: number;
+	}
+
+	interface Text extends AST.BaseExpression {
+		type: 'Text';
+		expression: AST.Expression;
+		metadata: BaseNodeMetaData;
+	}
+
+	interface TSRXExpression extends AST.BaseExpression {
+		type: 'TSRXExpression';
+		expression: AST.Expression;
+		metadata: BaseNodeMetaData;
+	}
+
+	type TSRXJSXChild =
+		| ESTreeJSX.JSXText
+		| ESTreeJSX.JSXExpressionContainer
+		| ESTreeJSX.JSXSpreadChild
+		| TSRXJSXElement
+		| TSRXJSXFragment
+		| AST.JSXCodeBlock;
+
+	interface TSRXJSXElement
+		extends Omit<ESTreeJSX.JSXElement, 'children'>, AST.NodeWithMaybeComments {
+		children: TSRXJSXChild[];
+		metadata: BaseNodeMetaData & {
+			ts_name?: string;
+		};
+	}
+
+	interface TSRXJSXFragment
+		extends Omit<ESTreeJSX.JSXFragment, 'children'>, AST.NodeWithMaybeComments {
+		children: TSRXJSXChild[];
+	}
+
+	interface JSXCodeBlock extends AST.BaseExpression {
+		type: 'JSXCodeBlock';
+		body: AST.Statement[];
+		render: AST.Node | null;
+		metadata: BaseNodeMetaData;
+		innerComments?: AST.Comment[] | undefined;
+	}
+
+	interface JSXStyleElement extends AST.BaseExpression {
+		type: 'JSXStyleElement';
+		openingElement: ESTreeJSX.JSXOpeningElement;
+		closingElement: ESTreeJSX.JSXClosingElement | null;
+		children: AST.CSS.StyleSheet[];
+		css?: string;
+		metadata: BaseNodeMetaData;
+		unclosed?: boolean;
+	}
+
+	interface JSXIfExpression extends AST.BaseExpression {
+		type: 'JSXIfExpression';
+		statementType: 'IfStatement';
+		test: AST.Expression;
+		consequent: AST.Statement;
+		alternate: AST.Statement | null;
+		metadata: BaseNodeMetaData;
+	}
+
+	interface JSXForExpression extends AST.BaseExpression {
+		type: 'JSXForExpression';
+		statementType: 'ForStatement' | 'ForInStatement' | 'ForOfStatement';
+		body: AST.Statement;
+		init?: AST.VariableDeclaration | AST.Expression | null;
+		test?: AST.Expression | null;
+		update?: AST.Expression | null;
+		left?: AST.VariableDeclaration | AST.Pattern;
+		right?: AST.Expression;
+		await?: boolean;
+		index?: AST.Identifier | null;
+		key?: AST.Expression | null;
+		empty?: AST.BlockStatement | null;
+		metadata: BaseNodeMetaData;
+	}
+
+	interface JSXSwitchExpression extends AST.BaseExpression {
+		type: 'JSXSwitchExpression';
+		statementType: 'SwitchStatement';
+		discriminant: AST.Expression;
+		cases: AST.SwitchCase[];
+		metadata: BaseNodeMetaData;
+	}
+
+	interface JSXTryExpression extends AST.BaseExpression {
+		type: 'JSXTryExpression';
+		statementType: 'TryStatement';
+		block: AST.BlockStatement;
+		handler: AST.CatchClause | null;
+		finalizer: AST.BlockStatement | null;
+		pending?: AST.BlockStatement | null;
+		metadata: BaseNodeMetaData;
+	}
+
 	interface ParenthesizedExpression extends AST.BaseNode {
 		type: 'ParenthesizedExpression';
 		expression: AST.Expression;
@@ -291,6 +457,7 @@ declare module 'estree' {
 	interface ForOfStatement {
 		index?: AST.Identifier | null;
 		key?: AST.Expression | null;
+		empty?: AST.BlockStatement | null;
 	}
 
 	interface ImportDeclaration {
@@ -342,88 +509,7 @@ declare module 'estree' {
 		trailingComments?: AST.Comment[] | undefined;
 	}
 
-	interface TsrxFragment extends AST.BaseExpression {
-		type: 'TsrxFragment';
-		attributes: Array<any>;
-		children: AST.Node[];
-		selfClosing?: boolean;
-		unclosed?: boolean;
-		openingElement: ESTreeJSX.JSXOpeningElement;
-		closingElement: ESTreeJSX.JSXClosingElement;
-	}
-
-	export interface TSRXExpression extends AST.BaseExpression {
-		type: 'TSRXExpression';
-		expression: AST.Expression;
-		loc?: AST.SourceLocation;
-	}
-
-	interface Element extends AST.BaseNode {
-		type: 'Element';
-		// MemberExpression for namespaced or dynamic elements
-		id: AST.Identifier | AST.MemberExpression;
-		attributes: TSRXAttribute[];
-		children: AST.Node[];
-		selfClosing?: boolean;
-		unclosed?: boolean;
-		loc: SourceLocation;
-		metadata: BaseNodeMetaData & {
-			ts_name?: string;
-			// for <style> tag
-			styleScopeHash?: string;
-			// for elements with scoped style classes
-			css?: {
-				scopedClasses: Map<
-					string,
-					{
-						start: number;
-						end: number;
-						selector: CSS.ClassSelector;
-					}
-				>;
-				hash: string;
-			};
-		};
-		openingElement: ESTreeJSX.JSXOpeningElement;
-		closingElement: ESTreeJSX.JSXClosingElement;
-		// for <style> tags
-		css?: string;
-		innerComments?: Comment[];
-	}
-
-	export interface TextNode extends AST.BaseExpression {
-		type: 'Text';
-		expression: AST.Expression;
-		raw?: string;
-		loc?: AST.SourceLocation;
-	}
-
-	interface ScriptContent extends Omit<AST.Element, 'type'> {
-		type: 'ScriptContent';
-		content: string;
-	}
-
-	/**
-	 * TSRX attribute nodes
-	 */
-	interface Attribute extends AST.BaseNode {
-		type: 'Attribute';
-		name: AST.Identifier;
-		value: AST.Expression | null;
-		loc?: AST.SourceLocation;
-		shorthand?: boolean;
-		metadata: BaseNodeMetaData & {
-			delegated?: boolean;
-		};
-	}
-
-	interface SpreadAttribute extends AST.BaseNode {
-		type: 'SpreadAttribute';
-		argument: AST.Expression;
-		loc?: AST.SourceLocation;
-	}
-
-	export type TSRXDeclaration = AST.Declaration | AST.TSDeclareFunction;
+	type TSRXDeclaration = AST.Declaration | AST.TSDeclareFunction;
 
 	interface TSRXExportNamedDeclaration extends Omit<AST.ExportNamedDeclaration, 'declaration'> {
 		declaration?: TSRXDeclaration | null | undefined;
@@ -433,11 +519,9 @@ declare module 'estree' {
 		body: (Program['body'][number] | FunctionExpression)[];
 	}
 
-	export type TSRXAttribute = AST.Attribute | AST.SpreadAttribute;
+	type TSRXStatement = AST.Statement | TSESTree.Statement;
 
-	export type TSRXStatement = AST.Statement | TSESTree.Statement;
-
-	export type NodeWithChildren = AST.Element | AST.TsrxFragment;
+	type NodeWithChildren = TSRXJSXElement | TSRXJSXFragment | JSXStyleElement;
 
 	export namespace CSS {
 		export interface BaseNode extends AST.NodeWithMaybeComments {
@@ -1197,7 +1281,7 @@ export interface Binding {
 		| AST.ClassDeclaration
 		| AST.ImportDeclaration
 		| AST.TSModuleDeclaration
-		| AST.TsrxFragment;
+		| ESTreeJSX.JSXFragment;
 	/** Whether this binding has been reassigned */
 	reassigned: boolean;
 	/** Whether this binding has been mutated (property access) */
@@ -1297,7 +1381,7 @@ export interface ScopeInterface {
 			| AST.ClassDeclaration
 			| AST.ImportDeclaration
 			| AST.TSModuleDeclaration
-			| AST.TsrxFragment,
+			| ESTreeJSX.JSXFragment,
 	): Binding;
 	/** Get binding by name */
 	get(name: string): Binding | null;
@@ -1342,7 +1426,7 @@ export interface AnalysisState extends BaseState {
 			filename: string;
 		};
 	};
-	elements?: AST.Element[];
+	elements?: Array<ESTreeJSX.JSXElement | AST.Element>;
 	function_depth?: number;
 	collect?: boolean;
 	metadata: BaseStateMetaData & {

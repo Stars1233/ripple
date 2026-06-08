@@ -4,6 +4,8 @@
   (component_body)
   (class_body)
   (switch_body)
+  (jsx_switch_body)
+  (jsx_template_block)
   (object)
   (object_pattern)
   (array)
@@ -15,6 +17,7 @@
   (jsx_fragment)
   (jsx_self_closing_element)
   (style_element)
+  (jsx_statement_container)
   (module_body)
 ] @indent
 

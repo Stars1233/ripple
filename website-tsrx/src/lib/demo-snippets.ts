@@ -18,19 +18,19 @@ export const DEMO_SNIPPETS: DemoSnippet[] = [
   title: string;
   items: string[];
   ready: boolean;
-}) {
-  return <>
+}) @{
+  <>
     <section class="feature-card">
       <h2>{title}</h2>
 
-      if (ready) {
+      @if (ready) {
         <ul>
-          for (const item of items; index index) {
+          @for (const item of items; index index) {
             <li>{item}</li>
           }
         </ul>
-      } else {
-        <p>"Loading output..."</p>
+      } @else {
+        <p>Loading output...</p>
       }
     </section>
 
@@ -51,7 +51,7 @@ export const DEMO_SNIPPETS: DemoSnippet[] = [
         padding-left: 1.1rem;
       }
     </style>
-  </>;
+  </>
 }`,
 	},
 	{
@@ -63,8 +63,8 @@ export const DEMO_SNIPPETS: DemoSnippet[] = [
 }: {
   label: string;
   onClick: () => void;
-}) {
-  return <>
+}) @{
+  <>
     <button class="btn" {onClick}>{label}</button>
 
     <style>
@@ -73,70 +73,65 @@ export const DEMO_SNIPPETS: DemoSnippet[] = [
         border-radius: 4px;
       }
     </style>
-  </>;
+  </>
 }`,
 	},
 	{
 		value: 'conditional-rendering',
 		label: 'Conditional rendering',
 		targets: ['react', 'preact', 'ripple', 'solid', 'vue'],
-		source: `function StatusBadge({ status }: { status: 'active' | 'idle' | 'offline' }) {
-  return <div>
-    if (status === 'active') {
-      <span class="badge active">"Online"</span>
-    } else if (status === 'idle') {
-      <span class="badge idle">"Away"</span>
-    } else {
-      <span class="badge">"Offline"</span>
-    }
-  </div>;
+		source: `function StatusBadge({ status }: { status: 'active' | 'idle' | 'offline' }) @{
+  @if (status === 'active') {
+    <span class="badge active">Online</span>
+  } @else if (status === 'idle') {
+    <span class="badge idle">Away</span>
+  } @else {
+    <span class="badge">Offline</span>
+  }
 }`,
 	},
 	{
 		value: 'list-rendering',
 		label: 'List rendering',
 		targets: ['react', 'preact', 'ripple', 'solid', 'vue'],
-		source: `function TodoList({ items }: { items: { text: string }[] }) {
-  return <ul>
-    for (const item of items; index i) {
-      <li>{i + 1}". "{item.text}</li>
+		source: `function TodoList({ items }: { items: { text: string }[] }) @{
+  <ul>
+    @for (const item of items; index i) {
+      <li>{i + 1}. {item.text}</li>
     }
-  </ul>;
+  </ul>
 }`,
 	},
 	{
 		value: 'switch-statements',
 		label: 'Switch statements',
 		targets: ['react', 'preact', 'ripple', 'solid', 'vue'],
-		source: `function StatusMessage({ status }: { status: string }) {
-  return <>
-    switch (status) {
-      case 'loading':
-        <p>"Loading..."</p>
-        break;
-      case 'success':
-        <p class="success">"Done!"</p>
-        break;
-      default:
-        <p>"Unknown status."</p>
+		source: `function StatusMessage({ status }: { status: string }) @{
+  @switch (status) {
+    @case 'loading': {
+      <p>Loading...</p>
     }
-  </>;
+    @case 'success': {
+      <p class="success">Done!</p>
+    }
+    @default: {
+      <p>Unknown status.</p>
+    }
+  }
 }`,
 	},
 	{
 		value: 'error-boundary',
 		label: 'Error boundary',
 		targets: ['react', 'preact', 'ripple', 'solid', 'vue'],
-		source: `function SafeProfile({ userId }: { userId: string }) {
-  return <>
-    try {
-      <UserProfile id={userId} />
-    } catch (error) {
-      <div class="error">
-        <p>"Something went wrong."</p>
-      </div>
-    }
-  </>;
+		source: `function SafeProfile({ userId }: { userId: string }) @{
+  @try {
+    <UserProfile id={userId} />
+  } @catch (error) {
+    <div class="error">
+      <p>Something went wrong.</p>
+    </div>
+  }
 }`,
 	},
 	{
@@ -145,14 +140,12 @@ export const DEMO_SNIPPETS: DemoSnippet[] = [
 		targets: ['react', 'preact', 'ripple', 'solid', 'vue'],
 		source: `import { AsyncProfile } from './profile.tsrx';
 
-export function App() {
-  return <>
-    try {
-      <AsyncProfile />
-    } pending {
-      <p class="pending">"Loading profile..."</p>
-    }
-  </>;
+export function App() @{
+  @try {
+    <AsyncProfile />
+  } @pending {
+    <p class="pending">Loading profile...</p>
+  }
 }`,
 	},
 	{
@@ -161,26 +154,24 @@ export function App() {
 		targets: ['react', 'preact', 'ripple', 'solid', 'vue'],
 		source: `import { AsyncProfile } from './profile.tsrx';
 
-export function App() {
-  return <>
-    try {
-      <AsyncProfile />
-    } pending {
-      <p class="pending">"Loading profile..."</p>
-    } catch (error) {
-      <p class="error">{(error as Error).message}</p>
-    }
-  </>;
+export function App() @{
+  @try {
+    <AsyncProfile />
+  } @pending {
+    <p class="pending">Loading profile...</p>
+  } @catch (error) {
+    <p class="error">{(error as Error).message}</p>
+  }
 }`,
 	},
 	{
 		value: 'scoped-styles',
 		label: 'Scoped styles',
-		source: `function Card() {
-  return <>
+		source: `function Card() @{
+  <>
     <div class="card">
-      <h2>"Scoped title"</h2>
-      <p>"Styles here do not leak out."</p>
+      <h2>Scoped title</h2>
+      <p>Styles here do not leak out.</p>
     </div>
 
     <style>
@@ -193,7 +184,7 @@ export function App() {
         color: #333;
       }
     </style>
-  </>;
+  </>
 }`,
 	},
 	{
@@ -202,17 +193,17 @@ export function App() {
 		targets: ['vue'],
 		source: `import { ref } from 'vue';
 
-export default function App() {
+function App() @{
   const count = ref(0);
 
-  return <>
-    <main>
-      <h1>{'Hello from TSRX Vue'}</h1>
-      <p>{'This is a minimal Vue-compatible TSRX snippet.'}</p>
-      <button onClick={() => count.value++}>{'Count: '}{count.value}</button>
-    </main>
-  </>;
-}`,
+  <main>
+    <h1>Hello from TSRX Vue</h1>
+    <p>This is a minimal Vue-compatible TSRX snippet.</p>
+    <button onClick={() => count.value++}>Count: {count.value}</button>
+  </main>
+}
+
+export default App;`,
 	},
 	{
 		value: 'nested-react-hooks',
@@ -220,7 +211,7 @@ export default function App() {
 		targets: ['react'],
 		source: `import { useEffect, useState } from 'react';
 
-export function App() {
+export function App() @{
   const [tab, setTab] = useState('overview');
   const posts = [
     { title: 'Compiler update' },
@@ -228,14 +219,14 @@ export function App() {
     { title: 'Hydration deep dive' },
   ];
 
-  return <>
-    <h1>"Nested React Hooks"</h1>
+  <>
+    <h1>Nested React Hooks</h1>
     <button onClick={() => setTab(tab === 'overview' ? 'recent' : 'overview')}>
       {tab}
     </button>
 
     <ul>
-      for (const post of posts) {
+      @for (const post of posts) {
         useEffect(() => {
           console.log('viewed ' + post.title);
         }, [post.title]);
@@ -243,7 +234,7 @@ export function App() {
         <li>{post.title}</li>
       }
     </ul>
-  </>;
+  </>
 }`,
 	},
 	{
@@ -252,7 +243,7 @@ export function App() {
 		targets: ['preact'],
 		source: `import { useEffect, useState } from 'preact/hooks';
 
-export function App() {
+export function App() @{
   const [tab, setTab] = useState('overview');
   const posts = [
     { title: 'Compiler update' },
@@ -260,14 +251,14 @@ export function App() {
     { title: 'Hydration deep dive' },
   ];
 
-  return <>
-    <h1>"Nested Preact Hooks"</h1>
+  <>
+    <h1>Nested Preact Hooks</h1>
     <button onClick={() => setTab(tab === 'overview' ? 'recent' : 'overview')}>
       {tab}
     </button>
 
     <ul>
-      for (const post of posts) {
+      @for (const post of posts) {
         useEffect(() => {
           console.log('viewed ' + post.title);
         }, [post.title]);
@@ -275,7 +266,7 @@ export function App() {
         <li>{post.title}</li>
       }
     </ul>
-  </>;
+  </>
 }`,
 	},
 ];

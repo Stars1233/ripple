@@ -9,9 +9,17 @@ import { DIAGNOSTIC_CODES } from '../diagnostics.js';
 export const TSRX_RETURN_STATEMENT_ERROR =
 	'Return statements are not allowed inside TSRX templates. Move the return before the TSRX return value, or use conditional rendering instead.';
 export const TSRX_LOOP_RETURN_ERROR =
-	'Return statements are not allowed inside TSRX template for...of loops. Use continue instead.';
+	'Return statements are not allowed inside TSRX template for...of loops. Filter the iterable before rendering or use an @for empty fallback for empty lists.';
 export const TSRX_LOOP_BREAK_ERROR =
 	'Break statements are not allowed inside TSRX template for...of loops.';
+export const TSRX_LOOP_CONTINUE_ERROR =
+	'Continue statements are not allowed inside TSRX template for...of loops. Filter the iterable before rendering.';
+export const TSRX_IF_RETURN_ERROR =
+	'Return statements are not allowed inside TSRX template @if blocks. Move the return before the template output or render conditionally instead.';
+export const TSRX_IF_BREAK_ERROR =
+	'Break statements are not allowed inside TSRX template @if blocks.';
+export const TSRX_IF_CONTINUE_ERROR =
+	'Continue statements are not allowed inside TSRX template @if blocks. Filter before rendering or use conditional output instead.';
 export const TSRX_FOR_STATEMENT_ERROR =
 	'For loops are not supported in TSRX templates. Use for...of instead.';
 export const TSRX_FOR_IN_STATEMENT_ERROR =
@@ -134,11 +142,12 @@ const invalid_nestings = {
 };
 
 /**
- * @param {AST.Element} element
+ * @param {any} element
  * @returns {string | null}
  */
 function get_element_tag(element) {
-	return element.id.type === 'Identifier' ? element.id.name : null;
+	const name = element.openingElement?.name ?? element.id;
+	return name?.type === 'JSXIdentifier' || name?.type === 'Identifier' ? name.name : null;
 }
 
 /**
@@ -219,6 +228,64 @@ export function validate_tsrx_loop_break_statement(node, filename, errors, comme
 }
 
 /**
+ * @param {AST.ContinueStatement} node
+ * @param {string | null | undefined} filename
+ * @param {CompileError[]} [errors]
+ * @param {AST.CommentWithLocation[]} [comments]
+ */
+export function validate_tsrx_loop_continue_statement(node, filename, errors, comments) {
+	error(
+		TSRX_LOOP_CONTINUE_ERROR,
+		filename ?? null,
+		get_statement_keyword_node(node, 'continue'),
+		errors,
+		comments,
+	);
+}
+
+/**
+ * @param {AST.ReturnStatement} node
+ * @param {string | null | undefined} filename
+ * @param {CompileError[]} [errors]
+ * @param {AST.CommentWithLocation[]} [comments]
+ */
+export function validate_tsrx_if_return_statement(node, filename, errors, comments) {
+	error(TSRX_IF_RETURN_ERROR, filename ?? null, get_return_keyword_node(node), errors, comments);
+}
+
+/**
+ * @param {AST.BreakStatement} node
+ * @param {string | null | undefined} filename
+ * @param {CompileError[]} [errors]
+ * @param {AST.CommentWithLocation[]} [comments]
+ */
+export function validate_tsrx_if_break_statement(node, filename, errors, comments) {
+	error(
+		TSRX_IF_BREAK_ERROR,
+		filename ?? null,
+		get_statement_keyword_node(node, 'break'),
+		errors,
+		comments,
+	);
+}
+
+/**
+ * @param {AST.ContinueStatement} node
+ * @param {string | null | undefined} filename
+ * @param {CompileError[]} [errors]
+ * @param {AST.CommentWithLocation[]} [comments]
+ */
+export function validate_tsrx_if_continue_statement(node, filename, errors, comments) {
+	error(
+		TSRX_IF_CONTINUE_ERROR,
+		filename ?? null,
+		get_statement_keyword_node(node, 'continue'),
+		errors,
+		comments,
+	);
+}
+
+/**
  * @param {AST.ForStatement | AST.ForInStatement | AST.WhileStatement | AST.DoWhileStatement} node
  * @param {string | null | undefined} filename
  * @param {CompileError[]} [errors]
@@ -240,7 +307,57 @@ export function validate_tsrx_unsupported_loop_statement(node, filename, errors,
 }
 
 /**
- * @param {AST.Element} element
+ * Returns `true` when `child` occupies a value slot of `parent` — i.e. it is
+ * being captured as a value (assigned to a binding, pushed into an array,
+ * passed as an argument, used as an operand, …) rather than rendered as a
+ * statement-position template child.
+ *
+ * Target analyzers use this to tell apart direct template output from a TSRX
+ * element that merely happens to be a value, so that a value-position element
+ * nested inside plain JavaScript control flow does not get mistaken for direct
+ * output that would require a `@for`/`@if`/`@switch`/`@try` directive.
+ * @param {AST.Node} parent
+ * @param {AST.Node} child
+ * @returns {boolean}
+ */
+export function is_template_value_position(parent, child) {
+	switch (parent.type) {
+		case 'VariableDeclarator':
+			return parent.init === child;
+		case 'AssignmentExpression':
+			return parent.right === child;
+		case 'Property':
+		case 'PropertyDefinition':
+			return parent.value === child;
+		case 'ArrayExpression':
+			return /** @type {any[]} */ (parent.elements).includes(child);
+		case 'CallExpression':
+		case 'NewExpression':
+			return parent.callee === child || /** @type {any[]} */ (parent.arguments).includes(child);
+		case 'ConditionalExpression':
+			return parent.test === child || parent.consequent === child || parent.alternate === child;
+		case 'LogicalExpression':
+		case 'BinaryExpression':
+			return parent.left === child || parent.right === child;
+		case 'UnaryExpression':
+		case 'AwaitExpression':
+		case 'SpreadElement':
+		case 'YieldExpression':
+			return parent.argument === child;
+		case 'TemplateLiteral':
+		case 'SequenceExpression':
+			return /** @type {any[]} */ (parent.expressions).includes(child);
+		case 'TSAsExpression':
+		case 'TSNonNullExpression':
+		case 'TSSatisfiesExpression':
+			return parent.expression === child;
+		default:
+			return false;
+	}
+}
+
+/**
+ * @param {any} element
  * @param {AnalysisContext} context
  * @param {CompileError[]} [errors]
  */
@@ -253,7 +370,7 @@ export function validate_nesting(element, context, errors) {
 
 	for (let i = context.path.length - 1; i >= 0; i--) {
 		const parent = context.path[i];
-		if (parent.type === 'Element') {
+		if (parent.type === 'JSXElement' || parent.type === 'JSXStyleElement') {
 			const parent_tag = get_element_tag(parent);
 			if (parent_tag === null) {
 				continue;

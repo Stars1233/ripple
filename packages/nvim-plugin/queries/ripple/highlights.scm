@@ -91,6 +91,8 @@
   "{" @punctuation.bracket
   "}" @punctuation.bracket)
 
+; Leave jsx_text uncaptured so text children use the editor's regular text color.
+
 ; Style elements
 (style_element
   "<style" @tag
@@ -99,6 +101,30 @@
 
 (style_element
   (raw_text) @string.special)
+
+; JSX statement containers
+(jsx_statement_container
+  "@{" @punctuation.bracket
+  "}" @punctuation.bracket)
+
+(jsx_if_expression
+  "@" @keyword.control
+  "if" @keyword.control)
+
+(jsx_else_if_clause
+  "if" @keyword.control)
+
+(jsx_for_expression
+  "@" @keyword.control
+  "for" @keyword.control)
+
+(jsx_switch_expression
+  "@" @keyword.control
+  "switch" @keyword.control)
+
+(jsx_try_expression
+  "@" @keyword.control
+  "try" @keyword.control)
 
 ; Types
 (type_identifier) @type

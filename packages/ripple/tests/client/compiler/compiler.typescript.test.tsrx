@@ -33,11 +33,12 @@ beforeAll(() => {
 	(global as any).count++;
 });
 
-function Test() { return <>
+function Test() @{
 	let toggle: { value: boolean } | undefined;
 	toggle!.value = false;
 	toggle!.value++;
-</>; }`;
+	<></>
+}`;
 
 		const { code } = compile(source, 'test.tsrx', { mode: 'client' });
 
@@ -46,7 +47,7 @@ function Test() { return <>
 		expect(code).toContain('toggle.value = false');
 		expect(code).toContain('toggle.value++');
 		expect(code).not.toContain('as any');
-		expect(code).not.toContain('!');
+		expect(code).not.toContain('toggle!');
 	});
 
 	it('removes class TypeScript syntax from JS output', () => {

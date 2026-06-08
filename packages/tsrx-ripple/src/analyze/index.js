@@ -30,10 +30,15 @@ import {
 	isEventAttribute,
 	isInsideComponent as is_inside_component,
 	validateNesting,
+	validateTsrxIfBreakStatement,
+	validateTsrxIfContinueStatement,
+	validateTsrxIfReturnStatement,
 	validateTsrxLoopBreakStatement,
+	validateTsrxLoopContinueStatement,
 	validateTsrxLoopReturnStatement,
 	validateTsrxReturnStatement,
 	validateTsrxUnsupportedLoopStatement,
+	isTemplateValuePosition,
 } from '@tsrx/core';
 const b = builders;
 import { walk } from 'zimmerframe';
@@ -65,6 +70,124 @@ const TRACKED_INDEX_VALUE_ERROR =
 	'Do not access tracked values with [0]. Use .value or &[] lazy destructuring instead. Numeric tracked access leads to degraded performance.';
 const TRACKED_INDEX_REFERENCE_ERROR =
 	'Do not access tracked values with [1]. Use the tracked value directly instead. Numeric tracked access leads to degraded performance.';
+
+/**
+ * Ripple analysis still works with internal Element nodes after parser
+ * normalization. Keep that compatibility local by presenting those nodes to the
+ * shared CSS pruner as native JSX only during pruning.
+ *
+ * @param {AST.Node[]} nodes
+ * @returns {() => void}
+ */
+function prepare_legacy_nodes_for_css_pruning(nodes) {
+	/** @type {{ node: any, type: string, native_tsrx: unknown, had_native_tsrx: boolean }[]} */
+	const changed = [];
+	const seen = new Set();
+
+	/** @param {any} node */
+	function visit(node) {
+		if (!node || typeof node !== 'object' || seen.has(node)) {
+			return;
+		}
+		seen.add(node);
+
+		if (node.type === 'Element') {
+			node.metadata ??= { path: [] };
+			changed.push({
+				node,
+				type: node.type,
+				native_tsrx: node.metadata.native_tsrx,
+				had_native_tsrx: Object.prototype.hasOwnProperty.call(node.metadata, 'native_tsrx'),
+			});
+			node.type = 'JSXElement';
+			node.metadata.native_tsrx = true;
+		}
+
+		if (Array.isArray(node.children)) {
+			for (const child of node.children) {
+				visit(child);
+			}
+		}
+	}
+
+	for (const node of nodes) {
+		visit(node);
+	}
+
+	return () => {
+		for (let i = changed.length - 1; i >= 0; i--) {
+			const entry = changed[i];
+			entry.node.type = entry.type;
+			if (entry.had_native_tsrx) {
+				entry.node.metadata.native_tsrx = entry.native_tsrx;
+			} else {
+				delete entry.node.metadata.native_tsrx;
+			}
+		}
+	};
+}
+
+/**
+ * Scope creation lives in @tsrx/core and only understands JSX-shaped native
+ * TSRX nodes. Ripple still normalizes to internal Element/TsrxFragment nodes
+ * before analysis, so present them as JSX only while scopes are created.
+ *
+ * @param {AST.Node} node
+ * @returns {() => void}
+ */
+function prepare_legacy_nodes_for_core_scopes(node) {
+	/** @type {{ node: any, type: string, native_tsrx: unknown, had_native_tsrx: boolean }[]} */
+	const changed = [];
+	const seen = new Set();
+
+	/** @param {any} current */
+	function visit(current) {
+		if (!current || typeof current !== 'object' || seen.has(current)) {
+			return;
+		}
+		seen.add(current);
+
+		if (current.type === 'Element' || current.type === 'TsrxFragment') {
+			current.metadata ??= { path: [] };
+			changed.push({
+				node: current,
+				type: current.type,
+				native_tsrx: current.metadata.native_tsrx,
+				had_native_tsrx: Object.prototype.hasOwnProperty.call(current.metadata, 'native_tsrx'),
+			});
+			current.type = current.type === 'Element' ? 'JSXElement' : 'JSXFragment';
+			current.metadata.native_tsrx = true;
+		}
+
+		for (const key in current) {
+			if (key === 'parent' || key === 'loc' || key === 'range' || key === 'metadata') {
+				continue;
+			}
+			const value = current[key];
+			if (Array.isArray(value)) {
+				for (const child of value) {
+					visit(child);
+				}
+			} else if (value && typeof value === 'object') {
+				visit(value);
+			}
+		}
+	}
+
+	visit(node);
+
+	return () => {
+		for (let i = changed.length - 1; i >= 0; i--) {
+			const entry = changed[i];
+			entry.node.type = entry.type;
+			if (entry.had_native_tsrx) {
+				entry.node.metadata.native_tsrx = entry.native_tsrx;
+			} else {
+				delete entry.node.metadata.native_tsrx;
+			}
+		}
+	};
+}
 
 const mutating_method_names = new Set([
 	'add',
@@ -232,10 +355,19 @@ function expression_has_side_effects(node) {
 
 /**
  * @param {AnalysisContext['path']} path
+ * @param {AST.Node} node The visited template node (element/fragment/text/expression).
  */
-function mark_control_flow_has_template(path) {
+function mark_control_flow_has_template(path, node) {
+	let child = node;
 	for (let i = path.length - 1; i >= 0; i -= 1) {
 		const node = path[i];
+
+		// Once the chain crosses into a value slot, the originating template node
+		// is captured as a value rather than rendered, so it must not propagate
+		// `has_template` to any enclosing control-flow statement.
+		if (isTemplateValuePosition(node, child)) {
+			return;
+		}
 
 		if (
 			node.type === 'FunctionExpression' ||
@@ -255,7 +387,17 @@ function mark_control_flow_has_template(path) {
 		) {
 			node.metadata.has_template = true;
 		}
+
+		child = node;
 	}
+}
+
+/**
+ * @param {AST.Node | null | undefined} node
+ * @returns {boolean}
+ */
+function is_script_only_control_flow_body(node) {
+	return node?.metadata?.script_only === true;
 }
 
 /**
@@ -296,7 +438,30 @@ function is_inside_component_for_of(path) {
 		if (is_function_or_class_boundary(node)) {
 			return false;
 		}
-		if (node.type === 'ForOfStatement') {
+		if (node.type === 'ForOfStatement' || node.type === 'JSXForExpression') {
+			return true;
+		}
+	}
+	return false;
+}
+
+/**
+ * @param {AnalysisContext['path']} path
+ * @returns {boolean}
+ */
+function is_inside_template_if(path) {
+	for (let i = path.length - 1; i >= 0; i -= 1) {
+		const node = path[i];
+		if (is_function_or_class_boundary(node)) {
+			return false;
+		}
+		if (node.type === 'IfStatement' && node.metadata?.tsrxDirective === 'if') {
+			return true;
+		}
+		if (node.type === 'IfStatement' && /** @type {any} */ (node).statementType === 'IfStatement') {
+			return true;
+		}
+		if (node.type === 'JSXIfExpression') {
 			return true;
 		}
 	}
@@ -1155,8 +1320,13 @@ function visit_function(node, context) {
 		if (css !== null) {
 			analyzeCss(css);
 			const prune = () => {
-				for (const element of elements) {
-					pruneCss(css, element, styleClasses, topScopedClasses);
+				const restore_nodes = prepare_legacy_nodes_for_css_pruning(elements);
+				try {
+					for (const element of elements) {
+						pruneCss(css, element, styleClasses, topScopedClasses);
+					}
+				} finally {
+					restore_nodes();
 				}
 			};
 			prune();
@@ -1715,16 +1885,6 @@ const visitors = {
 			};
 
 			context.visit(switch_case, context.state);
-
-			if (!node.metadata.has_template) {
-				error(
-					'Component switch statements must contain a template in each of their cases. Move the switch statement into an effect if it does not render anything.',
-					context.state.analysis.module.filename,
-					switch_case,
-					context.state.collect ? context.state.analysis.errors : undefined,
-					context.state.analysis.comments,
-				);
-			}
 		}
 	},
 
@@ -1735,6 +1895,27 @@ const visitors = {
 
 		if (!is_inside_component(context)) {
 			return context.next();
+		}
+
+		const is_template_directive = node.metadata?.tsrxDirective === 'for';
+		if (!is_template_directive) {
+			node.metadata = {
+				...node.metadata,
+				has_template: false,
+			};
+			context.next();
+			if (node.metadata.has_template) {
+				error(
+					'TSRX elements and text inside JavaScript control flow blocks must use template directives. Use `@if`, `@for`, `@switch`, or `@try` for template control flow.',
+					context.state.analysis.module.filename,
+					node,
+					context.state.collect ? context.state.analysis.errors : undefined,
+					context.state.analysis.comments,
+				);
+			} else {
+				node.metadata.regular_js = true;
+			}
+			return;
 		}
 
 		if (node.index) {
@@ -1793,14 +1974,8 @@ const visitors = {
 		};
 		context.next();
 
-		if (!node.metadata.has_template) {
-			error(
-				'Component for...of loops must contain a template in their body. Move the for loop into an effect if it does not render anything.',
-				context.state.analysis.module.filename,
-				node.body,
-				context.state.collect ? context.state.analysis.errors : undefined,
-				context.state.analysis.comments,
-			);
+		if (!node.metadata.has_template && is_script_only_control_flow_body(node.body)) {
+			node.metadata.script_only = true;
 		}
 	},
 
@@ -1918,6 +2093,8 @@ const visitors = {
 			return context.next();
 		}
 
+		const is_template_directive = node.metadata?.tsrxDirective === 'if';
+
 		node.metadata = {
 			...node.metadata,
 			has_template: false,
@@ -1944,21 +2121,9 @@ const visitors = {
 			node.metadata.lone_return = true;
 		}
 
-		if (
-			!node.metadata.has_template &&
-			!node.metadata.has_return &&
-			!node.metadata.has_throw &&
-			!node.metadata.has_continue
-		) {
-			error(
-				'Component if statements must contain a template in their "then" body. Move the if statement into an effect if it does not render anything.',
-				context.state.analysis.module.filename,
-				node.consequent,
-				context.state.collect ? context.state.analysis.errors : undefined,
-				context.state.analysis.comments,
-			);
-		}
+		const consequent_script_only = is_script_only_control_flow_body(node.consequent);
 
+		let alternate_script_only = false;
 		if (node.alternate) {
 			const saved_has_return = node.metadata.has_return;
 			const saved_returns = node.metadata.returns;
@@ -1968,20 +2133,7 @@ const visitors = {
 			node.metadata.has_continue = false;
 			context.visit(node.alternate, context.state);
 
-			if (
-				!node.metadata.has_template &&
-				!node.metadata.has_return &&
-				!node.metadata.has_throw &&
-				!node.metadata.has_continue
-			) {
-				error(
-					'Component if statements must contain a template in their "else" body. Move the if statement into an effect if it does not render anything.',
-					context.state.analysis.module.filename,
-					node.alternate,
-					context.state.collect ? context.state.analysis.errors : undefined,
-					context.state.analysis.comments,
-				);
-			}
+			alternate_script_only = is_script_only_control_flow_body(node.alternate);
 
 			if (saved_has_return) {
 				node.metadata.has_return = true;
@@ -1992,6 +2144,32 @@ const visitors = {
 			if (saved_has_continue) {
 				node.metadata.has_continue = true;
 			}
+		}
+
+		if (!is_template_directive) {
+			if (node.metadata.has_template && !node.metadata.has_return) {
+				error(
+					'TSRX elements and text inside JavaScript control flow blocks must use template directives. Use `@if`, `@for`, `@switch`, or `@try` for template control flow.',
+					context.state.analysis.module.filename,
+					node,
+					context.state.collect ? context.state.analysis.errors : undefined,
+					context.state.analysis.comments,
+				);
+			} else if (!node.metadata.has_template && !node.metadata.has_continue) {
+				node.metadata.regular_js = true;
+			}
+			return;
+		}
+
+		if (
+			!node.metadata.has_template &&
+			!node.metadata.has_return &&
+			!node.metadata.has_throw &&
+			!node.metadata.has_continue &&
+			consequent_script_only &&
+			(!node.alternate || alternate_script_only)
+		) {
+			node.metadata.script_only = true;
 		}
 	},
 
@@ -2014,6 +2192,16 @@ const visitors = {
 			context.visit(/** @type {AST.Node} */ (node.argument), context.state);
 		}
 
+		if (is_inside_template_if(context.path)) {
+			validateTsrxIfReturnStatement(
+				node,
+				context.state.analysis.module.filename,
+				context.state.collect ? context.state.analysis.errors : undefined,
+				context.state.analysis.comments,
+			);
+			return;
+		}
+
 		if (is_inside_component_for_of(context.path)) {
 			validateTsrxLoopReturnStatement(
 				node,
@@ -2025,15 +2213,15 @@ const visitors = {
 		}
 
 		if (is_inside_template_child(context.path)) {
-			if (!node.metadata?.invalid_tsrx_template_return) {
+			if (node.metadata?.invalid_tsrx_template_return) {
 				validateTsrxReturnStatement(
 					node,
 					context.state.analysis.module.filename,
 					context.state.collect ? context.state.analysis.errors : undefined,
 					context.state.analysis.comments,
 				);
+				return;
 			}
-			return;
 		}
 
 		for (let i = context.path.length - 1; i >= 0; i--) {
@@ -2063,6 +2251,16 @@ const visitors = {
 	},
 
 	BreakStatement(node, context) {
+		if (is_inside_component(context) && is_inside_template_if(context.path)) {
+			validateTsrxIfBreakStatement(
+				node,
+				context.state.analysis.module.filename,
+				context.state.collect ? context.state.analysis.errors : undefined,
+				context.state.analysis.comments,
+			);
+			return;
+		}
+
 		if (is_inside_component(context) && break_targets_component_loop(context.path)) {
 			validateTsrxLoopBreakStatement(
 				node,
@@ -2076,8 +2274,24 @@ const visitors = {
 	},
 
 	ContinueStatement(node, context) {
+		if (is_inside_component(context) && is_inside_template_if(context.path)) {
+			validateTsrxIfContinueStatement(
+				node,
+				context.state.analysis.module.filename,
+				context.state.collect ? context.state.analysis.errors : undefined,
+				context.state.analysis.comments,
+			);
+			return;
+		}
+
 		if (is_inside_component(context) && is_inside_component_for_of(context.path)) {
-			mark_control_flow_has_continue(context.path);
+			validateTsrxLoopContinueStatement(
+				node,
+				context.state.analysis.module.filename,
+				context.state.collect ? context.state.analysis.errors : undefined,
+				context.state.analysis.comments,
+			);
+			return;
 		}
 
 		context.next();
@@ -2127,14 +2341,8 @@ const visitors = {
 
 			context.visit(node.block, state);
 
-			if (!node.metadata.has_template) {
-				error(
-					'Component try statements must contain a template in their main body. Move the try statement into an effect if it does not render anything.',
-					state.analysis.module.filename,
-					node.block,
-					context.state.collect ? context.state.analysis.errors : undefined,
-					context.state.analysis.comments,
-				);
+			if (!node.metadata.has_template && is_script_only_control_flow_body(node.block)) {
+				node.metadata.script_only = true;
 			}
 
 			node.metadata = {
@@ -2144,14 +2352,12 @@ const visitors = {
 
 			context.visit(node.pending, state);
 
-			if ((node.pending.body || []).length > 0 && !node.metadata.has_template) {
-				error(
-					'Component try statements must contain a template in their "pending" body. Rendering a pending fallback is required to have a template.',
-					state.analysis.module.filename,
-					node.pending,
-					context.state.collect ? context.state.analysis.errors : undefined,
-					context.state.analysis.comments,
-				);
+			if (
+				(node.pending.body || []).length > 0 &&
+				!node.metadata.has_template &&
+				is_script_only_control_flow_body(node.pending)
+			) {
+				node.metadata.script_only = true;
 			}
 		} else {
 			context.visit(node.block, state);
@@ -2206,24 +2412,27 @@ const visitors = {
 	},
 
 	JSXElement(node, context) {
-		// TODO: could compile it as something to avoid a fatal error
-		error(
-			'Elements cannot be used as generic expressions, only as statements within a component',
-			context.state.analysis.module.filename,
-			node,
-		);
+		return context.next();
 	},
 
 	JSXFragment(node, context) {
+		if (!node.metadata?.native_tsrx) {
+			return context.next();
+		}
+
 		error(TEMPLATE_FRAGMENT_ERROR, context.state.analysis.module.filename, node);
 	},
 
-	TsrxFragment(_, context) {
+	/**
+	 * @param {any} node
+	 * @param {AnalysisContext} context
+	 */
+	TsrxFragment(node, context) {
 		if (context.state.regular_js) {
 			return context.next();
 		}
 
-		mark_control_flow_has_template(context.path);
+		mark_control_flow_has_template(context.path, node);
 		return context.next();
 	},
 
@@ -2241,7 +2450,7 @@ const visitors = {
 		/** @type {Set<AST.Identifier>} */
 		const attribute_names = new Set();
 
-		mark_control_flow_has_template(path);
+		mark_control_flow_has_template(path, node);
 
 		if (
 			!is_dom_element &&
@@ -2524,7 +2733,7 @@ const visitors = {
 			return context.next();
 		}
 
-		mark_control_flow_has_template(context.path);
+		mark_control_flow_has_template(context.path, node);
 
 		context.next();
 	},
@@ -2534,7 +2743,7 @@ const visitors = {
 			return context.next();
 		}
 
-		mark_control_flow_has_template(context.path);
+		mark_control_flow_has_template(context.path, node);
 
 		if (is_children_template_expression(/** @type {AST.Expression} */ (node.expression), context)) {
 			error(
@@ -2558,7 +2767,7 @@ const visitors = {
 				end: /** @type {AST.NodeWithLocation} */ (node).start + 'await'.length,
 			};
 			error(
-				'`await` is not allowed inside components. Use `trackAsync(() => ...)` with an upstream `try { ... } pending { ... }` boundary instead.',
+				'`await` is not allowed inside components. Use `trackAsync(() => ...)` with an upstream `@try { ... } @pending { ... }` boundary instead.',
 				context.state.analysis.module.filename,
 				adjusted_node,
 				context.state.collect ? context.state.analysis.errors : undefined,
@@ -2628,12 +2837,19 @@ export function analyze(ast, filename, options = {}) {
 	const comments = options.comments ?? [];
 	const collect = !!(options.collect || options.loose);
 
-	const { scope, scopes } = createScopes(ast, scope_root, null, {
-		collect,
-		errors,
-		filename,
-		comments,
-	});
+	const restore_scope_nodes = prepare_legacy_nodes_for_core_scopes(ast);
+	let scope;
+	let scopes;
+	try {
+		({ scope, scopes } = createScopes(ast, scope_root, null, {
+			collect,
+			errors,
+			filename,
+			comments,
+		}));
+	} finally {
+		restore_scope_nodes();
+	}
 
 	const analysis = /** @type {AnalysisResult} */ ({
 		module: { ast, scope, scopes, filename },

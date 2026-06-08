@@ -12,7 +12,7 @@ describe('@tsrx/mcp authoring reviews', () => {
 			filename: 'App.tsrx',
 			code: `export function App() { return <>
 				<form>
-					<button type="submit">"Add task"</button>
+					<button type="submit"></button>
 					<input id={\`todo-\${todo.id}\`} type="checkbox" />
 				</form>
 			}`,
@@ -20,24 +20,20 @@ describe('@tsrx/mcp authoring reviews', () => {
 
 		expect(result.ok).toBe(false);
 		expect(result.issues.map((issue) => issue.kind)).toEqual(
-			expect.arrayContaining([
-				'direct-quoted-text',
-				'button-accessible-name',
-				'input-accessible-name',
-			]),
+			expect.arrayContaining(['button-accessible-name', 'input-accessible-name']),
 		);
 	});
 
-	it('accepts expression text and directly named form controls', () => {
+	it('accepts JSX text and directly named form controls', () => {
 		const result = review_tsrx_accessibility({
 			target: 'react',
 			filename: 'App.tsrx',
 			code: `export function App() { return <>
 				<form>
-					<label htmlFor="todo-input">{'Todo title'}</label>
+					<label htmlFor="todo-input">Todo title</label>
 					<input id="todo-input" type="text" />
 					<input type="checkbox" aria-label="Mark task as complete" />
-					<button type="submit">{'Add task'}</button>
+					<button type="submit">Add task</button>
 				</form>
 			</>; }`,
 		});
@@ -85,20 +81,21 @@ describe('@tsrx/mcp authoring reviews', () => {
 			target: 'react',
 			filename: 'App.tsrx',
 			code: `export function App() { return <>
-				if (items.length === 0) {
+				@if (items.length === 0) {
 					<p>{'Empty'}</p>
-				} else {
+				} @else {
 					<ul>
-						for (const item of items; key item.id) {
-							if (item.visible) {
+						@for (const item of items; key item.id) {
+							@if (item.visible) {
 								<li>{item.label}</li>
 							}
 						}
 					</ul>
 				}
-				switch (mode) {
-					case 'grid':
+				@switch (mode) {
+					@case 'grid': {
 						<section>${repeated_items}</section>
+					}
 				}
 			</>; }`,
 		});

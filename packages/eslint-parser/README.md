@@ -73,10 +73,11 @@ The parser:
 The parser supports TSRX syntax including:
 
 - Native TSRX elements and fragments as JavaScript expressions
-- Statement-based content inside returned TSRX fragments
+- JSX statement containers with `@{ ... }` for setup plus one rendered output
+- Template directives like `@if`, `@for`, `@switch`, and `@try`
 - Function components that return TSRX, TSX, or standard JavaScript values
 - `track()` reactive values (imported from `ripple`)
-- `@` unboxing operator
+- `&{}` and `&[]` lazy destructuring
 - Reactive collections
 - All standard JavaScript/TypeScript syntax
 
@@ -87,13 +88,13 @@ Given a `.tsrx` file:
 ```tsrx
 import { track } from 'ripple';
 
-export function Counter() {
+export function Counter() @{
   let &[count] = track(0);
 
-  return <button onClick={() => count++}>
-    {'Increment'}
+  <button onClick={() => count++}>
+    Increment
     <span>{count}</span>
-  </button>;
+  </button>
 }
 ```
 

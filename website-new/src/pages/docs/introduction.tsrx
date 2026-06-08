@@ -11,34 +11,34 @@ const toc = [
 const example_code = `
 import { track } from 'ripple';
 
-export function App() {
-  return <>
-  <div class="container">
-    <h1>"Welcome to Ripple!"</h1>
+export function App() @{
+  let &[count] = track(0);
 
-    <div>
-      let &[count] = track(0);
+  <>
+    <div class="container">
+      <h1>Welcome to Ripple!</h1>
 
-      <button onClick={() => count--}>"-"</button>
-      <span class="count">{count}</span>
-      <button onClick={() => count++}>"+"</button>
+      <div>
+        <button onClick={() => count--}>-</button>
+        <span class="count">{count}</span>
+        <button onClick={() => count++}>+</button>
+      </div>
     </div>
-  </div>
 
-  <style>
-    .container {
-      text-align: center;
-      font-family: "Arial", sans-serif;
-    }
+    <style>
+      .container {
+        text-align: center;
+        font-family: "Arial", sans-serif;
+      }
 
-    button {
-      height: 2rem;
-      width: 2rem;
-      margin: 1rem;
-    }
-  </style>
-
-  </>;}`;
+      button {
+        height: 2rem;
+        width: 2rem;
+        margin: 1rem;
+      }
+    </style>
+  </>
+}`;
 
 export function IntroductionPage() {
 	return <>
@@ -49,25 +49,30 @@ export function IntroductionPage() {
 			{toc}
 			currentPath="/docs/introduction"
 		>
-			<DocHeading level={1} id="introduction">{'Introduction'}</DocHeading>
+			<DocHeading level={1} id="introduction">Introduction</DocHeading>
 
 			<p>
-				{'Ripple is an elegant, compiler-driven language and UI framework built on TSRX (a superset of TypeScript).'}
+				Ripple is an elegant, compiler-driven language and UI framework built on TSRX (a superset of
+				TypeScript).
 			</p>
 
 			<p>
-				{'It features its own JSX-like templating language, allowing a declarative blend of structure and control flow. This makes applications easier for both humans and AI to reason about, while delivering a developer experience that ultimately results in a better user experience.'}
+				It features its own JSX-like templating language, allowing a declarative blend of structure
+				and control flow. This makes applications easier for both humans and AI to reason about,
+				while delivering a developer experience that ultimately results in a better user experience.
 			</p>
 
 			<p>
 				{'Ripple was created by Dominic Gannaway ('}
-				<a href="https://github.com/trueadm" target="_blank" rel="noopener noreferrer">
-					{'@trueadm'}
-				</a>
+				<a
+					href="https://github.com/trueadm"
+					target="_blank"
+					rel="noopener noreferrer"
+				>{'@trueadm'}</a>
 				{'), who has previously worked on React, Svelte, Lexical, and Inferno.'}
 			</p>
 
-			<DocCodeGroup code={example_code} lang="ripple" />
+			<DocCodeGroup code={example_code} lang="tsrx" />
 
 			<DocCallout type="info" title="Prerequisites">
 				<p>
@@ -76,90 +81,86 @@ export function IntroductionPage() {
 						href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/A_re-introduction_to_JavaScript"
 						target="_blank"
 						rel="noopener noreferrer"
-					>
-						{'JavaScript'}
-					</a>
+					>JavaScript</a>
 					{', '}
 					<a
 						href="https://developer.mozilla.org/en-US/docs/Learn/HTML/Introduction_to_HTML"
 						target="_blank"
 						rel="noopener noreferrer"
-					>
-						{'HTML'}
-					</a>
+					>HTML</a>
 					{' and '}
 					<a
 						href="https://developer.mozilla.org/en-US/docs/Learn/CSS/First_steps"
 						target="_blank"
 						rel="noopener noreferrer"
-					>
-						{'CSS'}
-					</a>
+					>CSS</a>
 					{' if needed. Prior experience with other frameworks is helpful but not required.'}
 				</p>
 			</DocCallout>
 
-			<DocHeading level={2} id="features">{'Features'}</DocHeading>
+			<DocHeading level={2} id="features">Features</DocHeading>
 
 			<ul>
 				<li>
-					<strong>{'Reactive Primitives'}</strong>
+					<strong>Reactive Primitives</strong>
 					{': Built-in reactivity with '}
-					<code>{'track'}</code>
+					<code>track</code>
 					{' and lazy destructuring '}
 					<code>{'&[]'}</code>
 					{' syntax on primitives'}
 				</li>
 				<li>
-					<strong>{'Reactive Objects'}</strong>
+					<strong>Reactive Objects</strong>
 					{': You can create fully reactive arrays/objects using '}
-					<code>{'RippleArray'}</code>
+					<code>RippleArray</code>
 					{' and '}
-					<code>{'RippleObject'}</code>
+					<code>RippleObject</code>
 				</li>
 				<li>
-					<strong>{'Component-Based Architecture'}</strong>
+					<strong>Component-Based Architecture</strong>
 					{': Clean, reusable components with props and children'}
 				</li>
 				<li>
-					<strong>{'Template Syntax'}</strong>
-					{': Familiar templating with Ripple-specific enhancements'}
+					<strong>Statement Containers</strong>
+					{': Use '}
+					<code>{'@{...}'}</code>
+					{' for local setup, then finish with one JSX element, fragment, or control-flow expression'}
 				</li>
 				<li>
-					<strong>{'Performance'}</strong>
+					<strong>Performance</strong>
 					{': Fine-grain rendering, with industry-leading performance, bundle-size and memory usage'}
 				</li>
 				<li>
-					<strong>{'TypeScript Support'}</strong>
+					<strong>TypeScript Support</strong>
 					{': Full TypeScript integration with type checking'}
 				</li>
 				<li>
-					<strong>{'VSCode Integration'}</strong>
+					<strong>VSCode Integration</strong>
 					{': Rich editor support with diagnostics, syntax highlighting, and IntelliSense'}
 				</li>
 				<li>
-					<strong>{'Prettier Support'}</strong>
+					<strong>Prettier Support</strong>
 					{': Full Prettier formatting support for '}
-					<code>{'.tsrx'}</code>
+					<code>.tsrx</code>
 					{' modules'}
 				</li>
 				<li>
-					<strong>{'ESLint Support'}</strong>
+					<strong>ESLint Support</strong>
 					{': linting support for '}
-					<code>{'.tsrx'}</code>
+					<code>.tsrx</code>
 					{' modules'}
 				</li>
 			</ul>
 
-			<DocHeading level={2} id="server-side-rendering">{'Server-Side Rendering'}</DocHeading>
+			<DocHeading level={2} id="server-side-rendering">Server-Side Rendering</DocHeading>
 
 			<p>
 				{'Ripple supports server-side rendering (SSR) with full hydration support. See the '}
-				<a href="/docs/guide/application">{'Application Guide'}</a>
+				<a href="/docs/guide/application">Application Guide</a>
 				{' for details on using '}
-				<code>{'mount()'}</code>
+				<code>mount()</code>
 				{' for client-side rendering and '}
-				<code>{'hydrate()'}</code>
+				<code>hydrate()</code>
 				{' for SSR hydration.'}
 			</p>
 		</DocsLayout>

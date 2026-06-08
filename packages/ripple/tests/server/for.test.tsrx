@@ -1,12 +1,10 @@
 describe('for statements in SSR', () => {
 	it('renders a simple static array', async () => {
-		function App() {
-			return <>
-				const items = ['Item 1', 'Item 2', 'Item 3'];
-				for (const item of items) {
-					<div class={item}>{item}</div>
-				}
-			</>;
+		function App() @{
+			const items = ['Item 1', 'Item 2', 'Item 3'];
+			@for (const item of items) {
+				<div class={item}>{item}</div>
+			}
 		}
 
 		const { body } = await render(App);
@@ -15,28 +13,43 @@ describe('for statements in SSR', () => {
 		);
 	});
 
+	it('allows plain JavaScript control flow in setup when rendered output follows', () => {
+		expect(
+			() => compile(
+				`function App() @{
+					const items = [1, 2, 3];
+					for (const item of items) {
+						<div class="selected">{item}</div>
+					}
+				}`,
+				'App.tsrx',
+				{ mode: 'server' },
+			),
+		).not.toThrow();
+	});
+
 	it('renders nested for...of loops', async () => {
-		function App() {
-			return <>
-				const groups = [
-					{
-						name: 'Group 1',
-						items: ['Item 1.1', 'Item 1.2'],
-					},
-					{
-						name: 'Group 2',
-						items: ['Item 2.1', 'Item 2.2'],
-					},
-				];
-				for (const group of groups) {
+		function App() @{
+			const groups = [
+				{
+					name: 'Group 1',
+					items: ['Item 1.1', 'Item 1.2'],
+				},
+				{
+					name: 'Group 2',
+					items: ['Item 2.1', 'Item 2.2'],
+				},
+			];
+			@for (const group of groups) {
+				<>
 					<h1>{group.name}</h1>
 					<ul>
-						for (const item of group.items) {
+						@for (const item of group.items) {
 							<li>{item}</li>
 						}
 					</ul>
-				}
-			</>;
+				</>
+			}
 		}
 
 		const { body } = await render(App);
@@ -46,13 +59,11 @@ describe('for statements in SSR', () => {
 	});
 
 	it('renders an array with index', async () => {
-		function App() {
-			return <>
-				const items = ['Item 1', 'Item 2', 'Item 3'];
-				for (const item of items; index i) {
-					<div class={`${item} ${i}`}>{`${item} ${i}`}</div>
-				}
-			</>;
+		function App() @{
+			const items = ['Item 1', 'Item 2', 'Item 3'];
+			@for (const item of items; index i) {
+				<div class={`${item} ${i}`}>{`${item} ${i}`}</div>
+			}
 		}
 
 		const { body } = await render(App);
@@ -62,17 +73,15 @@ describe('for statements in SSR', () => {
 	});
 
 	it('renders an array with key', async () => {
-		function App() {
-			return <>
-				const items = [
-					{ id: 1, name: 'Item' },
-					{ id: 2, name: 'Item' },
-					{ id: 3, name: 'Item' },
-				];
-				for (const item of items; key item.id) {
-					<div class={`${item.name} ${item.id}`}>{`${item.name} ${item.id}`}</div>
-				}
-			</>;
+		function App() @{
+			const items = [
+				{ id: 1, name: 'Item' },
+				{ id: 2, name: 'Item' },
+				{ id: 3, name: 'Item' },
+			];
+			@for (const item of items; key item.id) {
+				<div class={`${item.name} ${item.id}`}>{`${item.name} ${item.id}`}</div>
+			}
 		}
 
 		const { body } = await render(App);
@@ -82,17 +91,15 @@ describe('for statements in SSR', () => {
 	});
 
 	it('renders an array with index and key', async () => {
-		function App() {
-			return <>
-				const items = [
-					{ id: 1, name: 'Item' },
-					{ id: 2, name: 'Item' },
-					{ id: 3, name: 'Item' },
-				];
-				for (const item of items; index i; key item.id) {
-					<div class={`${item.name} ${item.id} ${i}`}>{`${item.name} ${item.id} ${i}`}</div>
-				}
-			</>;
+		function App() @{
+			const items = [
+				{ id: 1, name: 'Item' },
+				{ id: 2, name: 'Item' },
+				{ id: 3, name: 'Item' },
+			];
+			@for (const item of items; index i; key item.id) {
+				<div class={`${item.name} ${item.id} ${i}`}>{`${item.name} ${item.id} ${i}`}</div>
+			}
 		}
 
 		const { body } = await render(App);
@@ -101,39 +108,48 @@ describe('for statements in SSR', () => {
 		);
 	});
 
-	it('allows continue to skip a for...of iteration', async () => {
-		function App() {
-			return <>
-				const items = ['Item 1', '', 'Item 3'];
-				for (const item of items) {
-					if (!item) continue;
-					<div>{item}</div>
-				}
-			</>;
+	it('renders filtered items before passing them to @for', async () => {
+		function App() @{
+			const items = ['Item 1', '', 'Item 3'].filter(Boolean);
+			@for (const item of items) {
+				<div>{item}</div>
+			}
 		}
 
 		const { body } = await render(App);
 		expect(body).toBeHtml('<div>Item 1</div><div>Item 3</div>');
 	});
 
-	it('allows ordinary function control flow inside for...of loops', async () => {
-		function App() {
-			return <>
-				const items = ['Item 1', '', 'Item 3'];
-				for (const item of items) {
-					function label(value) {
-						for (let i = 0; i < 1; i++) {
-							while (i < 0) {
-								break;
-							}
-							if (!value) return 'missing';
-						}
-						return value;
-					}
+	it('renders an empty fallback', async () => {
+		function App() @{
+			const items = [];
+			@for (const item of items) {
+				<div>{item}</div>
+			} @empty {
+				<p>No items</p>
+			}
+		}
 
-					<div>{label(item)}</div>
+		const { body } = await render(App);
+		expect(body).toBeHtml('<p>No items</p>');
+	});
+
+	it('allows ordinary function control flow inside for...of loops', async () => {
+		function App() @{
+			const items = ['Item 1', '', 'Item 3'];
+			@for (const item of items) {
+				function label(value) {
+					for (let i = 0; i < 1; i++) {
+						while (i < 0) {
+							break;
+						}
+						if (!value) return 'missing';
+					}
+					return value;
 				}
-			</>;
+
+				<div>{label(item)}</div>
+			}
 		}
 
 		const { body } = await render(App);
@@ -143,30 +159,45 @@ describe('for statements in SSR', () => {
 	it('throws for return statements inside for...of loops', () => {
 		expect(
 			() => compile(
-				`function App(items) { return <>
-					for (const item of items) {
-						if (!item) return
+				`function App(items) @{
+						@for (const item of items) {
+							if (!item) return
 						<div>{item}</div>
 					}
-				</>; }`,
+				}`,
 				'App.tsrx',
 				{ mode: 'server' },
 			),
-		).toThrow('Return statements are not allowed inside TSRX templates.');
+		).toThrow('Return statements are not allowed inside TSRX template for...of loops.');
 	});
 
 	it('throws for break statements targeting for...of loops', () => {
 		expect(
 			() => compile(
-				`function App(items) { return <>
-					for (const item of items) {
-						if (!item) break
+				`function App(items) @{
+						@for (const item of items) {
+							if (!item) break
 						<div>{item}</div>
 					}
-				</>; }`,
+				}`,
 				'App.tsrx',
 				{ mode: 'server' },
 			),
 		).toThrow('Break statements are not allowed inside TSRX template for...of loops');
+	});
+
+	it('throws for continue statements inside for...of loops', () => {
+		expect(
+			() => compile(
+				`function App(items) @{
+						@for (const item of items) {
+							if (!item) continue
+						<div>{item}</div>
+					}
+				}`,
+				'App.tsrx',
+				{ mode: 'server' },
+			),
+		).toThrow('Continue statements are not allowed inside TSRX template for...of loops');
 	});
 });

@@ -10,18 +10,17 @@ module server {
 
 import { load_doc } from server;
 
-export function QuickStartPage() {
-	return <>
-		const doc = load_doc();
-		<DocsLayout
-			title={doc.title}
-			editPath={doc.editPath}
-			prevLink={doc.prev}
-			nextLink={doc.next}
-			toc={doc.toc}
-			currentPath="/docs/quick-start"
-		>
-			<div class="doc-content" innerHTML={doc.html} />
-		</DocsLayout>
-	</>;
+export function QuickStartPage() @{
+	const doc = load_doc();
+
+	<DocsLayout
+		title={doc.title}
+		editPath={doc.editPath}
+		prevLink={doc.prev}
+		nextLink={doc.next}
+		toc={doc.toc}
+		currentPath="/docs/quick-start"
+	>
+		<div class="doc-content" innerHTML={doc.html} />
+	</DocsLayout>
 }

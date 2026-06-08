@@ -25,20 +25,20 @@ same component file to React, Solid, or Ripple.
 
 <Code>
 
-```ripple
+```tsrx
 import { track } from 'ripple';
 
-export function App() {
-  return <>
+export function App() @{
+  let &[count] = track(0);
+
+  <>
     <div class="container">
-      <h1>"Welcome to Ripple!"</h1>
+      <h1>Welcome to Ripple!</h1>
 
       <div>
-        let &[count] = track(0);
-
-        <button onClick={() => count--}>"-"</button>
+        <button onClick={() => count--}>-</button>
         <span class="count">{count}</span>
-        <button onClick={() => count++}>"+"</button>
+        <button onClick={() => count++}>+</button>
       </div>
     </div>
 
@@ -54,7 +54,7 @@ export function App() {
         margin: 1rem;
       }
     </style>
-  </>;
+  </>
 }
 ```
 
@@ -80,7 +80,8 @@ needed. Prior experience with other frameworks is helpful but not required.
   `RippleArray` and `RippleObject`
 - **Component-Based Architecture**: Clean, reusable components with props and
   children
-- **Template Syntax**: Familiar templating with Ripple-specific enhancements
+- **Statement Containers**: Use `@{...}` for local setup, then finish with one
+  JSX element, fragment, or control-flow expression
 - **Performance**: Fine-grain rendering, with industry-leading performance,
   bundle-size and memory usage
 - **TypeScript Support**: Full TypeScript integration with type checking

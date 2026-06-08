@@ -3,7 +3,11 @@ import {
 	TSRX_DO_WHILE_STATEMENT_ERROR,
 	TSRX_FOR_IN_STATEMENT_ERROR,
 	TSRX_FOR_STATEMENT_ERROR,
+	TSRX_IF_BREAK_ERROR,
+	TSRX_IF_CONTINUE_ERROR,
+	TSRX_IF_RETURN_ERROR,
 	TSRX_LOOP_BREAK_ERROR,
+	TSRX_LOOP_CONTINUE_ERROR,
 	TSRX_LOOP_RETURN_ERROR,
 	TSRX_RETURN_STATEMENT_ERROR,
 	TSRX_WHILE_STATEMENT_ERROR,
@@ -76,19 +80,39 @@ function create_advice(input) {
 		advice.push({
 			kind: 'jsx-expression-value',
 			severity: 'info',
-			title: 'Wrap expression-position JSX',
-			message: 'When JSX is needed as a value, wrap native TSRX in a fragment `<>...</>`.',
-			documentation: ['tsrx://docs/tsx-expression-values.md'],
+			title: 'Use JSX-shaped expression values',
+			message:
+				'TSRX expression values use JSX-shaped nodes. Use a JSXElement directly for one child, a JSXFragment when the value needs multiple children, or a JSX statement container when setup must produce one final output.',
+			documentation: ['tsrx://docs/expression-values.md'],
 		});
 	}
 
-	if (error_messages.has(TSRX_LOOP_RETURN_ERROR) || error_messages.has(TSRX_LOOP_BREAK_ERROR)) {
+	if (
+		error_messages.has(TSRX_LOOP_RETURN_ERROR) ||
+		error_messages.has(TSRX_LOOP_BREAK_ERROR) ||
+		error_messages.has(TSRX_LOOP_CONTINUE_ERROR)
+	) {
 		advice.push({
 			kind: 'tsrx-loop-control-flow',
 			severity: 'error',
-			title: 'Use continue inside TSRX for...of loops',
+			title: 'Filter before TSRX for...of loops',
 			message:
-				'Return statements are not valid inside TSRX templates, and break statements are not valid inside TSRX for...of loops. Use continue to skip the current rendered item. Nested functions inside the loop keep ordinary JavaScript control flow.',
+				'Direct continue, break, and return statements are not valid inside TSRX @for loops. Filter the iterable before rendering, use  { ... } for the no-items fallback, and keep ordinary JavaScript control flow inside nested functions.',
+			documentation: ['tsrx://docs/control-flow.md'],
+		});
+	}
+
+	if (
+		error_messages.has(TSRX_IF_RETURN_ERROR) ||
+		error_messages.has(TSRX_IF_BREAK_ERROR) ||
+		error_messages.has(TSRX_IF_CONTINUE_ERROR)
+	) {
+		advice.push({
+			kind: 'tsrx-if-control-flow',
+			severity: 'error',
+			title: 'Keep @if branches render-only',
+			message:
+				'Direct return, continue, and break statements are not valid inside TSRX @if branches. Use an ordinary JavaScript if statement before template output for guard returns, or render the branch output conditionally.',
 			documentation: ['tsrx://docs/control-flow.md'],
 		});
 	}
@@ -97,9 +121,9 @@ function create_advice(input) {
 		advice.push({
 			kind: 'tsrx-template-return',
 			severity: 'error',
-			title: 'Move returns outside TSRX templates',
+			title: 'Put returns in TypeScript setup',
 			message:
-				'Return statements are ordinary JavaScript control flow for functions, not template control flow. Use guard clauses before returning TSRX, or render conditionally inside the template.',
+				'Return statements are ordinary JavaScript control flow for functions, not template output. Use guard clauses before a JSX statement container or return value, or render conditionally inside the template.',
 			documentation: ['tsrx://docs/control-flow.md'],
 		});
 	}

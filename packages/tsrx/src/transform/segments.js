@@ -55,6 +55,7 @@ import {
 	build_line_offsets,
 	get_mapping_from_node,
 } from '../source-map-utils.js';
+import { should_preserve_comment } from '../comment-utils.js';
 
 const LAZY_PARAM_IDENTIFIER_REGEX = /^__lazy\d+$/;
 
@@ -133,9 +134,8 @@ function get_style_region_id(hash, fallback) {
 function visit_source_ast(ast, src_line_offsets, { regions, css_element_info }) {
 	let region_id = 0;
 	walk(ast, null, {
-		Element(node, context) {
-			// Check if this is a style element with CSS content
-			if (node.id?.type === 'Identifier' && node.id?.name === 'style' && node.css) {
+		JSXStyleElement(node, context) {
+			if (node.css) {
 				const openLoc = /** @type {ESTreeJSX.JSXOpeningElement & AST.NodeWithLocation} */ (
 					node.openingElement
 				).loc;
@@ -156,8 +156,10 @@ function visit_source_ast(ast, src_line_offsets, { regions, css_element_info }) 
 
 			context.next();
 		},
-		Attribute(node, context) {
-			const element = context.path?.findLast((n) => n.type === 'Element');
+		JSXAttribute(node, context) {
+			const element = context.path?.findLast(
+				(n) => n.type === 'JSXElement' && n.metadata?.native_tsrx,
+			);
 			if (element?.metadata?.css?.scopedClasses) {
 				// we don't need to check is_element_dom_element(node)
 				// since scopedClasses are added during pruning only to DOM elements
@@ -430,6 +432,42 @@ export function convert_source_map_to_mappings(
 		}
 	}
 
+	/** @type {Set<string>} */
+	const mapped_comments = new Set();
+
+	/**
+	 * @param {any} node
+	 * @returns {void}
+	 */
+	function add_preserved_comment_mappings(node) {
+		for (const key of ['leadingComments', 'trailingComments', 'innerComments', 'comments']) {
+			const comments = node?.[key];
+			if (!Array.isArray(comments)) continue;
+
+			for (const comment of comments) {
+				if (!comment?.loc || !should_preserve_comment(comment)) continue;
+
+				const comment_key = `${comment.start}:${comment.end}`;
+				if (mapped_comments.has(comment_key)) continue;
+				mapped_comments.add(comment_key);
+
+				try {
+					mappings.push(
+						get_mapping_from_node(
+							comment,
+							src_to_gen_map,
+							gen_line_offsets,
+							mapping_data_verify_only,
+						),
+					);
+				} catch {
+					// Comments that were not emitted in generated TSX have no source-map
+					// segment. They should not produce Volar mappings.
+				}
+			}
+		}
+	}
+
 	/**
 	 * @param {AST.Literal} node
 	 */
@@ -444,6 +482,8 @@ export function convert_source_map_to_mappings(
 
 	walk(ast, null, {
 		_(node, { visit }) {
+			add_preserved_comment_mappings(node);
+
 			// Collect key node types: Identifiers, Literals, and JSX Elements
 			if (node.type === 'Identifier') {
 				// Only create mappings for identifiers with location info (from source)
@@ -737,6 +777,14 @@ export function convert_source_map_to_mappings(
 				return;
 			} else if (node.type === 'JSXText') {
 				// Text content, no tokens to collect
+				return;
+			} else if (node.type === 'JSXCodeBlock') {
+				for (const statement of node.body) {
+					visit(statement);
+				}
+				if (node.render) {
+					visit(node.render);
+				}
 				return;
 			} else if (node.type === 'JSXElement') {
 				// Manually visit in source order: opening element, children, closing element

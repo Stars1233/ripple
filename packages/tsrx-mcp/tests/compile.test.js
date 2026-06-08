@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { DIAGNOSTIC_CODES } from '@tsrx/core';
+import { DIAGNOSTIC_CODES, TSRX_WHILE_STATEMENT_ERROR } from '@tsrx/core';
 import {
 	analyze_tsrx,
 	compile_tsrx,
@@ -12,6 +12,7 @@ import {
 	inspect_project,
 	validate_tsrx_file,
 } from '../src/index.js';
+import { analyze_tsrx_result } from '../src/analyze.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const target_fixtures = [
@@ -297,9 +298,7 @@ describe('@tsrx/mcp compile helpers', () => {
 
 	it('compiles TSRX with an explicit target', async () => {
 		const result = await compile_tsrx({
-			code: `export function App() { return <>
-				<div>"Hello"</div>
-			</>; }`,
+			code: `export const App = () => <div>Hello</div>;`,
 			filename: 'App.tsrx',
 			target: 'react',
 			cwd: react_fixture,
@@ -310,14 +309,12 @@ describe('@tsrx/mcp compile helpers', () => {
 		expect(result.target).toBe('react');
 		expect(result.compilerPackage).toBe('@tsrx/react');
 		expect(result.errors).toEqual([]);
-		expect(result.code ?? '').toContain('function App()');
+		expect(result.code ?? '').toContain('const App');
 	});
 
 	it('infers the target when compiling from a project cwd', async () => {
 		const result = await compile_tsrx({
-			code: `function App() { return <>
-				<button>"Save"</button>
-			</>; }`,
+			code: `const App = () => <button>Save</button>;`,
 			filename: 'App.tsrx',
 			cwd: react_fixture,
 		});
@@ -335,9 +332,7 @@ describe('@tsrx/mcp compile helpers', () => {
 			expect(detection.confidence).toBe('high');
 
 			const result = await compile_tsrx({
-				code: `export function App() { return <>
-					<div>"Hello"</div>
-				</>; }`,
+				code: `export const App = () => <div>Hello</div>;`,
 				filename: 'App.tsrx',
 				cwd,
 			});
@@ -355,7 +350,7 @@ describe('@tsrx/mcp compile helpers', () => {
 		// without enabling loose markup recovery.
 		const result = await compile_tsrx({
 			code: `function A() { return <>
-				<div>"hi"
+				<div>hi
 			</>; }`,
 			filename: 'Unclosed.tsrx',
 			target: 'react',
@@ -415,17 +410,27 @@ describe('@tsrx/mcp compile helpers', () => {
 	});
 
 	it('adds control-flow advice for unsupported TSRX loop diagnostics', async () => {
-		const while_loop = await analyze_tsrx({
-			code: `function App() { return <>
-				let i = 0;
-				while (i < 3) {
-					i++;
-				}
-				<div>{i}</div>
-			</>; }`,
-			filename: 'App.tsrx',
-			target: 'ripple',
-			cwd: resolve(__dirname, 'fixtures/ripple-project'),
+		const while_loop = analyze_tsrx_result({
+			code: '',
+			compileResult: {
+				ok: false,
+				target: 'ripple',
+				compilerPackage: '@tsrx/ripple',
+				filename: 'App.tsrx',
+				cwd: resolve(__dirname, 'fixtures/ripple-project'),
+				errors: [
+					{
+						message: TSRX_WHILE_STATEMENT_ERROR,
+						code: null,
+						type: null,
+						fileName: 'App.tsrx',
+						pos: null,
+						end: null,
+						raisedAt: null,
+						loc: null,
+					},
+				],
+			},
 		});
 
 		expect(while_loop.advice).toEqual(
@@ -457,7 +462,7 @@ describe('@tsrx/mcp compile helpers', () => {
 	it('uses compiler error codes for tag advice', async () => {
 		const result = await analyze_tsrx({
 			code: `function A() { return <>
-				<div>"hi"
+				<div>hi
 			</>; }`,
 			filename: 'Unclosed.tsrx',
 			target: 'react',
@@ -498,9 +503,7 @@ describe('@tsrx/mcp compile helpers', () => {
 			code: `function FormatDate(value) {
 				return String(value);
 			}
-			export function App() { return <>
-				<div>"Hello"</div>
-			</>; }`,
+			export const App = () => <div>Hello</div>;`,
 			filename: 'App.tsrx',
 			target: 'react',
 			cwd: react_fixture,
@@ -513,9 +516,7 @@ describe('@tsrx/mcp compile helpers', () => {
 		// Comments that mention JSX returns should not trigger structured advice.
 		const result = await analyze_tsrx({
 			code: `// example from docs: return <div />
-			export function App() { return <>
-				<span>"Hello"</span>
-			</>; }`,
+			export const App = () => <span>Hello</span>;`,
 			filename: 'App.tsrx',
 			target: 'react',
 			cwd: react_fixture,
@@ -529,10 +530,10 @@ describe('@tsrx/mcp compile helpers', () => {
 		// <Letter` and any `return <Letter`, so the canonical wrapper `<>`
 		// triggered the very advice that recommends wrapping in `<>`.
 		const result = await analyze_tsrx({
-			code: `function App() { return <>
-				const title = <><span>"Title"</span></>;
+			code: `function App() @{
+				const title = <><span>Title</span></>;
 				<div>{title}</div>
-			</>; }`,
+			}`,
 			filename: 'App.tsrx',
 			target: 'ripple',
 			cwd: resolve(__dirname, 'fixtures/ripple-project'),
@@ -545,10 +546,10 @@ describe('@tsrx/mcp compile helpers', () => {
 		// The fragment shorthand is the documented default wrapper for
 		// expression-position JSX, so it must never trigger the wrap-it advice.
 		const result = await analyze_tsrx({
-			code: `function App() { return <>
-				const title = <><span>"Title"</span></>;
+			code: `function App() @{
+				const title = <><span>Title</span></>;
 				<div>{title}</div>
-			</>; }`,
+			}`,
 			filename: 'App.tsrx',
 			target: 'ripple',
 			cwd: resolve(__dirname, 'fixtures/ripple-project'),
@@ -559,21 +560,21 @@ describe('@tsrx/mcp compile helpers', () => {
 
 	it('formats TSRX source with the official prettier plugin', async () => {
 		const result = await format_tsrx({
-			code: `export function App(){ return <><button class="primary">"Save"</button></>; }`,
+			code: `export const App=()=> <button class="primary">Save</button>;`,
 			filename: 'App.tsrx',
 		});
 
 		expect(result.ok).toBe(true);
 		expect(result.changed).toBe(true);
 		expect(result.formatted).toBe(
-			`export function App() {\n\treturn <><button class=\"primary\">\"Save\"</button></>;\n}\n`,
+			`export const App = () => <button class=\"primary\">Save</button>;\n`,
 		);
 		expect(result.errors).toEqual([]);
 		expect(result.message).toMatch(/cwd was not supplied/);
 	});
 
 	it('can check whether TSRX source is already formatted', async () => {
-		const code = `export function App() {\n\treturn <><button>\"Save\"</button></>;\n}\n`;
+		const code = `export const App = () => <button>Save</button>;\n`;
 		const result = await format_tsrx({
 			code,
 			filename: 'App.tsrx',
@@ -603,7 +604,7 @@ describe('@tsrx/mcp compile helpers', () => {
 			);
 
 			const result = await format_tsrx({
-				code: `export function App(){ return <><button class="primary">"Save"</button></>; }`,
+				code: `export const App=()=> <button class="primary">Save</button>;`,
 				filename: filePath,
 			});
 
@@ -611,7 +612,7 @@ describe('@tsrx/mcp compile helpers', () => {
 			expect(result.configPath).toBe(join(temp_dir, '.prettierrc'));
 			// 4-space indent (no tabs), as configured.
 			expect(result.formatted).toBe(
-				`export function App() {\n    return <><button class="primary">"Save"</button></>;\n}\n`,
+				`export const App = () => <button class="primary">Save</button>;\n`,
 			);
 		} finally {
 			await rm(temp_dir, { recursive: true, force: true });
@@ -635,7 +636,7 @@ describe('@tsrx/mcp compile helpers', () => {
 			);
 
 			const result = await format_tsrx({
-				code: `export function App(){ return <><button class="primary">"Save"</button></>; }`,
+				code: `export const App=()=> <button class="primary">Save</button>;`,
 				filename: 'src/App.tsrx',
 				cwd: temp_dir,
 			});
@@ -646,7 +647,7 @@ describe('@tsrx/mcp compile helpers', () => {
 			expect(result.message).toBe(null);
 			expect(result.configPath).toBe(join(temp_dir, '.prettierrc'));
 			expect(result.formatted).toBe(
-				`export function App() {\n    return <><button class="primary">"Save"</button></>;\n}\n`,
+				`export const App = () => <button class="primary">Save</button>;\n`,
 			);
 		} finally {
 			await rm(temp_dir, { recursive: true, force: true });
@@ -665,7 +666,7 @@ describe('@tsrx/mcp compile helpers', () => {
 			);
 
 			const result = await format_tsrx({
-				code: `export function App(){ return <><button>"Save"</button></>; }`,
+				code: `export const App=()=> <button>Save</button>;`,
 				filename: filePath,
 				useTabs: true,
 				tabWidth: 2,
@@ -673,9 +674,7 @@ describe('@tsrx/mcp compile helpers', () => {
 
 			expect(result.ok).toBe(true);
 			expect(result.configPath).toBe(join(temp_dir, '.prettierrc'));
-			expect(result.formatted).toBe(
-				`export function App() {\n\treturn <><button>"Save"</button></>;\n}\n`,
-			);
+			expect(result.formatted).toBe(`export const App = () => <button>Save</button>;\n`);
 		} finally {
 			await rm(temp_dir, { recursive: true, force: true });
 		}
@@ -687,16 +686,14 @@ describe('@tsrx/mcp compile helpers', () => {
 
 		try {
 			const result = await format_tsrx({
-				code: `export function App(){ return <><button>"Save"</button></>; }`,
+				code: `export const App=()=> <button>Save</button>;`,
 				filename: filePath,
 			});
 
 			expect(result.ok).toBe(true);
 			expect(result.configPath).toBe(null);
 			// Built-in defaults: tabs, single quotes, width 100.
-			expect(result.formatted).toBe(
-				`export function App() {\n\treturn <><button>"Save"</button></>;\n}\n`,
-			);
+			expect(result.formatted).toBe(`export const App = () => <button>Save</button>;\n`);
 		} finally {
 			await rm(temp_dir, { recursive: true, force: true });
 		}

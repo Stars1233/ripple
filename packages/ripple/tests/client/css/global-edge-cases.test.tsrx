@@ -3,15 +3,17 @@ import { compile } from '@tsrx/ripple';
 describe('CSS :global edge cases', () => {
 	it('handles multiple :global selectors in one rule', () => {
 		const source = `
-export function Test() { return <>
-	<div>{'content'}</div>
+export function Test() @{
+	<>
+		<div>{'content'}</div>
 
-	<style>
-		:global(div), :global(span), p {
-			color: red;
-		}
-	</style>
-</>; }`;
+		<style>
+			:global(div), :global(span), p {
+				color: red;
+			}
+		</style>
+	</>
+}`;
 		const { css } = compile(source, 'test.tsrx');
 
 		expect(css).toContain('div, span ');
@@ -20,19 +22,21 @@ export function Test() { return <>
 
 	it('handles :global with attribute selectors', () => {
 		const source = `
-export function Test() { return <>
-	<div data-test="value">{'content'}</div>
+export function Test() @{
+	<>
+		<div data-test="value">{'content'}</div>
 
-	<style>
-		:global([data-test]) {
-			color: red;
-		}
+		<style>
+			:global([data-test]) {
+				color: red;
+			}
 
-		div:global([data-foo="bar"]) {
-			color: blue;
-		}
-	</style>
-</>; }`;
+			div:global([data-foo="bar"]) {
+				color: blue;
+			}
+		</style>
+	</>
+}`;
 		const { css } = compile(source, 'test.tsrx');
 
 		expect(css).toContain('[data-test] {');
@@ -41,19 +45,21 @@ export function Test() { return <>
 
 	it('handles :global with universal selector', () => {
 		const source = `
-export function Test() { return <>
-	<div>{'content'}</div>
+export function Test() @{
+	<>
+		<div>{'content'}</div>
 
-	<style>
-		:global(*) {
-			box-sizing: border-box;
-		}
+		<style>
+			:global(*) {
+				box-sizing: border-box;
+			}
 
-		div :global(*) {
-			margin: 0;
-		}
-	</style>
-</>; }`;
+			div :global(*) {
+				margin: 0;
+			}
+		</style>
+	</>
+}`;
 		const { css } = compile(source, 'test.tsrx');
 
 		expect(css).toContain('* {');
@@ -62,19 +68,21 @@ export function Test() { return <>
 
 	it('handles :global with ID selectors', () => {
 		const source = `
-export function Test() { return <>
-	<div id="test">{'content'}</div>
+export function Test() @{
+	<>
+		<div id="test">{'content'}</div>
 
-	<style>
-		:global(#app) {
-			width: 100%;
-		}
+		<style>
+			:global(#app) {
+				width: 100%;
+			}
 
-		div :global(#test) {
-			color: red;
-		}
-	</style>
-</>; }`;
+			div :global(#test) {
+				color: red;
+			}
+		</style>
+	</>
+}`;
 		const { css } = compile(source, 'test.tsrx');
 
 		expect(css).toContain('#app {');
@@ -85,19 +93,21 @@ export function Test() { return <>
 
 	it('handles :global with pseudo-elements', () => {
 		const source = `
-export function Test() { return <>
-	<div>{'content'}</div>
+export function Test() @{
+	<>
+		<div>{'content'}</div>
 
-	<style>
-		:global(div)::before {
-			content: "before";
-		}
+		<style>
+			:global(div)::before {
+				content: "before";
+			}
 
-		div :global(span)::after {
-			content: "after";
-		}
-	</style>
-</>; }`;
+			div :global(span)::after {
+				content: "after";
+			}
+		</style>
+	</>
+}`;
 		const { css } = compile(source, 'test.tsrx');
 
 		expect(css).toContain('div::before {');
@@ -107,17 +117,19 @@ export function Test() { return <>
 
 	it('handles empty :global blocks', () => {
 		const source = `
-export function Test() { return <>
-	<div>{'content'}</div>
+export function Test() @{
+	<>
+		<div>{'content'}</div>
 
-	<style>
-		div {
-			:global {
+		<style>
+			div {
+				:global {
+				}
+				color: red;
 			}
-			color: red;
-		}
-	</style>
-</>; }`;
+		</style>
+	</>
+}`;
 		const { css } = compile(source, 'test.tsrx');
 
 		expect(css).toContain('color: red');
@@ -126,23 +138,25 @@ export function Test() { return <>
 
 	it('handles :global with complex selector chains', () => {
 		const source = `
-export function Test() { return <>
-	<div class="container">
-		<span class="wrapper foo">
-			<button class="bar"><span>{'click'}</span></button>
-		</span>
-	</div>
+export function Test() @{
+	<>
+		<div class="container">
+			<span class="wrapper foo">
+				<button class="bar"><span>{'click'}</span></button>
+			</span>
+		</div>
 
-	<style>
-		:global(div.container) > span.wrapper + :global(button[disabled]) {
-			color: red;
-		}
+		<style>
+			:global(div.container) > span.wrapper + :global(button[disabled]) {
+				color: red;
+			}
 
-		:global(.foo > .bar) span {
-			color: blue;
-		}
-	</style>
-</>; }`;
+			:global(.foo > .bar) span {
+				color: blue;
+			}
+		</style>
+	</>
+}`;
 		const { css } = compile(source, 'test.tsrx');
 
 		expect(css).toMatch(/div\.container > span.wrapper\.tsrx-[a-z0-9]+ \+ button\[disabled\] {/);
@@ -151,19 +165,21 @@ export function Test() { return <>
 
 	it('rejects :global in the middle of a selector sequence', () => {
 		const source = `
-export function Test() { return <>
-	<div>
-		<span class="foo">
-			<button class="bar">{'click'}</button>
-		</span>
-	</div>
+export function Test() @{
+	<>
+		<div>
+			<span class="foo">
+				<button class="bar">{'click'}</button>
+			</span>
+		</div>
 
-	<style>
-		div :global(.foo > .bar) span {
-			color: red;
-		}
-	</style>
-</>; }`;
+		<style>
+			div :global(.foo > .bar) span {
+				color: red;
+			}
+		</style>
+	</>
+}`;
 
 		expect(() => compile(source, 'test.tsrx')).toThrow(
 			':global(...) can be at the start or end of a selector sequence, but not in the middle',
@@ -172,25 +188,27 @@ export function Test() { return <>
 
 	it('handles :global at start and end of selector', () => {
 		const source = `
-export function Test() { return <>
-	<div>
-		<span>{'content'}</span>
-	</div>
+export function Test() @{
+	<>
+		<div>
+			<span>{'content'}</span>
+		</div>
 
-	<style>
-		:global(html) div span {
-			color: red;
-		}
+		<style>
+			:global(html) div span {
+				color: red;
+			}
 
-		div span :global(strong) {
-			color: blue;
-		}
+			div span :global(strong) {
+				color: blue;
+			}
 
-		:global(body) div :global(em) {
-			color: green;
-		}
-	</style>
-</>; }`;
+			:global(body) div :global(em) {
+				color: green;
+			}
+		</style>
+	</>
+}`;
 		const { css } = compile(source, 'test.tsrx');
 
 		expect(css).toMatch(/html div\.tsrx-[a-z0-9]+ span:where\(\.tsrx-[a-z0-9]+\) {/);

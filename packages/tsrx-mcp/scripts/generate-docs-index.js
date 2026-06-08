@@ -71,10 +71,10 @@ export async function generate_docs_index() {
 TSRX is a TypeScript language extension for authoring declarative UI in .tsrx files. It adds a small set of syntax forms on top of TypeScript, while letting each target compiler define the runtime semantics.
 
 Core ideas:
-- Components are ordinary TypeScript functions that return TSRX.
-- TSRX opens in expression position, then template children use a template statement list inside the fragment.
-- control-flow statements can contain template output.
-- native TSRX can be returned directly as \`<div />\` or \`<>...</>\`.
+- Components are ordinary TypeScript functions. Use a JSX statement container, \`@{ ... }\`, when the function body is mostly TSRX setup plus one rendered output.
+- JSXElement, JSXFragment, JSXText, JSXExpressionContainer, attributes, and spreads use the standard JSX node family.
+- A mixed setup/template scope must finish with exactly one output node: a JSXElement, JSXFragment, or JSX control-flow expression. Wrap plain text, expression containers, or multiple siblings in a fragment.
+- Template control flow uses directive expressions: \`@if\`, \`@for\`, \`@switch\`, and \`@try\`; every directive body uses a \`{...}\` template block.
 - lazy destructuring uses &[] and &{} for by-reference bindings.
 
 The core language docs should stay target-neutral. After identifying the active runtime target, use target-specific docs, prompts, or skills for runtime imports, bundler setup, and semantics that are not defined by TSRX itself.
@@ -87,36 +87,36 @@ Source: website-tsrx/src/pages/specification.tsrx`,
 			use_cases: 'components, functions, props, authoring .tsrx files, jsx return syntax',
 			content: `# Function Components
 
-Author UI as ordinary TypeScript functions that return TSRX.
+Author UI as ordinary TypeScript functions. Components can return JSX directly, or use a JSX statement container when setup and output should live together.
 
 \`\`\`tsx
-function Button(props: { label: string }) {
-  return <button>{props.label}</button>;
+export function Button({ label }: { label: string }) @{
+  <button>{label}</button>
 }
 \`\`\`
 
-Inside the returned TSRX fragment, template elements and control flow share the same template statement list.
+Inside \`@{ ... }\`, put any setup statements first and end with one rendered output node. No JavaScript setup can appear after that output.
 
 Source: website-tsrx/src/pages/specification.tsrx#components`,
 		},
 		{
 			slug: 'text-and-template-expressions',
 			title: 'Text and Template Expressions',
-			use_cases: 'text children, quoted text, raw text errors, string literals',
+			use_cases: 'text children, jsx text, comments, string literals, expression containers',
 			content: `# Text and Template Expressions
 
-Raw unquoted text children are not valid TSRX. Static text should be written as a direct double-quoted child, and dynamic values should be wrapped in braces.
+Static text is JSXText and can be written directly between tags. Dynamic values use normal JSX expression containers.
 
 \`\`\`tsx
-function Greeting({ name }: { name: string }) {
-  return <>
-  <h1>"Hello"</h1>
+function Greeting({ name }: { name: string }) @{
+  <>
+  <h1>Hello</h1>
   <p>{name}</p>
-  </>;
+  </>
 }
 \`\`\`
 
-Single-quoted strings and template literals remain JavaScript expressions, so they must be inside braces. When you need explicit string coercion, write it in JavaScript with \`String(value)\`, \`value + ''\`, or a typed string value.
+JavaScript comments are also allowed between template children and are not rendered. Use braces for JavaScript expressions, including string literals that should be evaluated as JavaScript.
 
 Specification grammar:
 
@@ -133,28 +133,22 @@ Source: website-tsrx/src/pages/specification.tsrx#templates`,
 				'fragments, pass template as prop, return template from helper, render props, expression position jsx',
 			content: `# Expression Values
 
-Returned TSRX opens in expression position. Inside the TSRX fragment, template elements are statements and control flow can emit UI.
+TSRX uses JSX-shaped expression values. A single JSXElement can be assigned, passed, or returned directly. Use a JSXFragment when the value needs multiple children, or use a JSX statement container when setup needs to produce one final output.
 
 \`\`\`tsx
-function App() {
-  const title = <>"Settings"</>;
-
-  return <Card title={title} />;
-}
-\`\`\`
-
-Native TSRX expression fragments can contain setup statements and template control flow:
-
-\`\`\`tsx
-function badge(label: string) {
-  return <>
+function App() @{
+  const title = <span class="title">Settings</span>;
+  const badge = (label: string) => @{
     const normalized = label.trim();
+
     <span class="badge">{normalized}</span>
-  </>;
+  };
+
+  <Card title={title}>{badge('New')}</Card>
 }
 \`\`\`
 
-Use fragments for assigning UI to variables, returning UI from helper functions, or passing UI as props.
+\`@{ ... }\` is a JSX statement container. A normal JSX fragment, element body, or control-flow branch can also contain setup before output, but that scope must still end with one output node. Use a fragment when the output is text, an expression container, or multiple siblings.
 
 Specification grammar:
 
@@ -171,30 +165,31 @@ Source: website-tsrx/src/pages/specification.tsrx#expression-values`,
 				'if else, for loops, switch, try catch, conditional rendering, lists, guard returns',
 			content: `# Control Flow
 
-Standard JavaScript control flow can contain template statements inside returned TSRX fragments and nested element children.
+Template control flow uses directive-prefixed expressions inside JSX children.
 
 \`\`\`tsx
-function List({ items }: { items: string[] }) {
-  return <>
-  if (items.length === 0) {
-    <p>"No items"</p>
-  } else {
+function List({ items }: { items: string[] }) @{
+  <>
+  @if (items.length === 0) {
+    <p>No items</p>
+  } @else {
     <ul>
-      for (const item of items; index i; key item) {
-        if (!item) continue;
+      @for (const item of items.filter(Boolean); index i; key item) {
         <li>{item}</li>
+      } @empty {
+        <li>No items</li>
       }
     </ul>
   }
-  </>;
+  </>
 }
 \`\`\`
 
-Use normal function returns for guard exits before TSRX opens. Inside a nested TSRX loop body, \`continue\` skips the current rendered iteration.
+Use normal function returns for guard exits before entering template output. Filter a collection before passing it to \`@for\` when some items should not render, and use \` { ... }\` for the no-items fallback.
 
-\`return\` statements are invalid anywhere inside returned TSRX element or fragment bodies. Inside a TSRX \`for...of\` loop, \`continue\` skips the current rendered iteration and is the only supported top-level loop control-flow statement. \`break\` is invalid inside TSRX \`for...of\` loops; use \`continue\` for item skips and \`break\` only for \`switch\` cases.
+\`return\` statements are not template output. Put guard returns before the JSX statement container or return value, or render conditionally with \`@if\`. Inside TSRX \`@if\` branches and \`@for ... of\` loops, direct \`continue\`, \`break\`, and \`return\` statements are invalid. Inside a TSRX \`@switch\` case body, both \`break\` and \`return\` are invalid because cases are isolated template blocks.
 
-TSRX rendering supports \`for...of\` list loops. Regular \`for\`, \`for...in\`, \`while\`, and \`do...while\` loops are not supported in TSRX template scope. Move imperative loops into a nested function, event handler, effect, or helper where normal JavaScript control flow rules apply.
+TSRX rendering supports \`@for ... of\` list loops. Regular \`for\`, \`for...in\`, \`while\`, and \`do...while\` loops are not rendering constructs. Move imperative loops into setup code, a nested function, event handler, effect, or helper where normal JavaScript control-flow rules apply.
 
 Source: website-tsrx/src/pages/features.tsrx#for`,
 		},
@@ -235,7 +230,11 @@ const styles = <style>
   .card { padding: 1rem; }
 </style>;
 
-return <Child class={styles.card} />;
+export function ChildCard() @{
+  <>
+  <Child class={styles.card} />
+  </>
+}
 \`\`\`
 
 \`module server { ... }\` declares a server-oriented submodule in the Ripple host profile. Import exported functions with \`import { load } from server\` before use.

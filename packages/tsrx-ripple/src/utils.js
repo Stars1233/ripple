@@ -1,5 +1,6 @@
 /**
 @import * as AST from 'estree';
+@import * as ESTreeJSX from 'estree-jsx';
 @import { CommonContext, NameSpace, ScopeInterface, Binding } from '../types/index';
  */
 
@@ -133,7 +134,34 @@ export function is_tsrx_component_function(node, context) {
  * @returns {boolean}
  */
 export function is_native_tsrx_template_node(node) {
-	return !!(node && (node.type === 'Element' || node.type === 'TsrxFragment'));
+	return !!(
+		node &&
+		(node.type === 'Element' ||
+			node.type === 'TsrxFragment' ||
+			node.type === 'JSXElement' ||
+			node.type === 'JSXFragment' ||
+			node.type === 'JSXIfExpression' ||
+			node.type === 'JSXForExpression' ||
+			node.type === 'JSXSwitchExpression' ||
+			node.type === 'JSXTryExpression' ||
+			node.metadata?.tsrxDirective === 'if' ||
+			node.metadata?.tsrxDirective === 'for' ||
+			node.metadata?.tsrxDirective === 'switch' ||
+			node.metadata?.tsrxDirective === 'try')
+	);
+}
+
+/**
+ * Normalize native JSX-shaped TSRX parser nodes into Ripple's current internal
+ * template node shape. Ripple's renderer still consumes Element/TsrxFragment,
+ * while the shared parser now emits JSXElement/JSXFragment plus custom JSX
+ * control-flow expressions.
+ * @template T
+ * @param {T} node
+ * @returns {T}
+ */
+export function normalize_jsx_tsrx_templates(node) {
+	return /** @type {T} */ (normalize_jsx_tsrx_node(/** @type {any} */ (node), []));
 }
 
 /**
@@ -148,6 +176,10 @@ export function function_has_native_tsrx_return(node) {
 			node.type !== 'ArrowFunctionExpression')
 	) {
 		return false;
+	}
+
+	if (node.body?.type === 'JSXCodeBlock') {
+		return is_native_tsrx_template_node(node.body.render);
 	}
 
 	if (node.type === 'ArrowFunctionExpression' && node.body?.type !== 'BlockStatement') {
@@ -172,8 +204,8 @@ export function function_contains_native_tsrx_template(node) {
 		return false;
 	}
 
-	if (node.type === 'ArrowFunctionExpression' && node.body?.type !== 'BlockStatement') {
-		return node_contains_native_tsrx_template(node.body, true);
+	if (node.body?.type === 'JSXCodeBlock') {
+		return is_native_tsrx_template_node(node.body.render);
 	}
 
 	return node_contains_native_tsrx_template(node.body, true);
@@ -453,12 +485,22 @@ export function get_native_tsrx_template_children(node) {
  * @returns {AST.Node[]}
  */
 export function get_native_tsrx_function_body(node) {
+	if (node.body?.type === 'JSXCodeBlock') {
+		const block = node.body;
+		return [
+			...expand_native_tsrx_return_statements(block.body || [], true),
+			...(is_native_tsrx_template_node(block.render)
+				? [mark_returned_template_child(/** @type {AST.Node} */ (block.render))]
+				: []),
+		];
+	}
+
 	if (node.type === 'ArrowFunctionExpression' && node.body?.type !== 'BlockStatement') {
 		return is_native_tsrx_template_node(node.body)
 			? [
 					...get_native_tsrx_template_children(
 						/** @type {AST.Element | AST.TsrxFragment} */ (/** @type {unknown} */ (node.body)),
-					).map(mark_returned_template_child),
+					).map((child) => mark_returned_template_child(child)),
 				]
 			: [b.return(/** @type {AST.Expression} */ (node.body))];
 	}
@@ -501,13 +543,17 @@ function mark_regular_js_statement(statement) {
 /**
  * @template {AST.Node} T
  * @param {T} node
+ * @param {AST.ReturnStatement} [statement]
  * @returns {T}
  */
-function mark_returned_template_child(node) {
+function mark_returned_template_child(node, statement) {
 	node.metadata = {
 		...node.metadata,
 		returned_tsrx_child: true,
 	};
+	if (statement) {
+		node.metadata.returned_tsrx_return = statement;
+	}
 	return node;
 }
 
@@ -618,10 +664,20 @@ function expand_native_tsrx_return_statement(statement, omit_control_return = fa
 	}
 
 	if (statement.type === 'ReturnStatement' && is_native_tsrx_template_node(statement.argument)) {
+		const template_children = get_native_tsrx_template_children(
+			/** @type {AST.Element | AST.TsrxFragment} */ (/** @type {unknown} */ (statement.argument)),
+		);
+		const children = omit_control_return
+			? template_children.flatMap((child) =>
+					node_contains_component_return(child)
+						? expand_native_tsrx_return_statement(/** @type {AST.Statement} */ (child))
+						: [child],
+				)
+			: template_children;
 		return [
-			...get_native_tsrx_template_children(
-				/** @type {AST.Element | AST.TsrxFragment} */ (/** @type {unknown} */ (statement.argument)),
-			).map(mark_returned_template_child),
+			...children.map((child) =>
+				mark_returned_template_child(child, omit_control_return ? undefined : statement),
+			),
 			...(omit_control_return
 				? []
 				: [b.return(null, /** @type {AST.NodeWithLocation} */ (statement))]),
@@ -2277,11 +2333,273 @@ function jsx_member_expression_to_member_expression(jsx_member) {
 }
 
 /**
+ * @param {string} value
+ * @returns {string}
+ */
+function decode_jsx_text_entities(value) {
+	return value.replace(
+		/&(#x[0-9a-fA-F]+|#[0-9]+|amp|quot|apos|lt|gt);/g,
+		(/** @type {string} */ match, /** @type {string} */ entity) => {
+			if (entity === 'amp') return '&';
+			if (entity === 'quot') return '"';
+			if (entity === 'apos') return "'";
+			if (entity === 'lt') return '<';
+			if (entity === 'gt') return '>';
+			if (entity.startsWith('#x')) {
+				const code_point = Number.parseInt(entity.slice(2), 16);
+				return Number.isNaN(code_point) ? match : String.fromCodePoint(code_point);
+			}
+			if (entity.startsWith('#')) {
+				const code_point = Number.parseInt(entity.slice(1), 10);
+				return Number.isNaN(code_point) ? match : String.fromCodePoint(code_point);
+			}
+			return match;
+		},
+	);
+}
+
+/**
+ * @param {string} value
+ * @returns {string}
+ */
+function normalize_jsx_text_value(value) {
+	const normalized = /[\r\n]/.test(value) ? value.trim() : value;
+	return decode_jsx_text_entities(normalized);
+}
+
+/**
+ * @param {ESTreeJSX.JSXFragment} node
+ * @param {AST.Node[]} [inherited_path]
+ * @returns {AST.TsrxFragment}
+ */
+function jsx_to_ripple_fragment(node, inherited_path = []) {
+	const fragment = /** @type {AST.TsrxFragment} */ (
+		/** @type {unknown} */ ({
+			type: 'TsrxFragment',
+			children: normalize_jsx_tsrx_children(node.children || [], inherited_path),
+			openingElement: node.openingFragment,
+			closingElement: node.closingFragment,
+			selfClosing: false,
+			attributes: [],
+			metadata: { ...(node.metadata ?? {}), path: inherited_path },
+			start: node.start,
+			end: node.end,
+			loc: node.loc,
+		})
+	);
+
+	return fragment;
+}
+
+/**
+ * @param {any} node
+ * @param {AST.Node[]} [inherited_path]
+ * @returns {any}
+ */
+function jsx_control_expression_to_statement(node, inherited_path = []) {
+	const statement = /** @type {any} */ ({ ...node, type: node.statementType });
+	delete statement.statementType;
+	const directive =
+		node.type === 'JSXIfExpression'
+			? 'if'
+			: node.type === 'JSXForExpression'
+				? 'for'
+				: node.type === 'JSXSwitchExpression'
+					? 'switch'
+					: node.type === 'JSXTryExpression'
+						? 'try'
+						: null;
+	statement.metadata = { ...(statement.metadata ?? {}), path: inherited_path };
+	if (directive) {
+		statement.metadata.tsrxDirective = directive;
+	}
+
+	if (statement.consequent?.type === 'BlockStatement') {
+		statement.consequent.body = normalize_jsx_tsrx_children(statement.consequent.body || [], [
+			...inherited_path,
+			statement,
+		]);
+	} else if (statement.consequent) {
+		statement.consequent = normalize_jsx_tsrx_node(statement.consequent, [
+			...inherited_path,
+			statement,
+		]);
+	}
+	if (statement.alternate?.type === 'BlockStatement') {
+		statement.alternate.body = normalize_jsx_tsrx_children(statement.alternate.body || [], [
+			...inherited_path,
+			statement,
+		]);
+	} else if (statement.alternate) {
+		statement.alternate = normalize_jsx_tsrx_node(statement.alternate, [
+			...inherited_path,
+			statement,
+		]);
+		if (directive === 'if' && statement.alternate?.type === 'IfStatement') {
+			statement.alternate.metadata = {
+				...(statement.alternate.metadata ?? {}),
+				tsrxDirective: 'if',
+			};
+		}
+	}
+	if (statement.body?.type === 'BlockStatement') {
+		statement.body.body = normalize_jsx_tsrx_children(statement.body.body || [], [
+			...inherited_path,
+			statement,
+		]);
+	}
+	if (statement.empty?.type === 'BlockStatement') {
+		statement.empty.body = normalize_jsx_tsrx_children(statement.empty.body || [], [
+			...inherited_path,
+			statement,
+		]);
+	}
+	if (statement.block?.type === 'BlockStatement') {
+		statement.block.body = normalize_jsx_tsrx_children(statement.block.body || [], [
+			...inherited_path,
+			statement,
+		]);
+	}
+	if (statement.pending?.type === 'BlockStatement') {
+		statement.pending.body = normalize_jsx_tsrx_children(statement.pending.body || [], [
+			...inherited_path,
+			statement,
+		]);
+	}
+	if (statement.handler?.body?.type === 'BlockStatement') {
+		statement.handler.body.body = normalize_jsx_tsrx_children(statement.handler.body.body || [], [
+			...inherited_path,
+			statement,
+		]);
+	}
+	if (statement.finalizer?.type === 'BlockStatement') {
+		statement.finalizer.body = normalize_jsx_tsrx_children(statement.finalizer.body || [], [
+			...inherited_path,
+			statement,
+		]);
+	}
+	if (Array.isArray(statement.cases)) {
+		for (const switch_case of statement.cases) {
+			switch_case.consequent = normalize_jsx_tsrx_children(switch_case.consequent || [], [
+				...inherited_path,
+				statement,
+			]);
+		}
+	}
+
+	return statement;
+}
+
+/**
+ * @param {AST.JSXStyleElement} node
+ * @param {AST.Node[]} [inherited_path]
+ * @returns {AST.Element}
+ */
+function jsx_style_to_ripple_element(node, inherited_path = []) {
+	const id = /** @type {AST.Identifier} */ ({
+		type: 'Identifier',
+		name: 'style',
+		start: node.openingElement?.name?.start ?? node.start,
+		end: node.openingElement?.name?.end ?? node.start,
+		loc: node.openingElement?.name?.loc,
+	});
+	const stylesheet = node.children?.find(
+		(/** @type {any} */ child) => child?.type === 'StyleSheet',
+	);
+
+	return /** @type {AST.Element} */ (
+		/** @type {unknown} */ ({
+			type: 'Element',
+			id,
+			attributes: [],
+			children: node.children || [],
+			openingElement: node.openingElement,
+			closingElement: node.closingElement,
+			selfClosing: false,
+			css: stylesheet?.source ?? '',
+			metadata: { ...(node.metadata ?? {}), scoped: false, path: inherited_path },
+			start: node.start,
+			end: node.end,
+			loc: node.loc,
+		})
+	);
+}
+
+/**
+ * @param {any[]} children
+ * @param {AST.Node[]} [inherited_path]
+ * @returns {AST.Node[]}
+ */
+function normalize_jsx_tsrx_children(children, inherited_path = []) {
+	return children
+		.map((/** @type {any} */ child) => normalize_jsx_tsrx_node(child, inherited_path))
+		.flat()
+		.filter((/** @type {any} */ child) => child != null && child.type !== 'EmptyStatement');
+}
+
+/**
+ * @param {any} node
+ * @param {AST.Node[]} [inherited_path]
+ * @returns {any}
+ */
+function normalize_jsx_tsrx_node(node, inherited_path = []) {
+	if (!node || typeof node !== 'object') return node;
+	if (Array.isArray(node)) return normalize_jsx_tsrx_children(node, inherited_path);
+
+	if (node.type === 'JSXFragment') {
+		return jsx_to_ripple_fragment(node, inherited_path);
+	}
+	if (node.type === 'JSXElement') {
+		return jsx_to_ripple_node(node, inherited_path);
+	}
+	if (node.type === 'JSXStyleElement') {
+		return jsx_style_to_ripple_element(node, inherited_path);
+	}
+	if (
+		node.type === 'JSXIfExpression' ||
+		node.type === 'JSXForExpression' ||
+		node.type === 'JSXSwitchExpression' ||
+		node.type === 'JSXTryExpression'
+	) {
+		return jsx_control_expression_to_statement(node, inherited_path);
+	}
+	if (node.type === 'JSXText') {
+		return jsx_to_ripple_node(node, inherited_path);
+	}
+	if (node.type === 'JSXExpressionContainer') {
+		return jsx_to_ripple_node(node, inherited_path);
+	}
+
+	for (const key in node) {
+		if (
+			key === 'metadata' ||
+			key === 'parent' ||
+			key === 'loc' ||
+			key === 'start' ||
+			key === 'end' ||
+			key === 'type'
+		) {
+			continue;
+		}
+
+		const value = node[key];
+		if (Array.isArray(value)) {
+			node[key] = normalize_jsx_tsrx_children(value, [...inherited_path, node]);
+		} else if (value && typeof value === 'object') {
+			node[key] = normalize_jsx_tsrx_node(value, [...inherited_path, node]);
+		}
+	}
+
+	return node;
+}
+
+/**
  * Converts a JSX AST node (JSXElement, JSXText, etc.) to a Ripple AST node
  * (Element, Text, TSRXExpression) for JSX-to-template lowering.
- * @param {AST.Node} node
- * @param {AST.Node[]} [inherited_path=[]]
- * @returns {AST.Node | AST.Node[] | null}
+ *
+ * @param {any} node
+ * @param {AST.Node[]} [inherited_path]
+ * @returns {any}
  */
 export function jsx_to_ripple_node(node, inherited_path = []) {
 	if (node.type === 'JSXElement') {
@@ -2297,6 +2615,7 @@ export function jsx_to_ripple_node(node, inherited_path = []) {
 				name: name.name,
 				start: name.start,
 				end: name.end,
+				tracked: name.tracked === true || name.dynamic === true,
 			});
 		} else if (name.type === 'JSXMemberExpression') {
 			// Convert JSXMemberExpression to MemberExpression
@@ -2321,26 +2640,51 @@ export function jsx_to_ripple_node(node, inherited_path = []) {
 		}
 
 		const attributes = opening.attributes
-			.map((attr) => {
+			.map((/** @type {any} */ attr) => {
 				if (attr.type === 'JSXAttribute') {
+					const name =
+						attr.name.type === 'JSXIdentifier'
+							? attr.name.name
+							: attr.name.namespace.name + ':' + attr.name.name.name;
+					const shorthand_end_loc =
+						attr.loc?.end && attr.loc.end.column > 0
+							? { ...attr.loc.end, column: attr.loc.end.column - 1 }
+							: attr.loc?.end;
+					const value = attr.shorthand
+						? {
+								type: 'Identifier',
+								name,
+								start: attr.name.start,
+								end:
+									attr.name.end && attr.name.end > attr.name.start ? attr.name.end : attr.end - 1,
+								loc: {
+									start: attr.name.loc?.start ?? attr.loc?.start,
+									end: attr.name.loc?.end ?? shorthand_end_loc,
+								},
+							}
+						: attr.value
+							? attr.value.type === 'JSXExpressionContainer'
+								? attr.value.expression
+								: attr.value
+							: null;
+					if (attr.value?.type === 'JSXExpressionContainer' && value) {
+						value.was_expression = true;
+					}
 					return /** @type {AST.Node} */ ({
 						type: 'Attribute',
 						name: {
 							type: 'Identifier',
-							name:
-								attr.name.type === 'JSXIdentifier'
-									? attr.name.name
-									: attr.name.namespace.name + ':' + attr.name.name.name,
+							name,
 							tracked: false,
 							start: attr.name.start,
-							end: attr.name.end,
+							end: attr.name.end && attr.name.end > attr.name.start ? attr.name.end : attr.end - 1,
+							loc: {
+								start: attr.name.loc?.start ?? attr.loc?.start,
+								end: attr.name.loc?.end ?? shorthand_end_loc,
+							},
 						},
-						value: attr.value
-							? attr.value.type === 'JSXExpressionContainer'
-								? attr.value.expression
-								: attr.value
-							: null,
-						shorthand: false,
+						value,
+						shorthand: attr.shorthand === true,
 						start: attr.start,
 						end: attr.end,
 					});
@@ -2373,7 +2717,7 @@ export function jsx_to_ripple_node(node, inherited_path = []) {
 
 		element.children = /** @type {AST.Node[]} */ (
 			/** @type {AST.Node[]} */ (node.children)
-				.map((child) => jsx_to_ripple_node(child, [...inherited_path, element]))
+				.map((child) => normalize_jsx_tsrx_node(child, [...inherited_path, element]))
 				.flat()
 				.filter(Boolean)
 		);
@@ -2381,14 +2725,19 @@ export function jsx_to_ripple_node(node, inherited_path = []) {
 		return element;
 	}
 
+	if (node.type === 'JSXStyleElement') {
+		return jsx_style_to_ripple_element(node, inherited_path);
+	}
+
 	if (node.type === 'JSXText') {
-		if (node.value.trim() === '') return null;
+		const value = normalize_jsx_text_value(node.value);
+		if (value.trim() === '') return null;
 		return /** @type {AST.Node} */ ({
 			type: 'Text',
 			expression: {
 				type: 'Literal',
-				value: node.value,
-				raw: JSON.stringify(node.value),
+				value,
+				raw: JSON.stringify(value),
 				start: node.start,
 				end: node.end,
 			},
@@ -2402,7 +2751,7 @@ export function jsx_to_ripple_node(node, inherited_path = []) {
 		if (node.expression.type === 'JSXEmptyExpression') return null;
 		return /** @type {AST.Node} */ ({
 			type: 'TSRXExpression',
-			expression: node.expression,
+			expression: normalize_jsx_tsrx_node(node.expression, inherited_path),
 			metadata: {},
 			start: node.start,
 			end: node.end,
@@ -2412,10 +2761,19 @@ export function jsx_to_ripple_node(node, inherited_path = []) {
 	if (node.type === 'JSXFragment') {
 		return /** @type {AST.Node[]} */ (
 			/** @type {AST.Node[]} */ (node.children)
-				.map((child) => jsx_to_ripple_node(child, inherited_path))
+				.map((child) => normalize_jsx_tsrx_node(child, inherited_path))
 				.flat()
 				.filter(Boolean)
 		);
+	}
+
+	if (
+		node.type === 'JSXIfExpression' ||
+		node.type === 'JSXForExpression' ||
+		node.type === 'JSXSwitchExpression' ||
+		node.type === 'JSXTryExpression'
+	) {
+		return jsx_control_expression_to_statement(node, inherited_path);
 	}
 
 	return node;

@@ -14,22 +14,20 @@ describe('basic client > collections', () => {
 	}
 
 	it('renders with simple reactive objects', () => {
-		function Basic() {
-			return <>
-				let &[user] = track({
-					name: 'John',
-					age: 25,
-				});
+		function Basic() @{
+			let &[user] = track({
+				name: 'John',
+				age: 25,
+			});
+			<>
 				<div class="name">{user.name}</div>
 				<div class="age">{user.age}</div>
 				<button
 					onClick={() => {
 						user = { ...user, name: 'Jane', age: 30 };
 					}}
-				>
-					{'Update User'}
-				</button>
-			</>;
+				>{'Update User'}</button>
+			</>
 		}
 
 		render(Basic);
@@ -49,12 +47,12 @@ describe('basic client > collections', () => {
 	});
 
 	it('renders with nested reactive objects', () => {
-		function Basic() {
-			return <>
-				let &[user] = track({
-					name: track('John'),
-					age: track(25),
-				});
+		function Basic() @{
+			let &[user] = track({
+				name: track('John'),
+				age: track(25),
+			});
+			<>
 				<div class="name">{user.name.value}</div>
 				<div class="age">{user.age.value}</div>
 				<button
@@ -62,10 +60,8 @@ describe('basic client > collections', () => {
 						user.name.value = 'Jane';
 						user.age.value = 30;
 					}}
-				>
-					{'Update User'}
-				</button>
-			</>;
+				>{'Update User'}</button>
+			</>
 		}
 
 		render(Basic);
@@ -85,21 +81,21 @@ describe('basic client > collections', () => {
 	});
 
 	it('works as a reactive RippleArray when constructed using # syntactic sugar', () => {
-		function App() {
-			return <>
-				const array = new RippleArray(1, 2, 3);
+		function App() @{
+			const array = new RippleArray(1, 2, 3);
+			<>
 				<pre>{String(array[3])}</pre>
 				<pre>{array[0]}</pre>
-				<pre>{TRACKED_ARRAY in array}</pre>
+				<pre>
+					{TRACKED_ARRAY in array}
+				</pre>
 				<button
 					onClick={() => {
 						array.push(array.length + 1);
 						array[0] = array[0] + 1;
 					}}
-				>
-					{'Add'}
-				</button>
-			</>;
+				>{'Add'}</button>
+			</>
 		}
 
 		render(App);
@@ -121,9 +117,9 @@ describe('basic client > collections', () => {
 	});
 
 	it('cleans up mixed tsrx collection sentinels and trailing text on rerender', () => {
-		function App() {
-			return <>
-				let &[primary] = track(true);
+		function App() @{
+			let &[primary] = track(true);
+			<>
 				<div class="frame">
 					{<>
 						{primary
@@ -143,10 +139,8 @@ describe('basic client > collections', () => {
 					onClick={() => {
 						primary = !primary;
 					}}
-				>
-					{'toggle'}
-				</button>
-			</>;
+				>{'toggle'}</button>
+			</>
 		}
 
 		render(App);
@@ -174,19 +168,17 @@ describe('basic client > collections', () => {
 	});
 
 	it('flattens nested primitive arrays inside mixed tsrx collections', () => {
-		function App() {
-			return <>
-				<div class="frame">
-					{<>
-						{[
-							'start:',
-							['one', 2, true, null, false],
-							<strong>{'!'}</strong>,
-							':end',
-						]}
-					</>}
-				</div>
-			</>;
+		function App() @{
+			<div class="frame">
+				{<>
+					{[
+						'start:',
+						['one', 2, true, null, false],
+						<strong>{'!'}</strong>,
+						':end',
+					]}
+				</>}
+			</div>
 		}
 
 		render(App);
@@ -195,12 +187,14 @@ describe('basic client > collections', () => {
 	});
 
 	it('flattens direct primitive array expressions', () => {
-		function App() {
-			return <>
-				const items = ['start:', ['one', 2], null, true, false, ':end'];
-				<div class="frame">{['start:', ['one', 2], null, true, false, ':end']}</div>
+		function App() @{
+			const items = ['start:', ['one', 2], null, true, false, ':end'];
+			<>
+				<div class="frame">
+					{['start:', ['one', 2], null, true, false, ':end']}
+				</div>
 				<div class="bound-frame">{items}</div>
-			</>;
+			</>
 		}
 
 		render(App);
@@ -210,16 +204,16 @@ describe('basic client > collections', () => {
 	});
 
 	it('flattens conditional primitive array expressions', () => {
-		function App() {
-			return <>
-				const condition = true;
-				const ternary_items = condition
-					? ['start:', ['one', 2], null, true, false, ':end']
-					: ['fallback'];
-				const logical_items = condition && ['start:', ['one', 2], null, true, false, ':end'];
+		function App() @{
+			const condition = true;
+			const ternary_items = condition
+				? ['start:', ['one', 2], null, true, false, ':end']
+				: ['fallback'];
+			const logical_items = condition && ['start:', ['one', 2], null, true, false, ':end'];
+			<>
 				<div class="ternary-frame">{ternary_items}</div>
 				<div class="logical-frame">{logical_items}</div>
-			</>;
+			</>
 		}
 
 		render(App);

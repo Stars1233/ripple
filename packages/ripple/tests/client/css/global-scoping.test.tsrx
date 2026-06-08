@@ -3,15 +3,17 @@ import { compile } from '@tsrx/ripple';
 describe('CSS :global scoping verification', () => {
 	it('verifies scoped styles are isolated', () => {
 		const source = `
-export function Test() { return <>
-	<div class="scoped">{'content'}</div>
+export function Test() @{
+	<>
+		<div class="scoped">{'content'}</div>
 
-	<style>
-		.scoped {
-			color: red;
-		}
-	</style>
-</>; }`;
+		<style>
+			.scoped {
+				color: red;
+			}
+		</style>
+	</>
+}`;
 		const { css } = compile(source, 'test.tsrx');
 
 		expect(css).toMatch(/\.scoped\.tsrx-[a-z0-9]+/);
@@ -20,15 +22,17 @@ export function Test() { return <>
 
 	it('verifies :global styles bypass scoping', () => {
 		const source = `
-export function Test() { return <>
-	<div class="global">{'content'}</div>
+export function Test() @{
+	<>
+		<div class="global">{'content'}</div>
 
-	<style>
-		:global(.global) {
-			color: red;
-		}
-	</style>
-</>; }`;
+		<style>
+			:global(.global) {
+				color: red;
+			}
+		</style>
+	</>
+}`;
 		const { css } = compile(source, 'test.tsrx');
 
 		expect(css).toContain('.global {');
@@ -37,33 +41,35 @@ export function Test() { return <>
 
 	it('verifies mixed local and global maintain proper scoping', () => {
 		const source = `
-export function Test() { return <>
-	<div class="outer">
-		<span class="inner">{'content'}</span>
-	</div>
+export function Test() @{
+	<>
+		<div class="outer">
+			<span class="inner">{'content'}</span>
+		</div>
 
-	<style>
-		.outer {
-			color: red;
-		}
+		<style>
+			.outer {
+				color: red;
+			}
 
-		:global(.outer) {
-			color: blue;
-		}
+			:global(.outer) {
+				color: blue;
+			}
 
-		.outer .inner {
-			color: green;
-		}
+			.outer .inner {
+				color: green;
+			}
 
-		:global(.outer) .inner {
-			color: yellow;
-		}
+			:global(.outer) .inner {
+				color: yellow;
+			}
 
-		.outer :global(.inner) {
-			color: purple;
-		}
-	</style>
-</>; }`;
+			.outer :global(.inner) {
+				color: purple;
+			}
+		</style>
+	</>
+}`;
 		const { css } = compile(source, 'test.tsrx');
 
 		expect(css).toMatch(/\.outer\.tsrx-[a-z0-9]+ {/);
@@ -75,29 +81,31 @@ export function Test() { return <>
 
 	it('verifies :global blocks scope all nested selectors globally', () => {
 		const source = `
-export function Test() { return <>
-	<div>
-		<span>
-			<button>{'click'}</button>
-		</span>
-	</div>
+export function Test() @{
+	<>
+		<div>
+			<span>
+				<button>{'click'}</button>
+			</span>
+		</div>
 
-	<style>
-		:global {
-			div {
-				color: red;
-			}
+		<style>
+			:global {
+				div {
+					color: red;
+				}
 
-			span {
-				color: blue;
-			}
+				span {
+					color: blue;
+				}
 
-			button {
-				color: green;
+				button {
+					color: green;
+				}
 			}
-		}
-	</style>
-</>; }`;
+		</style>
+	</>
+}`;
 		const { css } = compile(source, 'test.tsrx');
 
 		expect(css).toContain('div {');
@@ -110,27 +118,29 @@ export function Test() { return <>
 
 	it('verifies element selectors are scoped by default', () => {
 		const source = `
-export function Test() { return <>
-	<div>
-		<span>
-			<button>{'click'}</button>
-		</span>
-	</div>
+export function Test() @{
+	<>
+		<div>
+			<span>
+				<button>{'click'}</button>
+			</span>
+		</div>
 
-	<style>
-		div {
-			color: red;
-		}
+		<style>
+			div {
+				color: red;
+			}
 
-		span {
-			color: blue;
-		}
+			span {
+				color: blue;
+			}
 
-		button {
-			color: green;
-		}
-	</style>
-</>; }`;
+			button {
+				color: green;
+			}
+		</style>
+	</>
+}`;
 		const { css } = compile(source, 'test.tsrx');
 
 		expect(css).toMatch(/div\.tsrx-[a-z0-9]+/);
@@ -140,19 +150,21 @@ export function Test() { return <>
 
 	it('verifies :global() escapes only the wrapped selector', () => {
 		const source = `
-export function Test() { return <>
-	<div class="local">
-		<span class="global">
-			<button class="local">{'click'}</button>
-		</span>
-	</div>
+export function Test() @{
+	<>
+		<div class="local">
+			<span class="global">
+				<button class="local">{'click'}</button>
+			</span>
+		</div>
 
-	<style>
-		.local :global(.global .local) {
-			color: red;
-		}
-	</style>
-</>; }`;
+		<style>
+			.local :global(.global .local) {
+				color: red;
+			}
+		</style>
+	</>
+}`;
 		const { css } = compile(source, 'test.tsrx');
 
 		expect(css).toMatch(/\.local\.tsrx-[a-z0-9]+ \.global \.local {/);
@@ -161,25 +173,29 @@ export function Test() { return <>
 
 	it('verifies multiple components have different scope hashes', () => {
 		const source1 = `
-export function Test1() { return <>
-	<div class="test">{'one'}</div>
+export function Test1() @{
+	<>
+		<div class="test">{'one'}</div>
 
-	<style>
-		.test {
-			color: red;
-		}
-	</style>
-</>; }`;
+		<style>
+			.test {
+				color: red;
+			}
+		</style>
+	</>
+}`;
 		const source2 = `
-export function Test2() { return <>
-	<div class="test">{'two'}</div>
+export function Test2() @{
+	<>
+		<div class="test">{'two'}</div>
 
-	<style>
-		.test {
-			color: blue;
-		}
-	</style>
-</>; }`;
+		<style>
+			.test {
+				color: blue;
+			}
+		</style>
+	</>
+}`;
 		const { css: css1 } = compile(source1, 'test1.tsrx');
 		const { css: css2 } = compile(source2, 'test2.tsrx');
 
@@ -199,25 +215,29 @@ export function Test2() { return <>
 
 	it('verifies :global styles are consistent across components', () => {
 		const source1 = `
-export function Test1() { return <>
-	<div class="global">{'one'}</div>
+export function Test1() @{
+	<>
+		<div class="global">{'one'}</div>
 
-	<style>
-		:global(.global) {
-			color: red;
-		}
-	</style>
-</>; }`;
+		<style>
+			:global(.global) {
+				color: red;
+			}
+		</style>
+	</>
+}`;
 		const source2 = `
-export function Test2() { return <>
-	<div class="global">{'two'}</div>
+export function Test2() @{
+	<>
+		<div class="global">{'two'}</div>
 
-	<style>
-		:global(.global) {
-			color: blue;
-		}
-	</style>
-</>; }`;
+		<style>
+			:global(.global) {
+				color: blue;
+			}
+		</style>
+	</>
+}`;
 		const { css: css1 } = compile(source1, 'test1.tsrx');
 		const { css: css2 } = compile(source2, 'test2.tsrx');
 

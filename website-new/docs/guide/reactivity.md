@@ -84,11 +84,18 @@ function to `track` rather than a value:
 ```ts
 import { track } from 'ripple';
 
-let &[count] = track(0);
-let &[double] = track(() => count * 2);
-let &[quadruple] = track(() => double * 2);
+export function App() @{
+  let &[count] = track(10);
+  let &[double] = track(() => count * 2);
+  let &[quadruple] = track(() => double * 2);
 
-console.log(quadruple);
+  <>
+    <p>Count: {count}</p>
+    <p>Double: {double}</p>
+    <p>Quadruple: {quadruple}</p>
+    <button onClick={() => count++}>Increment Count</button>
+  </>
+}
 ```
 
 Derived tracked values can also be written to for **optimistic state**. The
@@ -138,11 +145,10 @@ parameters: the first is the one being assigned and the second is the previous
 value. The get and set functions may be useful for tasks such as logging,
 validating, or transforming values before they are exposed or stored.
 
-```ripple
+```tsrx
 import { track } from 'ripple';
 
-export function App() {
-  return <>
+export function App() @{
   let &[count] = track(
     0,
     (current) => {
@@ -154,12 +160,11 @@ export function App() {
       if (typeof next === 'string') {
         next = Number(next);
       }
-
       return next;
     },
   );
 
-  </>;
+  <button onClick={()=>count++}>{count}</button>
 }
 ```
 
@@ -176,7 +181,7 @@ lazy destructuring compiles each variable access to a deferred property/index
 lookup on the source. This preserves reactivity for reactive props and other
 tracked objects.
 
-```ripple
+```tsrx
 // Lazy object destructuring — a and b are accessed lazily from props
 const &{ a, b } = props;
 
@@ -193,20 +198,19 @@ const &{ a, ...rest } = props;
 **Component props** — use `&{...}` to lazily destructure props, preserving
 reactivity:
 
-```ripple
+```tsrx
 function Child(&{ count, className, children }: Props) {
   return <>
-  // count, className, children are lazily read from the props object
-  <button class={className}>{children}</button>
-  <pre>"Count is: "{count}</pre>
-
+    // count, className, children are lazily read from the props object
+    <button class={className}>{children}</button>
+    <pre>Count is: {count}</pre>
   </>;
 }
 ```
 
 **Function parameters** — works in regular functions too:
 
-```ripple
+```tsrx
 function process(&{ x, y }: Point) {
   return x + y; // lazily reads from the parameter object
 }
@@ -214,7 +218,7 @@ function process(&{ x, y }: Point) {
 
 **Variable declarations** — works with `const`, `let`, and `var`:
 
-```ripple
+```tsrx
 const &{ a, b } = someObject; // read-only lazy access
 let &{ x, y } = mutableObject; // supports assignment: x = 5 writes back
 ```
@@ -232,7 +236,7 @@ simply be passed by reference between boundaries:
 
 <Code console>
 
-```ripple
+```tsrx
 import { track, effect } from 'ripple';
 
 function createDouble(&[count]) {
@@ -245,22 +249,15 @@ function createDouble(&[count]) {
   return double;
 }
 
-export function App() {
-  return <>
+export function App() @{
   let &[count, countTracked] = track(0);
-
   const &[double] = createDouble(countTracked);
 
-  <div>"Double: "{double}</div>
-  <button
-    onClick={() => {
-      count++;
-    }}
-  >
-    "Increment"
-  </button>
-
-  </>;
+  <>
+    <p>Count: {count}</p>
+    <p>Double: {double}</p>
+    <button onClick={() => count++}>Increment Count</button>
+  </>
 }
 ```
 
@@ -282,41 +279,31 @@ UIs with minimal boilerplate.
 
 <Code>
 
-```ripple
+```tsrx
 import { track } from 'ripple';
 
-export function App() {
-  return <>
+export function App() @{
   let &[swapMe, swapMeTracked] = track(() => Child1);
 
-  <Child swapMe={swapMeTracked} />
+  <>
+    <Child swapMe={swapMeTracked} />
 
-  <button onClick={() => (swapMe = swapMe === Child1 ? Child2 : Child1)}>
-    "Swap Component"
-  </button>
-
-  </>;
+    <button onClick={() => (swapMe = swapMe === Child1 ? Child2 : Child1)}>
+      Swap Component
+    </button>
+  </>
 }
 
 function Child(&{ swapMe }: { swapMe: Tracked<Component> }) {
-  return <>
-  <@swapMe />
-
-  </>;
+  return <@swapMe />
 }
 
 function Child1(props) {
-  return <>
-  <pre>"I am child 1"</pre>
-
-  </>;
+  return <pre>I am child 1</pre>
 }
 
 function Child2(props) {
-  return <>
-  <pre>"I am child 2"</pre>
-
-  </>;
+  return <pre>I am child 2</pre>
 }
 ```
 
@@ -329,20 +316,16 @@ based on changes that happen upon updates. To do this, you can use `effect`:
 
 <Code console>
 
-```ripple
+```tsrx
 import { track, effect } from 'ripple';
 
-export function App() {
-  return <>
+export function App() @{
   let &[count] = track(0);
-
   effect(() => {
     console.log(count);
   });
 
-  <button onClick={() => count++}>"Increment"</button>
-
-  </>;
+  <button onClick={() => count++}>Increment</button>
 }
 ```
 
@@ -357,11 +340,10 @@ DOM changes are complete before executing subsequent code, similar to Vue's
 
 <Code console>
 
-```ripple
+```tsrx
 import { tick, track, effect } from 'ripple';
 
-export function App() {
-  return <>
+export function App() @{
   let &[count] = track(0);
 
   effect(() => {
@@ -377,9 +359,7 @@ export function App() {
     });
   });
 
-  <button onClick={() => count++}>"Increment"</button>
-
-  </>;
+  <button onClick={() => count++}>Increment</button>
 }
 ```
 
@@ -389,11 +369,10 @@ export function App() {
 
 <Code console>
 
-```ripple
+```tsrx
 import { track, effect, untrack } from 'ripple';
 
-export function App() {
-  return <>
+export function App() @{
   let &[count] = track(10);
   let &[double] = track(() => count * 2);
   let &[quadruple] = track(() => double * 2);
@@ -403,7 +382,12 @@ export function App() {
     console.log(untrack(() => quadruple));
   });
 
-  </>;
+  <>
+    <p>Count: {count}</p>
+    <p>Double: {double}</p>
+    <p>Quadruple: {quadruple}</p>
+    <button onClick={() => count++}>Increment Count</button>
+  </>
 }
 ```
 
@@ -422,22 +406,25 @@ object, like arrays:
 
 <Code console>
 
-```ripple
+```tsrx
 import { track, effect } from 'ripple';
 
-export function App() {
-  return <>
-  let &[first] = track(1);
-  let &[second] = track(2);
-  const arr = [first, second];
+export function App() @{
+  let &[first, firstTracked] = track(1);
+  let &[second, secondTracked] = track(2);
+  const arr = [firstTracked, secondTracked];
 
-  const &[total] = track(() => arr.reduce((a, b) => a + b, 0));
+  const &[total] = track(() => arr.reduce((a, b) => a.value + b.value));
 
   effect(() => {
     console.log(total);
   });
 
-  </>;
+  <>
+    <p>First :{first}, Second: {second}, Total: {total}</p>
+    <button onClick={()=>first++}>Increment First</button>
+    <button onClick={()=>second++}>Increment Second</button>
+  </>
 }
 ```
 
@@ -458,7 +445,7 @@ various array operations such as push, pop, shift, unshift, etc. Even if you
 reference a non-existent element, once it is added, the original reference will
 react to the change.
 
-```ripple
+```tsrx
 import { RippleArray } from 'ripple';
 
 // using the constructor
@@ -473,25 +460,19 @@ const arr = RippleArray.of(1, 2, 3);
 
 Usage Example:
 
-```ripple
+```tsrx
 import { RippleArray } from 'ripple';
 
-export function App() {
-  return <>
+export function App() @{
   const items = new RippleArray(1, 2, 3);
 
   <div>
-    <p>
-      "Length: "
-      {items.length}
-    </p> // Reactive length
-    for (const item of items) {
+    <p>Length: {items.length}</p> // Reactive length
+    @for (const item of items) {
       <div>{item}</div>
     }
-    <button onClick={() => items.push(items.length + 1)}>"Add"</button>
+    <button onClick={() => items.push(items.length + 1)}>Add</button>
   </div>
-
-  </>;
 }
 ```
 
@@ -503,7 +484,7 @@ supports shallow reactivity and any property on the root level is reactive. You
 can even reference non-existent properties and once added the original reference
 reacts to the change.
 
-```ripple
+```tsrx
 import { RippleObject } from 'ripple';
 
 const obj = new RippleObject({ a: 1, b: 2, c: 3 });
@@ -513,34 +494,22 @@ Usage Example:
 
 <Code>
 
-```ripple
+```tsrx
 import { RippleObject } from 'ripple';
 
-export function App() {
-  return <>
+export function App() @{
   const obj = new RippleObject({ a: 0 });
-
   obj.a = 0;
 
-  <pre>
-    "obj.a is: "
-    {obj.a}
-  </pre>
-  <pre>
-    "obj.b is: "
-    {obj.b}
-  </pre>
-  <button
-    onClick={() => {
+  <>
+    <pre>obj.a is: {obj.a}</pre>
+    <pre>obj.b is: {obj.b}</pre>
+    <button onClick={() => {
       obj.a++;
       obj.b = obj.b ?? 5;
       obj.b++;
-    }}
-  >
-    "Increment"
-  </button>
-
-  </>;
+    }}>Increment</button>
+  </>
 }
 ```
 
@@ -551,7 +520,7 @@ export function App() {
 The `RippleSet` extends the standard JS `Set` class, and supports all of its
 methods and properties.
 
-```ripple
+```tsrx
 import { RippleSet } from 'ripple';
 
 const set = new RippleSet([1, 2, 3]);
@@ -562,30 +531,23 @@ reactive variables.
 
 <Code>
 
-```ripple
+```tsrx
 import { RippleSet, track } from 'ripple';
 
-export function App() {
-  return <>
+export function App() @{
   const set = new RippleSet([1, 2, 3]);
-
-  // direct usage
-  <p>
-    "Direct usage: set contains 2: "
-    {set.has(2)}
-  </p>
-
-  // reactive assignment
   let &[has] = track(() => set.has(2));
-  <p>
-    "Assigned usage: set contains 2: "
-    {has}
-  </p>
 
-  <button onClick={() => set.delete(2)}>"Delete 2"</button>
-  <button onClick={() => set.add(2)}>"Add 2"</button>
+  <>
+    // direct usage
+    <p>Direct usage: set contains 2: {set.has(2)}</p>
 
-  </>;
+    // reactive assignment
+    <p>Assigned usage: set contains 2: {has}</p>
+
+    <button onClick={() => set.delete(2)}>Delete 2</button>
+    <button onClick={() => set.add(2)}>Add 2</button>
+  </>
 }
 ```
 
@@ -596,7 +558,7 @@ export function App() {
 The `RippleMap` extends the standard JS `Map` class, and supports all of its
 methods and properties.
 
-```ripple
+```tsrx
 import { RippleMap } from 'ripple';
 
 const map = new RippleMap([[1, 1], [2, 2], [3, 3], [4, 4]]);
@@ -607,30 +569,23 @@ reactive variables.
 
 <Code>
 
-```ripple
+```tsrx
 import { RippleMap, track } from 'ripple';
 
-export function App() {
-  return <>
+export function App() @{
   const map = new RippleMap([[1, 1], [2, 2], [3, 3], [4, 4]]);
-
-  // direct usage
-  <p>
-    "Direct usage: map has an item with key 2: "
-    {map.has(2)}
-  </p>
-
-  // reactive assignment
   let &[has] = track(() => map.has(2));
-  <p>
-    "Assigned usage: map has an item with key 2: "
-    {has}
-  </p>
 
-  <button onClick={() => map.delete(2)}>"Delete item with key 2"</button>
-  <button onClick={() => map.set(2, 2)}>"Add key 2 with value 2"</button>
+  <>
+    // direct usage
+    <p>Direct usage: map has an item with key 2: {map.has(2)}</p>
 
-  </>;
+    // reactive assignment
+    <p>Assigned usage: map has an item with key 2: {has}</p>
+
+    <button onClick={() => map.delete(2)}>Delete item with key 2</button>
+    <button onClick={() => map.set(2, 2)}>Add key 2 with value 2</button>
+  </>
 }
 ```
 
@@ -641,7 +596,7 @@ export function App() {
 The `RippleDate` extends the standard JS `Date` class, and supports all of its
 methods and properties.
 
-```ripple
+```tsrx
 import { RippleDate } from 'ripple';
 
 const date = new RippleDate(2026, 0, 1); // January 1, 2026
@@ -654,37 +609,25 @@ etc.) are reactive and will update when the date is modified.
 
 <Code>
 
-```ripple
+```tsrx
 import { RippleDate, track } from 'ripple';
 
-export function App() {
-  return <>
+export function App() @{
   const date = new RippleDate(2025, 0, 1, 12, 0, 0);
-
-  // direct usage
-  <p>
-    "Direct usage: Current year is "
-    {date.getFullYear()}
-  </p>
-  <p>
-    "ISO String: "
-    {date.toISOString()}
-  </p>
-
-  // reactive assignment
   let &[year] = track(() => date.getFullYear());
   let &[month] = track(() => date.getMonth());
-  <p>
-    "Assigned usage: Year "
-    {year}
-    ", Month "
-    {month}
-  </p>
 
-  <button onClick={() => date.setFullYear(2026)}>"Change to 2026"</button>
-  <button onClick={() => date.setMonth(11)}>"Change to December"</button>
+  <>
+    // direct usage
+    <p>Direct usage: Current year is {date.getFullYear()}</p>
+    <p>ISO String: {date.toISOString()}</p>
 
-  </>;
+    // reactive assignment
+    <p>Assigned usage: Year {year}, Month {month}</p>
+
+    <button onClick={() => date.setFullYear(2026)}>Change to 2026</button>
+    <button onClick={() => date.setMonth(11)}>Change to December</button>
+  </>
 }
 ```
 

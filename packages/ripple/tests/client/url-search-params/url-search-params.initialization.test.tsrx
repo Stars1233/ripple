@@ -2,12 +2,12 @@ import { RippleURL, RippleURLSearchParams } from 'ripple';
 
 describe('RippleURLSearchParams > initialization', () => {
 	it('creates empty URLSearchParams with reactivity', () => {
-		function URLTest() {
-			return <>
-				const params = RippleURLSearchParams();
+		function URLTest() @{
+			const params = RippleURLSearchParams();
+			<>
 				<pre>{params.toString()}</pre>
 				<pre>{params.size}</pre>
-			</>;
+			</>
 		}
 
 		render(URLTest);
@@ -17,13 +17,13 @@ describe('RippleURLSearchParams > initialization', () => {
 	});
 
 	it('creates URLSearchParams from string with reactivity', () => {
-		function URLTest() {
-			return <>
-				const params = RippleURLSearchParams('foo=bar&baz=qux');
+		function URLTest() @{
+			const params = RippleURLSearchParams('foo=bar&baz=qux');
+			<>
 				<pre>{params.toString()}</pre>
 				<pre>{params.size}</pre>
 				<pre>{params.get('foo')}</pre>
-			</>;
+			</>
 		}
 
 		render(URLTest);
@@ -34,12 +34,12 @@ describe('RippleURLSearchParams > initialization', () => {
 	});
 
 	it('creates URLSearchParams from object with reactivity', () => {
-		function URLTest() {
-			return <>
-				const params = RippleURLSearchParams({ foo: 'bar', baz: 'qux' });
+		function URLTest() @{
+			const params = RippleURLSearchParams({ foo: 'bar', baz: 'qux' });
+			<>
 				<pre>{params.toString()}</pre>
 				<pre>{params.size}</pre>
-			</>;
+			</>
 		}
 
 		render(URLTest);
@@ -49,12 +49,12 @@ describe('RippleURLSearchParams > initialization', () => {
 	});
 
 	it('handles URL-encoded characters correctly', () => {
-		function URLTest() {
-			return <>
-				const params = RippleURLSearchParams('name=John+Doe&email=john%40example.com');
+		function URLTest() @{
+			const params = RippleURLSearchParams('name=John+Doe&email=john%40example.com');
+			<>
 				<pre>{params.get('name')}</pre>
 				<pre>{params.get('email')}</pre>
-			</>;
+			</>
 		}
 
 		render(URLTest);

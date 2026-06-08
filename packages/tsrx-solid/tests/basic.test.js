@@ -33,10 +33,12 @@ describe('@tsrx/solid basic', () => {
 	describe('component → function', () => {
 		it('wraps multiple top-level JSX children in a fragment', () => {
 			const { code } = compile(
-				`function App() { return <>
-					<h1>{'a'}</h1>
-					<h2>{'b'}</h2>
-				</>; }`,
+				`function App() @{
+					<>
+						<h1>{'a'}</h1>
+						<h2>{'b'}</h2>
+					</>
+				}`,
 				'App.tsrx',
 			);
 			expect(code).toContain("const App__static1 = <h1>{'a'}</h1>;");
@@ -47,10 +49,10 @@ describe('@tsrx/solid basic', () => {
 		it('rejects await in component body', () => {
 			expect(() =>
 				compile(
-					`async function App() { return <>
+					`async function App() @{
 							const data = await fetchData();
 							<div>{data}</div>
-						</>; }`,
+						}`,
 					'App.tsrx',
 				),
 			).toThrow(/`await` is not allowed inside Solid components/);
@@ -61,10 +63,10 @@ describe('@tsrx/solid basic', () => {
 				compile(
 					`'use server';
 
-						async function App() { return <>
+						async function App() @{
 							const data = await fetchData();
 							<div>{data}</div>
-						</>; }`,
+						}`,
 					'App.tsrx',
 				),
 			).toThrow(/`await` is not allowed inside Solid components/);
@@ -73,22 +75,22 @@ describe('@tsrx/solid basic', () => {
 		it('rejects for await...of in component body', () => {
 			expect(() =>
 				compile(
-					`async function App({ items }: { items: AsyncIterable<string> }) { return <>
-							for await (const item of items) {
+					`async function App({ items }: { items: AsyncIterable<string> }) @{
+							@for await (const item of items) {
 								<div>{item}</div>
 							}
-					</>; }`,
+					}`,
 					'App.tsrx',
 				),
 			).toThrow(/`await` is not allowed inside Solid components/);
 		});
 
 		it('reports for await...of errors at the await keyword', () => {
-			const source = `async function App({ items }: { items: AsyncIterable<string> }) { return <>
-					for await (const item of items) {
+			const source = `async function App({ items }: { items: AsyncIterable<string> }) @{
+					@for await (const item of items) {
 						<div>{item}</div>
 					}
-			</>; }`;
+			}`;
 
 			try {
 				compile(source, 'App.tsrx');
@@ -105,10 +107,10 @@ describe('@tsrx/solid basic', () => {
 		it('allows await in nested async functions inside component body', () => {
 			expect(() =>
 				compile(
-					`function App() { return <>
+					`function App() @{
 						const load = async () => await fetchData();
 						<button onClick={load}>{'Load'}</button>
-					</>; }`,
+					}`,
 					'App.tsrx',
 				),
 			).not.toThrow();
@@ -117,20 +119,17 @@ describe('@tsrx/solid basic', () => {
 
 	describe('attributes', () => {
 		it('keeps class attribute as class (not className)', () => {
-			const { code } = compile(
-				`function App() { return <> <div class="foo">{'x'}</div> </>; }`,
-				'App.tsrx',
-			);
+			const { code } = compile(`function App() @{ <div class="foo">{'x'}</div> }`, 'App.tsrx');
 			expect(code).toContain('class="foo"');
 			expect(code).not.toContain('className');
 		});
 
 		it('ref={expr} on a DOM element compiles to ref={expr}', () => {
 			const { code } = compile(
-				`function App() { return <>
+				`function App() @{
 					let el;
 					<input ref={el} />
-				</>; }`,
+				}`,
 				'App.tsrx',
 			);
 			// Pass the argument through unchanged; Solid's JSX transform assigns
@@ -141,10 +140,10 @@ describe('@tsrx/solid basic', () => {
 
 		it('ref={fn} on a DOM element passes the function through', () => {
 			const { code } = compile(
-				`function App() { return <>
+				`function App() @{
 					function divRef(node: HTMLDivElement) {}
 					<div ref={divRef} />
-				</>; }`,
+				}`,
 				'App.tsrx',
 			);
 			expect(code).toMatch(/ref=\{divRef\}/);
@@ -152,14 +151,14 @@ describe('@tsrx/solid basic', () => {
 
 		it('ref={expr} on a composite component compiles to ref={expr}', () => {
 			const { code } = compile(
-				`function Child(props) { return <>
+				`function Child(props) @{
 					<input {...props} />
-				</>; }
+				}
 
-				function App() { return <>
+				function App() @{
 					function childRef(node: HTMLInputElement) {}
 					<Child ref={childRef} />
-				</>; }`,
+				}`,
 				'App.tsrx',
 			);
 			// Solid passes `ref` as a regular prop; when the child spreads
@@ -170,11 +169,11 @@ describe('@tsrx/solid basic', () => {
 
 		it('array ref={...} on the same DOM element stays a ref array', () => {
 			const { code } = compile(
-				`function App() { return <>
+				`function App() @{
 					function a(node: HTMLInputElement) {}
 					function b(node: HTMLInputElement) {}
 					<input ref={[a, b]} />
-				</>; }`,
+				}`,
 				'App.tsrx',
 			);
 			// Solid's ref runtime iterates array refs via applyRef, so every
@@ -184,12 +183,12 @@ describe('@tsrx/solid basic', () => {
 
 		it('array ref={...} on a composite component stays a ref array', () => {
 			const { code } = compile(
-				`function App() { return <>
+				`function App() @{
 					function a(node: HTMLInputElement) {}
 					function b(node: HTMLInputElement) {}
 					function c(node: HTMLInputElement) {}
 					<Child ref={[a, b, c]} />
-				</>; }`,
+				}`,
 				'App.tsrx',
 			);
 			expect(code).toMatch(/<Child ref=\{\[a,\s*b,\s*c\]\}/);
@@ -199,11 +198,11 @@ describe('@tsrx/solid basic', () => {
 	describe('control flow', () => {
 		it('simple if → <Show when>', () => {
 			const { code } = compile(
-				`function App({ n }: { n: number }) { return <>
-					if (n > 0) {
+				`function App({ n }: { n: number }) @{
+						@if (n > 0) {
 						<div>{'positive'}</div>
 					}
-				</>; }`,
+				}`,
 				'App.tsrx',
 			);
 			expect(code).toContain('<Show when={n > 0}>');
@@ -212,13 +211,13 @@ describe('@tsrx/solid basic', () => {
 
 		it('if/else → <Show when fallback>', () => {
 			const { code } = compile(
-				`function App({ n }: { n: number }) { return <>
-					if (n > 0) {
+				`function App({ n }: { n: number }) @{
+						@if (n > 0) {
 						<div>{'pos'}</div>
-					} else {
+					} @else {
 						<div>{'neg'}</div>
 					}
-				</>; }`,
+				}`,
 				'App.tsrx',
 			);
 			expect(code).toContain('<Show when={n > 0} fallback=');
@@ -226,15 +225,15 @@ describe('@tsrx/solid basic', () => {
 
 		it('if/else-if/else → <Switch>/<Match>', () => {
 			const { code } = compile(
-				`function App({ n }: { n: number }) { return <>
-					if (n > 10) {
+				`function App({ n }: { n: number }) @{
+						@if (n > 10) {
 						<span>{'big'}</span>
-					} else if (n > 5) {
+					} @else if (n > 5) {
 						<span>{'mid'}</span>
-					} else {
+					} @else {
 						<span>{'small'}</span>
 					}
-				</>; }`,
+				}`,
 				'App.tsrx',
 			);
 			expect(code).toContain('<Switch fallback=');
@@ -245,11 +244,11 @@ describe('@tsrx/solid basic', () => {
 
 		it('for-of → <For each>{(item, i) => ...}', () => {
 			const { code } = compile(
-				`function App({ items }: { items: number[] }) { return <>
-					for (const item of items; index i) {
+				`function App({ items }: { items: number[] }) @{
+						@for (const item of items; index i) {
 						<li>{item}</li>
 					}
-				</>; }`,
+				}`,
 				'App.tsrx',
 			);
 			expect(code).toContain('<For each={items}>');
@@ -259,11 +258,11 @@ describe('@tsrx/solid basic', () => {
 
 		it('for-of with `key` clause → <For keyed={...}>', () => {
 			const { code } = compile(
-				`function App({ items }: { items: { id: string; name: string }[] }) { return <>
-					for (const item of items; key item.id) {
+				`function App({ items }: { items: { id: string; name: string }[] }) @{
+						@for (const item of items; key item.id) {
 						<li>{item.name}</li>
 					}
-				</>; }`,
+				}`,
 				'App.tsrx',
 			);
 			// `key item.id` lifts to `keyed={(item) => item.id}` — Solid 2.0's
@@ -275,13 +274,13 @@ describe('@tsrx/solid basic', () => {
 
 		it('try/catch → <Errored fallback={(err, reset) => ...}>', () => {
 			const { code } = compile(
-				`function App() { return <>
-					try {
+				`function App() @{
+						@try {
 						<div>{'content'}</div>
-					} catch (err, reset) {
+					} @catch (err, reset) {
 						<div>{'error'}</div>
 					}
-				</>; }`,
+				}`,
 				'App.tsrx',
 			);
 			expect(code).toContain('<Errored fallback={(err, reset) =>');
@@ -290,15 +289,15 @@ describe('@tsrx/solid basic', () => {
 
 		it('try/pending/catch → <Errored><Loading>...', () => {
 			const { code } = compile(
-				`function App() { return <>
-					try {
+				`function App() @{
+						@try {
 						<div>{'ready'}</div>
-					} pending {
+					} @pending {
 						<div>{'loading'}</div>
-					} catch (err) {
+					} @catch (err) {
 						<div>{'error'}</div>
 					}
-				</>; }`,
+				}`,
 				'App.tsrx',
 			);
 			expect(code).toContain('<Errored');
@@ -308,13 +307,13 @@ describe('@tsrx/solid basic', () => {
 
 		it('switch statement → <Switch>/<Match> using ===', () => {
 			const { code } = compile(
-				`function App({ kind }: { kind: string }) { return <>
-					switch (kind) {
-						case 'a': <span>{'A'}</span>; break;
-						case 'b': <span>{'B'}</span>; break;
-						default: <span>{'?'}</span>;
+				`function App({ kind }: { kind: string }) @{
+						@switch (kind) {
+						@case 'a': { <span>{'A'}</span> }
+						@case 'b': { <span>{'B'}</span> }
+						@default: { <span>{'?'}</span> }
 					}
-				</>; }`,
+				}`,
 				'App.tsrx',
 			);
 			expect(code).toContain('<Switch fallback=');
@@ -329,18 +328,21 @@ describe('@tsrx/solid basic', () => {
 			// child list in an IIFE so the statements run and their locals stay
 			// scoped to the block — matching the React target's behaviour.
 			const { code } = compile(
-				`function FeatureCard({ items }: { items: string[] }) { return <>
-					<ul>
+				`function FeatureCard({ items }: { items: string[] }) @{
+					<ul>@{
 						const [state, setState] = createSignal();
-						for (const item of items; index i) {
-							<li>{item}</li>
-						}
-						<div>
-							console.log('logged');
-							debugger;
-						</div>
+						<>
+							@for (const item of items; index i) {
+								<li>{item}</li>
+							}
+							<div>@{
+								console.log('logged');
+								debugger;
+							}</div>
+						</>
+					}
 					</ul>
-				</>; }`,
+				}`,
 				'FeatureCard.tsrx',
 			);
 			// Outer <ul> wraps mixed statement + JSX children in an IIFE.
@@ -358,13 +360,12 @@ describe('@tsrx/solid basic', () => {
 
 		it('statement-only element children return null from their IIFE', () => {
 			const { code } = compile(
-				`function Child() { return <>
-					<div>
+				`function Child() @{
+					<div>@{
 						const x = 1;
-
 						console.log(x);
-					</div>
-				</>; }`,
+					}</div>
+				}`,
 				'Child.tsrx',
 			);
 
@@ -377,10 +378,11 @@ describe('@tsrx/solid basic', () => {
 		it('component-body guard returns lower to reactive <Show> after setup', () => {
 			const { code } = compile(
 				`import { createSignal } from 'solid-js';
-					function App({ cond }: { cond: boolean }) {
-					if (cond) return null;
+					function App({ cond }: { cond: boolean }) @{
 					const [doubled, setDoubled] = createSignal(0);
-					return <><div>{doubled()}</div></>;
+					@if (!cond) {
+						<div>{doubled()}</div>
+					}
 				}`,
 				'App.tsrx',
 			);
@@ -397,12 +399,16 @@ describe('@tsrx/solid basic', () => {
 			const { code } = compile(
 				`function App(
 					{ cond, items, setup }: { cond: boolean; items: string[]; setup: () => void }
-				) {
-					for (const item of items) {
-						return <><span>{item}</span></>;
-					}
-					if (cond) return null;
+				) @{
 					setup();
+					<>
+						@for (const item of items) {
+							<span>{item}</span>
+						}
+						@if (cond) {
+							<> </>
+						}
+					</>
 				}`,
 				'App.tsrx',
 			);
@@ -415,34 +421,39 @@ describe('@tsrx/solid basic', () => {
 
 		it('component-body guard preserves switch trailing render fallback', () => {
 			const { code } = compile(
-				`function App({ hidden, kind }: { hidden: boolean; kind: string }) {
-					if (hidden) return null;
-					switch (kind) {
-						case 'skip':
-							break;
-						case 'done':
-							return <><p>{'done'}</p></>;
+				`function App({ hidden, kind }: { hidden: boolean; kind: string }) @{
+					@if (!hidden) {
+						@switch (kind) {
+							@case 'skip': {
+								<span>{'rest'}</span>
+							}
+							@case 'done': {
+								<p>{'done'}</p>
+							}
+							@default: {
+								<span>{'rest'}</span>
+							}
+						}
 					}
-					return <><span>{'rest'}</span></>;
 				}`,
 				'App.tsrx',
 			);
-			const rest_static = code.match(/const (App__static\d+) = <span>\{'rest'\}<\/span>;/)?.[1];
 
-			expect(rest_static).toBeTruthy();
 			expect(code).toContain('<Show when={!hidden}>');
-			expect(code).toContain(`fallback={${rest_static}}`);
-			expect(code).toContain(`<Match when={kind === 'skip'}>{${rest_static}}</Match>`);
+			expect(code).toContain("<Match when={kind === 'skip'}><span>{'rest'}</span></Match>");
+			expect(code).toContain("<Match when={kind === 'done'}><p>{'done'}</p></Match>");
+			expect(code).toContain("fallback={<span>{'rest'}</span>}");
+			expect(code).not.toContain('StatementBodyHook');
 			expect(code).not.toContain("<Match when={kind === 'skip'}>{null}</Match>");
 		});
 
 		it('component-body if/else returns lower to reactive <Show>', () => {
 			const { code } = compile(
-				`function App({ cond }: { cond: boolean }) {
-					if (cond) {
-						return <><div>{'yes'}</div></>;
-					} else {
-						return <><span>{'no'}</span></>;
+				`function App({ cond }: { cond: boolean }) @{
+					@if (cond) {
+						<div>{'yes'}</div>
+					} @else {
+						<span>{'no'}</span>
 					}
 				}`,
 				'App.tsrx',
@@ -456,12 +467,14 @@ describe('@tsrx/solid basic', () => {
 
 		it('component-body switch returns lower to reactive <Switch>/<Match>', () => {
 			const { code } = compile(
-				`function App({ kind }: { kind: string }) {
-					switch (kind) {
-						case 'a':
-							return <><div>{'A'}</div></>;
-						default:
-							return <><span>{'?'}</span></>;
+				`function App({ kind }: { kind: string }) @{
+					@switch (kind) {
+						@case 'a': {
+							<div>{'A'}</div>
+						}
+						@default: {
+							<span>{'?'}</span>
+						}
 					}
 				}`,
 				'App.tsrx',
@@ -472,36 +485,42 @@ describe('@tsrx/solid basic', () => {
 			expect(code).not.toContain('switch (kind)');
 		});
 
-		it('component-body switch break cases include trailing render fallback', () => {
+		it('component-body switch cases are isolated without trailing fallthrough', () => {
 			const { code } = compile(
-				`function App({ kind }: { kind: string }) {
-					switch (kind) {
-						case 'skip':
-							break;
-						case 'a':
-							return <><span>{'A'}</span></>;
+				`function App({ kind }: { kind: string }) @{
+					@switch (kind) {
+						@case 'skip': {
+							<em>{'rest'}</em>
+						}
+						@case 'a': {
+							<span>{'A'}</span>
+						}
+						@default: {
+							<em>{'rest'}</em>
+						}
 					}
-					return <><em>{'rest'}</em></>;
 				}`,
 				'App.tsrx',
 			);
-			const rest_static = code.match(/const (App__static\d+) = <em>\{'rest'\}<\/em>;/)?.[1];
 
-			expect(rest_static).toBeTruthy();
-			expect(code).toContain(`fallback={${rest_static}}`);
-			expect(code).toContain(`<Match when={kind === 'skip'}>{${rest_static}}</Match>`);
+			expect(code).toContain("<Match when={kind === 'skip'}><em>{'rest'}</em></Match>");
+			expect(code).toContain("<Match when={kind === 'a'}><span>{'A'}</span></Match>");
+			expect(code).toContain("fallback={<em>{'rest'}</em>}");
+			expect(code).not.toContain('StatementBodyHook');
 			expect(code).not.toContain("<Match when={kind === 'skip'}>{null}</Match>");
 		});
 
 		it('component-body switch with final return lowers non-returning cases', () => {
 			const { code } = compile(
-				`function App({ kind }: { kind: string }) {
-					switch (kind) {
-						case 'a':
+				`function App({ kind }: { kind: string }) @{
+					@switch (kind) {
+						@case 'a': {
 							<span>{'A'}</span>
-							break;
+						}
+						@default: {
+							<em>{'rest'}</em>
+						}
 					}
-					return <><em>{'rest'}</em></>;
 				}`,
 				'App.tsrx',
 			);
@@ -515,9 +534,9 @@ describe('@tsrx/solid basic', () => {
 
 		it('component-body for-of returns lower to reactive <For>', () => {
 			const { code } = compile(
-				`function App({ items }: { items: string[] }) {
-					for (const item of items) {
-						return <><div>{item}</div></>;
+				`function App({ items }: { items: string[] }) @{
+					@for (const item of items) {
+						<div>{item}</div>
 					}
 				}`,
 				'App.tsrx',
@@ -530,9 +549,9 @@ describe('@tsrx/solid basic', () => {
 
 		it('component-body for-of preserves index and key while lowering', () => {
 			const { code } = compile(
-				`function App({ items }: { items: { id: string; name: string }[] }) {
-					for (const item of items; index i; key item.id) {
-						return <><div>{i() + item.name}</div></>;
+				`function App({ items }: { items: { id: string; name: string }[] }) @{
+					@for (const item of items; index i; key item.id) {
+						<div>{i() + item.name}</div>
 					}
 				}`,
 				'App.tsrx',
@@ -545,14 +564,14 @@ describe('@tsrx/solid basic', () => {
 
 		it('component-body try/pending/catch returns lower to reactive boundaries', () => {
 			const { code } = compile(
-				`function App() {
-					try {
-						return <><div>{'ready'}</div></>;
-					} pending {
-						return <><div>{'loading'}</div></>;
-					} catch (err) {
-						return <><div>{'error'}</div></>;
-					}
+				`function App() @{
+						@try {
+							<div>{'ready'}</div>
+						} @pending {
+							<div>{'loading'}</div>
+						} @catch (err) {
+							<div>{'error'}</div>
+						}
 				}`,
 				'App.tsrx',
 			);
@@ -567,14 +586,14 @@ describe('@tsrx/solid basic', () => {
 			const { code } = compile(
 				`function App(
 					{ setup, recover }: { setup: () => void; recover: (err: unknown) => void }
-				) {
-					try {
-						setup();
-					} pending {
-						return <><div>{'loading'}</div></>;
-					} catch (err) {
-						recover(err);
-					}
+				) @{
+						@try {
+							setup();
+						} @pending {
+							<div>{'loading'}</div>
+						} @catch (err) {
+							recover(err);
+						}
 				}`,
 				'App.tsrx',
 			);
@@ -587,20 +606,66 @@ describe('@tsrx/solid basic', () => {
 			expect(code).not.toContain('try {');
 		});
 
-		it('rejects return statements inside TSRX templates', () => {
+		it('component-body try/pending/catch direct returns lower to reactive boundaries', () => {
+			const { code } = compile(
+				`function App() {
+					return @try {
+						<div>{'ready'}</div>
+					} @pending {
+						<div>{'loading'}</div>
+					} @catch (err) {
+						<div>{'error'}</div>
+					};
+				}`,
+				'App.tsrx',
+			);
+
+			expect(code).toContain('<Errored');
+			expect(code).toContain('<Loading fallback=');
+			expect(code).toMatch(/import \{[^}]*Errored[^}]*Loading[^}]*\} from 'solid-js'/);
+			expect(code).not.toContain('try {');
+		});
+
+		it('component-body try lowers when only pending direct returns render output', () => {
+			const { code } = compile(
+				`function App(
+					{ setup, recover }: { setup: () => void; recover: (err: unknown) => void }
+				) {
+					return @try {
+						setup();
+					} @pending {
+						<div>{'loading'}</div>
+					} @catch (err) {
+						recover(err);
+					};
+				}`,
+				'App.tsrx',
+			);
+
+			expect(code).toContain('<Errored');
+			expect(code).toContain('<Loading fallback=');
+			expect(code).toContain('setup();');
+			expect(code).toContain('recover(err);');
+			expect(code).toMatch(/import \{[^}]*Errored[^}]*Loading[^}]*\} from 'solid-js'/);
+			expect(code).not.toContain('try {');
+		});
+
+		it('rejects return statements inside template @if branches', () => {
 			expect(() =>
 				compile(
-					`export default function A() { return <>
+					`export default function A() @{
 						let early = true;
-						<>"Hello"</>
-						if (early) {
-							return
-						}
-						<>"World"</>
-					</>; }`,
+						<>
+							<>Hello</>
+							@if (early) {
+								return;
+							}
+							<>World</>
+						</>
+					}`,
 					'A.tsrx',
 				),
-			).toThrow('Return statements are not allowed inside TSRX templates.');
+			).toThrow(/Return statements are not allowed inside TSRX template @if blocks/);
 		});
 	});
 
@@ -610,16 +675,19 @@ describe('@tsrx/solid basic', () => {
 		// Solid-local because it covers Solid's `canHoistStaticNode` veto on
 		// bare component invocations — a Solid-specific optimization decision
 		// that doesn't apply to React's `App__static` hoisting policy.
-		const switch_source = `export function App({ status }: { status: string }) { return <>
-			switch (status) {
-				case "idle":
+		const switch_source = `export function App({ status }: { status: string }) @{
+			@switch (status) {
+				@case "idle": {
 					<span>{'Online'}</span>
-				case "active":
+				}
+				@case "active": {
 					<span>{'Away'}</span>
-				case "offline":
+				}
+				@case "offline": {
 					<span>{'Offline'}</span>
+				}
 			}
-		</>; }`;
+		}`;
 
 		it('does not hoist bare helper-component references into App__static aliases', () => {
 			// `<App__StatementBodyHook2 />` is just a component invocation; on
@@ -633,35 +701,34 @@ describe('@tsrx/solid basic', () => {
 			// `App__static<N>` declarations should NOT alias a bare
 			// StatementBodyHook reference.
 			expect(code).not.toMatch(/const App__static\d+\s*=\s*<App__StatementBodyHook\d+\s*\/>/);
-			// But truly-static `<span>` content still gets hoisted as
-			// `App__static<N>` — the React-style optimization survives for
-			// content where it actually helps.
-			expect(code).toMatch(/const App__static\d+\s*=\s*<span>/);
+			expect(code).toContain('<Match when={status === "active"}><span>{\'Away\'}</span></Match>');
 		});
 	});
 
 	describe('<> fragments', () => {
 		it('<>...</> with multiple children compiles to fragment', () => {
 			const { code } = compile(
-				`function App() { return <>
+				`function App() @{
 					<>
 						<h1>{'a'}</h1>
 						<h2>{'b'}</h2>
 					</>
-				</>; }`,
+				}`,
 				'App.tsrx',
 			);
-			expect(code).toContain('<><h1>');
+			expect(code).toContain("const App__static1 = <h1>{'a'}</h1>;");
+			expect(code).toContain("const App__static2 = <h2>{'b'}</h2>;");
+			expect(code).toContain('return <>{App__static1}{App__static2}</>;');
 		});
 
 		it('rejects namespaced template tags', () => {
 			expect(() =>
 				compile(
-					`function App() { return <>
+					`function App() @{
 						<foo:bar>
 							<h1>a</h1>
 						</foo:bar>
-					</>; }`,
+					}`,
 					'App.tsrx',
 				),
 			).toThrow(/Namespaced elements are not supported/);
@@ -671,12 +738,14 @@ describe('@tsrx/solid basic', () => {
 	describe('scoped CSS', () => {
 		it('emits css and annotates elements with the scope class', () => {
 			const { code, css, cssHash } = compile(
-				`export function App() { return <>
-					<div class="wrapper">{'hi'}</div>
-					<style>
-						.wrapper { color: red; }
-					</style>
-				</>; }`,
+				`export function App() @{
+					<>
+						<div class="wrapper">{'hi'}</div>
+						<style>
+							.wrapper { color: red; }
+						</style>
+					</>
+				}`,
 				'App.tsrx',
 			);
 			expect(css).not.toBe('');
@@ -687,14 +756,13 @@ describe('@tsrx/solid basic', () => {
 
 		it('supports style expressions for scoped class maps', () => {
 			const { code } = compile(
-				`export function App() {
+				`export function App() @{
 					const styles = <style>
 						.root { color: blue; }
 					</style>;
 
-					return <>
 					<div class={styles.root}>{'hi'}</div>
-				</>; }`,
+				}`,
 				'App.tsrx',
 			);
 			expect(code).toContain('styles.root');
@@ -706,10 +774,10 @@ describe('@tsrx/solid basic', () => {
 		it('let [a, b] = createSignal uses regular destructuring', () => {
 			const { code } = compile(
 				`import { createSignal } from 'solid-js';
-				export function App() { return <>
+				export function App() @{
 					let [count, setCount] = createSignal(0);
 					<button onClick={() => setCount(count + 1)}>{count}</button>
-				</>; }`,
+				}`,
 				'App.tsrx',
 			);
 			expect(code).toContain('let [count, setCount] = createSignal(0)');
@@ -739,12 +807,12 @@ describe('@tsrx/solid basic', () => {
 
 		it('transforms lazy params in nested functions inside components', () => {
 			const { code } = compile(
-				`export function App(&{ outer }: { outer: string }) { return <>
+				`export function App(&{ outer }: { outer: string }) @{
 					function greet(&{ name }: { name: string }) {
 						return 'hi ' + name + ' from ' + outer;
 					}
 					<div>{greet}</div>
-				</>; }`,
+				}`,
 				'App.tsrx',
 			);
 			expect(code).toContain('function App(__lazy0: { outer: string })');
@@ -755,10 +823,10 @@ describe('@tsrx/solid basic', () => {
 		it('statement-level [a, b] = createSignal uses regular destructuring', () => {
 			const { code } = compile(
 				`import { createSignal } from 'solid-js';
-				export function App() { return <>
+				export function App() @{
 					const [count, setCount] = createSignal(0);
 					<button onClick={() => setCount(count + 1)}>{count}</button>
-				</>; }`,
+				}`,
 				'App.tsrx',
 			);
 			expect(code).toContain('const [count, setCount] = createSignal(0)');
@@ -768,9 +836,9 @@ describe('@tsrx/solid basic', () => {
 	describe('Volar mappings', () => {
 		it('returns a mappings result with non-empty content', () => {
 			const result = compile_to_volar_mappings(
-				`export function App() { return <>
+				`export function App() @{
 					<div>{'hello'}</div>
-				</>; }`,
+				}`,
 				'App.tsrx',
 			);
 			expect(result).toBeDefined();
@@ -779,41 +847,33 @@ describe('@tsrx/solid basic', () => {
 		});
 	});
 
-	// Solid-specific: lazy params still need capture ordering around
-	// interleaved JSX and statements. The shared harness covers the same
-	// interleave-capture behavior for `<div>`-wrapped and top-level bodies.
-	describe('interleaved statements and JSX children (Solid-specific)', () => {
-		it('preserves source order for interleaved JSX with lazy params', () => {
+	describe('statement-looking JSX text (Solid-specific)', () => {
+		it('renders a statement-looking line inside the template as literal text', () => {
 			const { code } = compile(
-				`function Card(&{ cond }: { cond: boolean }) { return <>
+				`function Card(&{ cond }: { cond: boolean }) @{
 					var a = "one"
-					<b>{"hello" + a}</b>
-					a = "two"
-					<b>{"hello" + a}</b>
-					<div>{cond ? "done" : "skip"}</div>
-				</>; }`,
+					<>
+						<b>{"hello" + a}</b>
+						a = "two"
+						<b>{"hello" + a}</b>
+						<div>{cond ? "done" : "skip"}</div>
+					</>
+				}`,
 				'Card.tsrx',
 			);
-
-			// Mutations between JSX siblings must still be honored: each JSX child
-			// is captured at its source position so the first <b> sees a = "one".
-			const first_capture = code.indexOf('_tsrx_child_0');
-			const assign_two = code.indexOf('a = "two"');
-			const second_capture = code.indexOf('_tsrx_child_1');
-			expect(first_capture).toBeGreaterThan(-1);
-			expect(assign_two).toBeGreaterThan(first_capture);
-			expect(second_capture).toBeGreaterThan(assign_two);
-			expect(code).toContain('__lazy0.cond');
+			// `a = "two"` is inside the render fragment, so it is template text, not a statement.
+			expect(code).toContain('a = "two"');
+			expect(code).not.toContain('_tsrx_child_');
 		});
 	});
 
 	describe('ref attributes', () => {
 		it('passes a single ref={expr} through as ref={expr} with no array wrapper', () => {
 			const { code } = compile(
-				`function App() { return <>
+				`function App() @{
 					function refA(_node) {}
 					<div ref={refA}>{'hi'}</div>
-				</>; }`,
+				}`,
 				'App.tsrx',
 			);
 
@@ -823,10 +883,10 @@ describe('@tsrx/solid basic', () => {
 
 		it('passes a single TSX-style ref={expr} through as ref={expr} with no array wrapper', () => {
 			const { code } = compile(
-				`function App() { return <>
+				`function App() @{
 					function refA(_node) {}
 					<div ref={refA}>{'hi'}</div>
-				</>; }`,
+				}`,
 				'App.tsrx',
 			);
 
@@ -836,14 +896,14 @@ describe('@tsrx/solid basic', () => {
 
 		it('keeps named ref-like props ordinary while normalizing host spreads', () => {
 			const { code } = compile(
-				`function Child(props) { return <>
+				`function Child(props) @{
 					<input {...props} />
-				</>; }
+				}
 
-				function App() { return <>
+				function App() @{
 					let input;
 					<Child input_ref={input} />
-				</>; }`,
+				}`,
 				'App.tsrx',
 			);
 
@@ -854,14 +914,14 @@ describe('@tsrx/solid basic', () => {
 
 		it('keeps named ref-like props ordinary without host spreads', () => {
 			const { code } = compile(
-				`function Child(props) { return <>
+				`function Child(props) @{
 					<span>{'child'}</span>
-				</>; }
+				}
 
-				function App() { return <>
+				function App() @{
 					let input;
 					<Child input_ref={input} />
-				</>; }`,
+				}`,
 				'App.tsrx',
 			);
 
@@ -872,12 +932,12 @@ describe('@tsrx/solid basic', () => {
 
 		it('normalizes multiple host spreads once while merging one explicit ref', () => {
 			const { code } = compile(
-				`function App() { return <>
+				`function App() @{
 					const first = {};
 					const second = {};
 					function cb(_node) {}
 					<input {...first} {...second} ref={cb} />
-				</>; }`,
+				}`,
 				'App.tsrx',
 			);
 
@@ -898,10 +958,10 @@ describe('@tsrx/solid basic', () => {
 
 		it('keeps named ref-like props as ordinary props on host elements', () => {
 			const { code } = compile(
-				`function App() { return <>
+				`function App() @{
 					let input;
 					<input input_ref={input} />
-				</>; }`,
+				}`,
 				'App.tsrx',
 			);
 
@@ -913,11 +973,11 @@ describe('@tsrx/solid basic', () => {
 		it('rejects multiple ref={expr} attributes on the same element', () => {
 			expect(() =>
 				compile(
-					`function App() { return <>
+					`function App() @{
 						function refA(_node) {}
 						function refB(_node) {}
 						<div ref={refA} ref={refB}>{'hi'}</div>
-					</>; }`,
+					}`,
 					'App.tsrx',
 				),
 			).toThrow(/multiple `ref=\{\.\.\.\}` attributes/);
@@ -925,12 +985,12 @@ describe('@tsrx/solid basic', () => {
 
 		it('passes Solid-native ref arrays through', () => {
 			const { code } = compile(
-				`function App() { return <>
+				`function App() @{
 					function refA(_node) {}
 					function refB(_node) {}
 					function refC(_node) {}
 					<div ref={[refA, refB, refC]}>{'hi'}</div>
-				</>; }`,
+				}`,
 				'App.tsrx',
 			);
 
@@ -939,12 +999,12 @@ describe('@tsrx/solid basic', () => {
 
 		it('passes Solid-native ref arrays through with existing JSX syntax', () => {
 			const { code } = compile(
-				`function App() { return <>
+				`function App() @{
 					function refA(_node) {}
 					function refB(_node) {}
 					function refC(_node) {}
 					<div ref={[refA, refB, refC]}>{'hi'}</div>
-				</>; }`,
+				}`,
 				'App.tsrx',
 			);
 

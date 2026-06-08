@@ -3,21 +3,22 @@ import { compile } from '@tsrx/ripple';
 describe('CSS :global with @media and @supports', () => {
 	it('handles :global inside @media queries', () => {
 		const source = `
-export function Test() { return <>
-	<div>{'content'}</div>
+export function Test() @{
+	<>
+		<div>{'content'}</div>
+		<style>
+			@media (min-width: 768px) {
+				:global(div) {
+					color: red;
+				}
 
-	<style>
-		@media (min-width: 768px) {
-			:global(div) {
-				color: red;
+				div :global(span) {
+					color: blue;
+				}
 			}
-
-			div :global(span) {
-				color: blue;
-			}
-		}
-	</style>
-</>; }`;
+		</style>
+	</>
+}`;
 		const { css } = compile(source, 'test.tsrx');
 
 		expect(css).toContain('@media (min-width: 768px) {');
@@ -27,21 +28,22 @@ export function Test() { return <>
 
 	it('handles :global inside @supports queries', () => {
 		const source = `
-export function Test() { return <>
-	<div>{'content'}</div>
+export function Test() @{
+	<>
+		<div>{'content'}</div>
+		<style>
+			@supports (display: grid) {
+				:global(.container) {
+					display: grid;
+				}
 
-	<style>
-		@supports (display: grid) {
-			:global(.container) {
-				display: grid;
+				div :global(.item) {
+					grid-column: 1;
+				}
 			}
-
-			div :global(.item) {
-				grid-column: 1;
-			}
-		}
-	</style>
-</>; }`;
+		</style>
+	</>
+}`;
 		const { css } = compile(source, 'test.tsrx');
 
 		expect(css).toContain('@supports (display: grid) {');
@@ -51,25 +53,26 @@ export function Test() { return <>
 
 	it('handles nested @media with :global', () => {
 		const source = `
-export function Test() { return <>
-	<div>{'content'}</div>
+export function Test() @{
+	<>
+		<div>{'content'}</div>
+		<style>
+			div {
+				color: black;
 
-	<style>
-		div {
-			color: black;
-
-			@media (min-width: 768px) {
-				:global {
-					.foo {
-						color: red;
+				@media (min-width: 768px) {
+					:global {
+						.foo {
+							color: red;
+						}
 					}
-				}
 
-				color: blue;
+					color: blue;
+				}
 			}
-		}
-	</style>
-</>; }`;
+		</style>
+	</>
+}`;
 		const { css } = compile(source, 'test.tsrx');
 
 		expect(css).toContain('@media (min-width: 768px) {');
@@ -80,17 +83,18 @@ export function Test() { return <>
 
 	it('handles :global in @container queries', () => {
 		const source = `
-export function Test() { return <>
-	<div>{'content'}</div>
-
-	<style>
-		@container (min-width: 400px) {
-			:global(div) {
-				color: red;
+export function Test() @{
+	<>
+		<div>{'content'}</div>
+		<style>
+			@container (min-width: 400px) {
+				:global(div) {
+					color: red;
+				}
 			}
-		}
-	</style>
-</>; }`;
+		</style>
+	</>
+}`;
 		const { css } = compile(source, 'test.tsrx');
 
 		expect(css).toContain('@container (min-width: 400px) {');
@@ -99,23 +103,24 @@ export function Test() { return <>
 
 	it('handles multiple at-rules with :global', () => {
 		const source = `
-export function Test() { return <>
-	<div>{'content'}</div>
+export function Test() @{
+	<>
+		<div>{'content'}</div>
+		<style>
+			@media screen {
+				@supports (display: flex) {
+					:global(.flex-container) {
+						display: flex;
+					}
 
-	<style>
-		@media screen {
-			@supports (display: flex) {
-				:global(.flex-container) {
-					display: flex;
-				}
-
-				div :global(.flex-item) {
-					flex: 1;
+					div :global(.flex-item) {
+						flex: 1;
+					}
 				}
 			}
-		}
-	</style>
-</>; }`;
+		</style>
+	</>
+}`;
 		const { css } = compile(source, 'test.tsrx');
 
 		expect(css).toContain('@media screen {');

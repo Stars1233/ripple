@@ -22,7 +22,7 @@ entries, and to functions that return native TSRX without being directly called.
 
 Ripple's component lifecycle is akin to Vue/Svelte/Solid. The root scope of your
 component only runs once, akin to the "setup" scope in Vue/Svelte/Solid. However,
-all child scopes such as nested template scopes, and blocks like `if` and `for`,
+all child scopes such as statement containers, and blocks like `@if` and `@for`,
 may rerun if they contain reactive variables within them. Therefore, it is
 advisable to only write pure code within your components, and place side-effects
 within `effect()` to ensure they only run when intended.
@@ -34,27 +34,27 @@ write HTML. By default, Ripple will make the content available as the `children`
 prop, which you can then render using `{props.children}` (or simply `{children}`
 if you destructured your props).
 
-```ripple
+```tsrx
 import type { Children } from 'ripple';
 
 function Card(props: { children: Children }) {
   return <div class="card">{props.children}</div>
 }
 
-export function App() {
-  return <>
+export function App() @{
+  function children() {
+    return <p>Card content here</p>
+  }
+
+  <>
     // Use implicitly...
     <Card>
-      <p>"Card content here"</p>
+      <p>Card content here</p>
     </Card>
 
     // or pass children explicitly as a prop.
-    function children() {
-      return <p>"Card content here"</p>
-    }
-
     <Card {children} />
-  </>;
+  </>
 }
 ```
 
@@ -76,7 +76,7 @@ Define components in scope and pass them as explicit props:
 
 <Code>
 
-```ripple
+```tsrx
 import type { Component } from 'ripple';
 
 function Composite({ PropComp }: { PropComp: Component }) {
@@ -84,7 +84,7 @@ function Composite({ PropComp }: { PropComp: Component }) {
 }
 
 function Separate() {
-  return <p>"I'm a separate component."</p>
+  return <p>I'm a separate component.</p>
 }
 
 export function App() {
@@ -101,7 +101,7 @@ props" from React, and "snippets" from Svelte.
 
 <Code>
 
-```ripple
+```tsrx
 import type { Children, Component } from 'ripple';
 
 function Card({
@@ -114,32 +114,36 @@ function Card({
   Footer?: Component;
 }) {
   return <fieldset>
-    if (Header) {
-      <Header />
-      <hr />
+    @if (Header) {
+      <>
+        <Header />
+        <hr />
+      </>
     }
     {children}
-    if (Footer) {
-      <hr />
-      <Footer />
+    @if (Footer) {
+      <>
+        <hr />
+        <Footer />
+      </>
     }
   </fieldset>;
 }
 
 function CustomHeader() {
-  return <h1>"Card Title"</h1>
+  return <h1>Card Title</h1>
 }
 
 function CustomFooter() {
   return <>
-    <button>"Cancel"</button>
-    <button>"OK"</button>
+    <button>Cancel</button>
+    <button>OK</button>
   </>;
 }
 
 export function App() {
   return <Card Header={CustomHeader} Footer={CustomFooter}>
-    <p>"Card content here"</p>
+    <p>Card content here</p>
   </Card>;
 }
 ```
@@ -159,7 +163,7 @@ Components declared inside a composite component element can be passed as props 
 
 <Code>
 
-```ripple
+```tsrx
 import type { Component } from 'ripple';
 
 function Inner({ Greeting }: { Greeting: Component }) {
@@ -170,15 +174,15 @@ function Outer({ children }: { children: Children }) {
   return <div class="outer">{children}</div>
 }
 
-export function App() {
-  return <Outer>
+export function App() @{
+  <Outer>@{
     function HelloGreeting() {
-      return <p>"Hello from inside!"</p>
+      return <p>Hello from inside!</p>
     }
 
     // It can be passed as a prop to <Inner>, which is also in this scope
     <Inner Greeting={HelloGreeting} />
-  </Outer>;
+  }</Outer>
 }
 ```
 
@@ -189,7 +193,7 @@ export function App() {
 A component declared inside a composite element's children is **not visible** to
 the parent component itself — it only exists in the child scope:
 
-```ripple
+```tsrx
 import type { Component } from 'ripple';
 
 function Outer({ Footer }: { Footer: Component }) {
@@ -197,23 +201,17 @@ function Outer({ Footer }: { Footer: Component }) {
   return <div class="outer"><Footer /></div>
 }
 
-export function App() {
-  return <>
-    // ❌ WRONG — Footer is declared inside Outer's children,
-    // but Outer cannot see it. Footer is not in scope for the
-    // <Outer> component call.
-    <Outer {Footer}>
-      function Footer() {
-        return <button>"OK"</button>
-      }
-    </Outer>
-
+export function App() @{
+  // ❌ WRONG — Footer is declared inside Outer's children,
+  // but Outer cannot see it. Footer is not in scope for the
+  // <Outer> component call.
+  <Outer {Footer}>@{
     function Footer() {
-      return <button>"OK"</button>
+      return <button>OK</button>
     }
 
-    <Outer {Footer} />
-  </>;
+    <p>Child content</p>
+  }</Outer>
 }
 ```
 
@@ -223,15 +221,15 @@ See [Reactivity](/docs/guide/reactivity#Props-and-Attributes).
 
 ## Prop Shorthands
 
-```ripple
+```tsrx
 // Object spread
-<div {...properties}>"Content"</div>
+<div {...properties}>Content</div>
 
 // Shorthand props (when variable name matches prop name)
-<div {onClick} {id}>"Content"</div>
+<div {onClick} {id}>Content</div>
 
 // Equivalent to:
-<div onClick={onClick} id={id}>"Content"</div>
+<div onClick={onClick} id={id}>Content</div>
 ```
 
 ## Portal Component
@@ -240,17 +238,17 @@ The `Portal` component allows you to render (teleport) content anywhere in the D
 tree, breaking out of the normal component hierarchy. This is particularly useful
 for modals, tooltips, and notifications.
 
-```ripple
+```tsrx
 import { Portal } from 'ripple';
 
 export function App() {
   return <div class="app">
-    <h1>"My App"</h1>
+    <h1>My App</h1>
     {/* This will render inside document.body, not inside the .app div */}
     <Portal target={document.body}>
       <div class="modal">
-        <h2>"I am rendered in document.body!"</h2>
-        <p>"This content escapes the normal component tree."</p>
+        <h2>I am rendered in document.body!</h2>
+        <p>This content escapes the normal component tree.</p>
       </div>
     </Portal>
   </div>;

@@ -10,17 +10,16 @@ import { did_error } from '../capture-error.js';
 
 describe('basic client > components & composition', () => {
 	it('renders with component composition and children', () => {
-		function Card(props: PropsWithChildren<{}>) {
-			return <><div class="card">{props.children}</div></>;
+		function Card(props: PropsWithChildren<{}>) @{
+			<div class="card">{props.children}</div>
 		}
 
-		function Basic() {
-			return <>
-				function children() {
-					return <><p>{'Card content here'}</p></>;
-				}
-				<Card {children} />
-			</>;
+		function children() @{
+			<p>{'Card content here'}</p>
+		}
+
+		function Basic() @{
+			<Card {children} />
 		}
 
 		render(Basic);
@@ -33,23 +32,21 @@ describe('basic client > components & composition', () => {
 	});
 
 	it('does not render a falsy component call', () => {
-		function Card(props: PropsWithChildrenOptional<{ test?: Component }>) {
-			return <>
-				<div class="card">
-					if (props.children) {
+		function Card(props: PropsWithChildrenOptional<{ test?: Component }>) @{
+			<div class="card">
+				@if (props.children) {
+					<>
 						{props.children}
-					}
-				</div>
-			</>;
+					</>
+				}
+			</div>
 		}
 
-		function Basic() {
-			return <>
-				function test() {
-					return <><p>{'Card content here'}</p></>;
-				}
-				<Card {test} />
-			</>;
+		function Basic() @{
+			function test() @{
+				<p>{'Card content here'}</p>
+			}
+			<Card {test} />
 		}
 
 		render(Basic);
@@ -62,25 +59,28 @@ describe('basic client > components & composition', () => {
 	});
 
 	it('allows tracked variables alongside explicit component props', () => {
-		function Card(props: PropsWithChildrenOptional<{ test?: Component }>) {
-			return <>
-				<div class="card">
-					if (props.children) {
+		function Card(props: PropsWithChildrenOptional<{ test?: Component }>) @{
+			<div class="card">
+				@if (props.children) {
+					<>
 						{props.children}
-					}
-				</div>
-			</>;
+					</>
+				}
+			</div>
 		}
 
-		function Basic() {
-			return <>
-				let &[test] = track(false);
-				function TestSlot() {
-					return <><p>{'Card content here'}</p></>;
-				}
+		function TestSlot() @{
+			<p>{'Card content here'}</p>
+		}
+
+		function Basic() @{
+			let &[test] = track(false);
+			<>
 				<Card test={TestSlot} />
-				<div>{test ? 'yes' : 'no'}</div>
-			</>;
+				<div>
+					{test ? 'yes' : 'no'}
+				</div>
+			</>
 		}
 
 		render(Basic);
@@ -94,17 +94,16 @@ describe('basic client > components & composition', () => {
 	});
 
 	it('renders a component when children is set a component prop', () => {
-		function Card(props: PropsWithChildren<{}>) {
-			return <><div class="card">{props.children}</div></>;
+		function Card(props: PropsWithChildren<{}>) @{
+			<div class="card">{props.children}</div>
 		}
 
-		function Basic() {
-			return <>
-				function children() {
-					return <><p>{'Card content here'}</p></>;
-				}
-				<Card {children} />
-			</>;
+		function children() @{
+			<p>{'Card content here'}</p>
+		}
+
+		function Basic() @{
+			<Card {children} />
 		}
 
 		render(Basic);
@@ -117,12 +116,14 @@ describe('basic client > components & composition', () => {
 	});
 
 	it('renders direct component function calls as values', () => {
-		function Test({ label }: { label: string }) {
-			return <><span>{label}</span></>;
+		function Test({ label }: { label: string }) @{
+			<span>{label}</span>
 		}
 
-		function App() {
-			return <>{Test({ label: 'direct call' })}</>;
+		function App() @{
+			<>
+				{Test({ label: 'direct call' })}
+			</>
 		}
 
 		render(App);
@@ -136,8 +137,8 @@ describe('basic client > components & composition', () => {
 			return [item, 'B', null, undefined];
 		}
 
-		function App() {
-			return <><Test /></>;
+		function App() @{
+			<Test />
 		}
 
 		render(App);
@@ -146,13 +147,13 @@ describe('basic client > components & composition', () => {
 	});
 
 	it('throws when a TSRXElement value is used as a component type', () => {
-		function Test() {
-			return <><span>{'value'}</span></>;
+		function Test() @{
+			<span>{'value'}</span>
 		}
 
-		function App() {
+		function App() @{
 			const El = Test({});
-			return <><El /></>;
+			<El />
 		}
 
 		expect(() => render(App)).toThrow('Invalid component type');
@@ -163,8 +164,8 @@ describe('basic client > components & composition', () => {
 			return 'plain';
 		}
 
-		function App() {
-			return <><Func /></>;
+		function App() @{
+			<Func />
 		}
 
 		render(App);
@@ -173,12 +174,12 @@ describe('basic client > components & composition', () => {
 	});
 
 	it('allows a compat-only function as a component type', () => {
-		function CompatOnly() {
-			return <><div>{'compat'}</div></>;
+		function CompatOnly() @{
+			<div>{'compat'}</div>
 		}
 
-		function App() {
-			return <><CompatOnly /></>;
+		function App() @{
+			<CompatOnly />
 		}
 
 		render(App);
@@ -191,8 +192,8 @@ describe('basic client > components & composition', () => {
 			variant: string;
 			label: string;
 			onClick: EventListener;
-		}>) {
-			return <><button class={props.variant} onClick={props.onClick}>{props.label}</button></>;
+		}>) @{
+			<button class={props.variant} onClick={props.onClick}>{props.label}</button>
 		}
 
 		function Card(props: PropsWithExtras<{
@@ -200,27 +201,27 @@ describe('basic client > components & composition', () => {
 			content: string;
 			buttonText: string;
 			onAction: EventListener;
-		}>) {
-			return <>
-				<div class="card">
-					<h3>{props.title}</h3>
-					<p>{props.content}</p>
-					<Button variant="primary" label={props.buttonText} onClick={props.onAction} />
-				</div>
-			</>;
+		}>) @{
+			<div class="card">
+				<h3>{props.title}</h3>
+				<p>{props.content}</p>
+				<Button variant="primary" label={props.buttonText} onClick={props.onAction} />
+			</div>
 		}
 
-		function Basic() {
-			return <>
-				let &[clicked] = track(false);
+		function Basic() @{
+			let &[clicked] = track(false);
+			<>
 				<Card
 					title="Test Card"
 					content="This is a test card"
 					buttonText="Click me"
 					onAction={() => (clicked = true)}
 				/>
-				<div class="status">{clicked ? 'Clicked' : 'Not clicked'}</div>
-			</>;
+				<div class="status">
+					{clicked ? 'Clicked' : 'Not clicked'}
+				</div>
+			</>
 		}
 
 		render(Basic);
@@ -247,27 +248,25 @@ describe('basic client > components & composition', () => {
 		function ChildComponent(props: PropsWithExtras<{
 			text: Tracked<string>;
 			count: Tracked<number>;
-		}>) {
-			return <>
+		}>) @{
+			<>
 				<div class="child-content">{props.text.value}</div>
 				<div class="child-count">{props.count.value}</div>
-			</>;
+			</>
 		}
 
-		function Basic() {
-			return <>
-				let &[message, messageTracked] = track('Hello');
-				let &[number, numberTracked] = track(1);
+		function Basic() @{
+			let &[message, messageTracked] = track('Hello');
+			let &[number, numberTracked] = track(1);
+			<>
 				<ChildComponent text={messageTracked} count={numberTracked} />
 				<button
 					onClick={() => {
 						message = message === 'Hello' ? 'Goodbye' : 'Hello';
 						number++;
 					}}
-				>
-					{'Update Props'}
-				</button>
-			</>;
+				>{'Update Props'}</button>
+			</>
 		}
 
 		render(Basic);
@@ -293,16 +292,16 @@ describe('basic client > components & composition', () => {
 	});
 
 	it('updates explicit text children props reactively', () => {
-		function TextProp(&{ children }: PropsWithChildren<{}>) {
-			return <><div class="text-prop">{children}</div></>;
+		function TextProp(&{ children }: PropsWithChildren<{}>) @{
+			<div class="text-prop">{children}</div>
 		}
 
-		function Basic() {
-			return <>
-				let &[show] = track(false);
+		function Basic() @{
+			let &[show] = track(false);
+			<>
 				<TextProp children={show ? 'hello' : ''} />
 				<button class="show-text" onClick={() => (show = true)}>{'Show'}</button>
-			</>;
+			</>
 		}
 
 		render(Basic);
@@ -316,7 +315,7 @@ describe('basic client > components & composition', () => {
 	});
 
 	it('it retains this context with bracketed prop functions and keeps original chaining', () => {
-		function App() {
+		function App() @{
 			const SYMBOL_PROP = Symbol();
 			let &[hasError] = track(false);
 			const obj: {
@@ -365,7 +364,7 @@ describe('basic client > components & composition', () => {
 				});
 			}
 
-			return <>
+			<>
 				<button onClick={() => obj['increment']()}>{'Increment'}</button>
 				<button onClick={() => obj[SYMBOL_PROP]()}>{'Increment'}</button>
 				<button onClick={trigger_nonexistent}>{'Nonexistent'}</button>
@@ -375,7 +374,7 @@ describe('basic client > components & composition', () => {
 				<button onClick={() => obj.arr[obj.arr.length - 1]()}>{'BinaryExpression prop'}</button>
 				<span>{obj.count.value}</span>
 				<span>{hasError}</span>
-			</>;
+			</>
 		}
 
 		render(App);
@@ -426,16 +425,16 @@ describe('basic client > components & composition', () => {
 	});
 
 	it('renders components as named and anonymous properties', () => {
-		function Span() {
-			return <><span>{'Hello from Span'}</span></>;
+		function Span() @{
+			<span>{'Hello from Span'}</span>
 		}
 
-		function Button({ children }: PropsWithChildren<{}>) {
-			return <><button>{children}</button></>;
+		function Button({ children }: PropsWithChildren<{}>) @{
+			<button>{children}</button>
 		}
 
-		function ArrowButton({ children }: PropsWithChildren<{}>) {
-			return <><button class="arrow-button">{children}</button></>;
+		function ArrowButton({ children }: PropsWithChildren<{}>) @{
+			<button class="arrow-button">{children}</button>
 		}
 
 		const UI = {
@@ -444,18 +443,17 @@ describe('basic client > components & composition', () => {
 			arrowButton: ArrowButton,
 		};
 
-		function App() {
-			return <>
-				function children() {
-					return <><span>{'Click me!'}</span></>;
-				}
-				<div>
-					<h1>{'Component as Property Test'}</h1>
-					<UI.span />
-					<UI.button {children} />
-					<UI.arrowButton {children} />
-				</div>
-			</>;
+		function children() @{
+			<span>{'Click me!'}</span>
+		}
+
+		function App() @{
+			<div>
+				<h1>{'Component as Property Test'}</h1>
+				<UI.span />
+				<UI.button {children} />
+				<UI.arrowButton {children} />
+			</div>
 		}
 
 		render(App);
@@ -474,16 +472,18 @@ describe('basic client > components & composition', () => {
 	});
 
 	it('handles empty string children', () => {
-		function Button({ children }: PropsWithChildren<{}>) {
-			return <>{children}</>;
+		function Button({ children }: PropsWithChildren<{}>) @{
+			<>
+				{children}
+			</>
 		}
 
-		function App() {
-			return <>
-				let content = '';
+		function App() @{
+			let content = '';
+			<>
 				<Button>{''}</Button>
 				<Button>{content}</Button>
-			</>;
+			</>
 		}
 
 		expect(() => {
@@ -492,20 +492,20 @@ describe('basic client > components & composition', () => {
 	});
 
 	it('handles component without any output', () => {
-		function Noop() {
-			return <></>;
+		function Noop() @{
+			<></>
 		}
 
-		function Op() {
-			return <><div>{'Some HTML content'}</div></>;
+		function Op() @{
+			<div>{'Some HTML content'}</div>
 		}
 
-		function App() {
-			return <>
-				let &[Content] = track(() => Noop);
+		function App() @{
+			let &[Content] = track(() => Noop);
+			<>
 				<@Content />
 				<button onClick={() => (Content = Op)}>{'Show Op'}</button>
-			</>;
+			</>
 		}
 
 		render(App);
@@ -518,12 +518,12 @@ describe('basic client > components & composition', () => {
 	});
 
 	it('renders explicit children prop without spread', () => {
-		function Card(props: PropsWithChildren<{}>) {
-			return <><div class="card">{props.children}</div></>;
+		function Card(props: PropsWithChildren<{}>) @{
+			<div class="card">{props.children}</div>
 		}
 
-		function App() {
-			return <><Card children="fallback text" /></>;
+		function App() @{
+			<Card children="fallback text" />
 		}
 
 		render(App);
@@ -531,15 +531,13 @@ describe('basic client > components & composition', () => {
 	});
 
 	it('renders explicit children before spread', () => {
-		function Card(props: PropsWithChildren<{ id: string }>) {
-			return <><div class="card">{props.children}</div></>;
+		function Card(props: PropsWithChildren<{ id: string }>) @{
+			<div class="card">{props.children}</div>
 		}
 
-		function App() {
-			return <>
-				const extra = { id: '1' };
-				<Card children="fallback text" {...extra} />
-			</>;
+		function App() @{
+			const extra = { id: '1' };
+			<Card children="fallback text" {...extra} />
 		}
 
 		render(App);
@@ -547,15 +545,13 @@ describe('basic client > components & composition', () => {
 	});
 
 	it('renders spread before explicit children', () => {
-		function Card(props: PropsWithChildren<{ id: string }>) {
-			return <><div class="card">{props.children}</div></>;
+		function Card(props: PropsWithChildren<{ id: string }>) @{
+			<div class="card">{props.children}</div>
 		}
 
-		function App() {
-			return <>
-				const extra = { id: '1' };
-				<Card {...extra} children="fallback text" />
-			</>;
+		function App() @{
+			const extra = { id: '1' };
+			<Card {...extra} children="fallback text" />
 		}
 
 		render(App);
@@ -563,17 +559,15 @@ describe('basic client > components & composition', () => {
 	});
 
 	it('template children override explicit children before spread', () => {
-		function Card(props: PropsWithChildren<{ id: string }>) {
-			return <><div class="card">{props.children}</div></>;
+		function Card(props: PropsWithChildren<{ id: string }>) @{
+			<div class="card">{props.children}</div>
 		}
 
-		function App() {
-			return <>
-				const extra = { id: '1' };
-				<Card children="fallback text" {...extra}>
-					<span>{'template content'}</span>
-				</Card>
-			</>;
+		function App() @{
+			const extra = { id: '1' };
+			<Card children="fallback text" {...extra}>
+				<span>{'template content'}</span>
+			</Card>
 		}
 
 		render(App);
@@ -582,17 +576,15 @@ describe('basic client > components & composition', () => {
 	});
 
 	it('template children override explicit children after spread', () => {
-		function Card(props: PropsWithChildren<{ id: string }>) {
-			return <><div class="card">{props.children}</div></>;
+		function Card(props: PropsWithChildren<{ id: string }>) @{
+			<div class="card">{props.children}</div>
 		}
 
-		function App() {
-			return <>
-				const extra = { id: '1' };
-				<Card {...extra} children="fallback text">
-					<span>{'template content'}</span>
-				</Card>
-			</>;
+		function App() @{
+			const extra = { id: '1' };
+			<Card {...extra} children="fallback text">
+				<span>{'template content'}</span>
+			</Card>
 		}
 
 		render(App);
@@ -601,19 +593,13 @@ describe('basic client > components & composition', () => {
 	});
 
 	it('spread can override explicit children when no template children', () => {
-		function Card(props: PropsWithChildren<{ id: string }>) {
-			return <><div class="card">{props.children}</div></>;
+		function Card(props: PropsWithChildren<{ id: string }>) @{
+			<div class="card">{props.children}</div>
 		}
 
-		function App() {
-			return <>
-				const extra = { id: '1', children: 'from spread' };
-				<Card
-					// @ts-expect-error children specified more than once
-					children="explicit"
-					{...extra}
-				/>
-			</>;
+		function App() @{
+			const extra = { id: '1', children: 'from spread' };
+			<Card children="explicit" {...extra} />
 		}
 
 		render(App);
@@ -621,15 +607,13 @@ describe('basic client > components & composition', () => {
 	});
 
 	it('explicit children overrides spread children when it comes after', () => {
-		function Card(props: PropsWithChildren<{ id: string }>) {
-			return <><div class="card">{props.children}</div></>;
+		function Card(props: PropsWithChildren<{ id: string }>) @{
+			<div class="card">{props.children}</div>
 		}
 
-		function App() {
-			return <>
-				const extra = { id: '1', children: 'from spread' };
-				<Card {...extra} children="explicit" />
-			</>;
+		function App() @{
+			const extra = { id: '1', children: 'from spread' };
+			<Card {...extra} children="explicit" />
 		}
 
 		render(App);
@@ -637,20 +621,18 @@ describe('basic client > components & composition', () => {
 	});
 
 	it('renders components declared inside composite element children', () => {
-		function Wrapper(props: PropsWithChildren<{}>) {
-			return <><div class="wrapper">{props.children}</div></>;
+		function Wrapper(props: PropsWithChildren<{}>) @{
+			<div class="wrapper">{props.children}</div>
 		}
 
-		function App() {
-			return <>
-				<Wrapper>
-					function Inner() {
-						return <><span class="inner">{'inner content'}</span></>;
-					}
+		function Inner() @{
+			<span class="inner">{'inner content'}</span>
+		}
 
-					<Inner />
-				</Wrapper>
-			</>;
+		function App() @{
+			<Wrapper>
+				<Inner />
+			</Wrapper>
 		}
 
 		render(App);
@@ -658,29 +640,25 @@ describe('basic client > components & composition', () => {
 	});
 
 	it('renders nested components declared inside composite children with prop passing', () => {
-		function Wrapper(props: PropsWithChildren<{}>) {
-			return <><div class="wrapper">{props.children}</div></>;
+		function Wrapper(props: PropsWithChildren<{}>) @{
+			<div class="wrapper">{props.children}</div>
 		}
 
-		function App() {
-			return <>
-				<Wrapper>
-					function Z() {
-						return <><div class="z">{'I am Z'}</div></>;
-					}
+		function Z() @{
+			<div class="z">{'I am Z'}</div>
+		}
 
-					function Child(&{ Z }: { Z: Component }) {
-						return <>
-							<div class="child">
-								{'Child Component: '}
-								<Z />
-							</div>
-						</>;
-					}
+		function Child(&{ Z }: { Z: Component }) @{
+			<div class="child">
+				{'Child Component: '}
+				<Z />
+			</div>
+		}
 
-					<Child {Z} />
-				</Wrapper>
-			</>;
+		function App() @{
+			<Wrapper>
+				<Child {Z} />
+			</Wrapper>
 		}
 
 		render(App);

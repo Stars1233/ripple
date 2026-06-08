@@ -422,6 +422,11 @@ export namespace Parse {
 		tokContexts: AcornTypeScriptTokContexts;
 	}
 
+	export interface AcornTypeScriptFunctionBodyConfig {
+		isFunctionDeclaration?: boolean | number;
+		isClassMethod?: boolean;
+	}
+
 	interface Scope {
 		flags: number;
 		var: string[];
@@ -489,6 +494,8 @@ export namespace Parse {
 		inAsync: boolean;
 		/** Whether we're inside a function */
 		inFunction: boolean;
+		/** Whether @sveltejs/acorn-typescript is currently parsing a TypeScript type */
+		inType: boolean;
 		/** Stack of label names for break/continue statements */
 		labels: Array<{ kind: string | null; name?: string; statementStart?: number }>;
 		/** Current scope flags stack */
@@ -599,6 +606,12 @@ export namespace Parse {
 		 * Main tokenizer dispatch based on first character
 		 */
 		getTokenFromCode(code: number): void;
+
+		/**
+		 * Get token from character code while in a TypeScript type context
+		 * Added by @sveltejs/acorn-typescript
+		 */
+		getTokenFromCodeInType(code: number): void;
 
 		/**
 		 * Get current position as Position object
@@ -1116,6 +1129,16 @@ export namespace Parse {
 
 		tsCheckTypeAnnotationForReadOnly(node: AST.TSTypeOperator): void;
 
+		/**
+		 * Run a parser callback with @sveltejs/acorn-typescript's type-context flag enabled
+		 */
+		tsInType<T>(cb: () => T): T;
+
+		/**
+		 * Parse a TypeScript return type or type predicate annotation
+		 */
+		tsParseTypeOrTypePredicateAnnotation(returnToken: TokenType): AST.TSTypeAnnotation;
+
 		tsParseTypeArguments(): AST.Node;
 
 		tsTryParseTypeAnnotation(): AST.TSTypeAnnotation;
@@ -1172,9 +1195,7 @@ export namespace Parse {
 		 */
 		parseTopLevel(node: AST.Program): AST.Program;
 
-		parseElement(): AST.Element | AST.TsrxFragment;
-
-		parseDoubleQuotedTextChild(): AST.TextNode;
+		parseElement(): ESTreeJSX.JSXElement | ESTreeJSX.JSXFragment | AST.JSXStyleElement;
 
 		parseTemplateBody(
 			body: (AST.Statement | AST.Node | ESTreeJSX.JSXText | ESTreeJSX.JSXElement['children'])[],
@@ -1192,10 +1213,11 @@ export namespace Parse {
 			topLevel?: boolean,
 			exports?: AST.ExportSpecifier,
 		):
-			| AST.TSRXExpression
-			| AST.TextNode
-			| ESTreeJSX.JSXEmptyExpression
 			| ESTreeJSX.JSXExpressionContainer
+			| ESTreeJSX.JSXElement
+			| ESTreeJSX.JSXFragment
+			| AST.JSXStyleElement
+			| ESTreeJSX.JSXText
 			| AST.ExpressionStatement
 			| ReturnType<Parser['parseElement']>
 			| AST.Statement;
@@ -1351,11 +1373,15 @@ export namespace Parse {
 		 * Parse function body
 		 */
 		parseFunctionBody(
-			node: AST.Node,
+			node: AST.FunctionDeclaration | AST.FunctionExpression | AST.ArrowFunctionExpression,
 			isArrowFunction: boolean,
 			isMethod: boolean,
 			forInit?: ForInit,
-		): void;
+			tsConfig?: AcornTypeScriptFunctionBodyConfig,
+		): AST.Node;
+
+		/** Check function parameters for duplicate names and invalid bindings */
+		checkParams(node: AST.Node, allowDuplicates: boolean): void;
 
 		/** Initialize function node properties */
 		initFunction(node: AST.Node): void;
@@ -1627,7 +1653,7 @@ export namespace Parse {
 		 * Parse JSX attribute (name="value" or {spread})
 		 * @returns JSXAttribute or JSXSpreadAttribute
 		 */
-		jsx_parseAttribute(): AST.TSRXAttribute | ESTreeJSX.JSXAttribute | ESTreeJSX.JSXSpreadAttribute;
+		jsx_parseAttribute(): ESTreeJSX.JSXAttribute | ESTreeJSX.JSXSpreadAttribute;
 
 		/**
 		 * Parse JSX opening element at position
@@ -1670,7 +1696,7 @@ export namespace Parse {
 		 * Parse complete JSX element
 		 * @returns JSXElement or JSXFragment
 		 */
-		jsx_parseElement(): ESTreeJSX.JSXElement;
+		jsx_parseElement(): ESTreeJSX.JSXElement | AST.JSXStyleElement;
 
 		// ============================================================
 		// Try-Parse for Recovery

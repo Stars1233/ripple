@@ -90,6 +90,44 @@ export function clone_jsx_name(name, source_node = name) {
 }
 
 /**
+ * Convert a JSX tag name back into a JavaScript expression. Dynamic element
+ * tags are parsed as JSX-shaped names, but the runtime alias needs ordinary JS.
+ *
+ * @param {any} name
+ * @returns {any}
+ */
+export function jsx_name_to_expression(name) {
+	if (!name) return name;
+	if (name.type === 'JSXIdentifier') {
+		return set_loc(
+			/** @type {any} */ ({
+				type: 'Identifier',
+				name: name.name,
+				metadata: name.metadata || { path: [] },
+			}),
+			name,
+		);
+	}
+	if (name.type === 'JSXMemberExpression') {
+		return set_loc(
+			/** @type {any} */ ({
+				type: 'MemberExpression',
+				object: jsx_name_to_expression(name.object),
+				property: jsx_name_to_expression(name.property),
+				computed: false,
+				optional: false,
+				metadata: name.metadata || { path: [] },
+			}),
+			name,
+		);
+	}
+	if (name.type === 'Identifier' || name.type === 'MemberExpression') {
+		return clone_expression_node(name);
+	}
+	return name;
+}
+
+/**
  * @returns {AST.Literal}
  */
 export function create_null_literal() {
@@ -242,10 +280,10 @@ export function is_jsx_child(node) {
 		t === 'JSXFragment' ||
 		t === 'JSXExpressionContainer' ||
 		t === 'JSXText' ||
-		t === 'TsrxFragment' ||
-		t === 'Element' ||
-		t === 'Text' ||
-		t === 'TSRXExpression' ||
+		t === 'JSXIfExpression' ||
+		t === 'JSXForExpression' ||
+		t === 'JSXSwitchExpression' ||
+		t === 'JSXTryExpression' ||
 		t === 'IfStatement' ||
 		t === 'ForOfStatement' ||
 		t === 'SwitchStatement' ||
@@ -315,10 +353,10 @@ export function is_dynamic_element_id(id) {
 	if (!id || typeof id !== 'object') {
 		return false;
 	}
-	if (id.type === 'Identifier') {
+	if (id.type === 'Identifier' || id.type === 'JSXIdentifier') {
 		return !!id.tracked;
 	}
-	if (id.type === 'MemberExpression') {
+	if (id.type === 'MemberExpression' || id.type === 'JSXMemberExpression') {
 		return is_dynamic_element_id(id.object);
 	}
 	return false;
@@ -365,58 +403,6 @@ export function flatten_switch_consequent(consequent) {
 		}
 	}
 	return result;
-}
-
-/**
- * Compute fall-through expansions for each `case` in a `switch`. JavaScript
- * `switch` semantics say that once a case body executes, execution continues
- * into the bodies of subsequent cases until a `break` or terminal `return` is
- * hit. We pre-compute, per case, the flat list of statements that should run
- * when that case is the entry point — so downstream targets (which render each
- * case independently rather than executing fall-through at runtime) still
- * produce the right output.
- *
- * Walking right-to-left lets each case reuse the next case's already-expanded
- * tail without recomputation. Downstream nodes are deep-cloned when absorbed
- * so each case's expanded body owns its own AST subtree.
- *
- * @param {any[]} cases
- * @returns {Array<{ test: any, body: any[], source: any }>}
- */
-export function expand_switch_cases_for_fallthrough(cases) {
-	/** @type {Array<{ test: any, body: any[], source: any }>} */
-	const expanded = new Array(cases.length);
-	for (let i = cases.length - 1; i >= 0; i--) {
-		const consequent = flatten_switch_consequent(cases[i].consequent || []);
-		const body = [];
-		let has_terminal = false;
-		for (const child of consequent) {
-			if (child.type === 'BreakStatement') {
-				has_terminal = true;
-				break;
-			}
-			body.push(child);
-			if (child.type === 'ReturnStatement') {
-				has_terminal = true;
-				break;
-			}
-		}
-		// Strip locations from cloned downstream nodes. Only the original case
-		// (one entry up the chain) keeps `loc`/`start`/`end`; clones inlined
-		// into upstream cases would otherwise point editor IntelliSense at the
-		// same source range multiple times (one hover/go-to-definition per
-		// fall-through entry point), producing double/triple results in Volar.
-		const downstream =
-			!has_terminal && i + 1 < cases.length
-				? expanded[i + 1].body.map((n) => clone_expression_node(n, false))
-				: [];
-		expanded[i] = {
-			test: cases[i].test,
-			body: [...body, ...downstream],
-			source: cases[i],
-		};
-	}
-	return expanded;
 }
 
 /**

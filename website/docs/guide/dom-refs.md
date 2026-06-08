@@ -18,18 +18,19 @@ and cleared when it unmounts.
 
 <Code console>
 
-```ripple
+```tsrx
 import { track } from 'ripple';
 
-export default function App() {
+export default function App() @{
   let div: HTMLDivElement | undefined;
   const input = track<HTMLInputElement | null>(null);
   const state: { button?: HTMLButtonElement } = {};
-  return <>
-    <div ref={div}>"Hello world"</div>
+
+  <>
+    <div ref={div}>Hello world</div>
     <input ref={input} type="text" />
-    <button ref={state.button}>"Save"</button>
-  </>;
+    <button ref={state.button}>Save</button>
+  </>
 }
 ```
 
@@ -42,8 +43,8 @@ function to run when the element is removed.
 
 <Code console>
 
-```ripple
-export function App() {
+```tsrx
+export function App() @{
   function setup(node: HTMLDivElement) {
     console.log('mounted', node);
 
@@ -51,7 +52,8 @@ export function App() {
       console.log('unmounted', node);
     };
   }
-  return <div ref={setup}>"Hello world"</div>
+
+  <div ref={setup}>Hello world</div>
 }
 ```
 
@@ -61,10 +63,11 @@ You can also create callback refs inline.
 
 <Code console>
 
-```ripple
-export function App() {
+```tsrx
+export function App() @{
   let div: HTMLDivElement | undefined;
-  return <div
+
+  <div
     ref={(node) => {
       div = node;
       console.log('mounted', node);
@@ -73,7 +76,7 @@ export function App() {
       };
     }}
   >
-    "Hello world"
+    Hello world
   </div>
 }
 ```
@@ -83,11 +86,11 @@ export function App() {
 Function factories work well when a library returns the ref callback for you, or
 when the ref setup needs configuration.
 
-```ripple
+```tsrx
 import { fadeIn } from 'some-library';
 
 export function App({ ms }) {
-  return <div ref={fadeIn({ ms })}>"Hello world"</div>
+  return <div ref={fadeIn({ ms })}>Hello world</div>
 }
 ```
 
@@ -95,13 +98,14 @@ export function App({ ms }) {
 
 Use an array when one DOM element needs more than one ref.
 
-```ripple
+```tsrx
 import { track } from 'ripple';
 
-export function App() {
+export function App() @{
   let input: HTMLInputElement | undefined;
   const trackedInput = track<HTMLInputElement | null>(null);
-  return <input ref={[input, trackedInput, (node) => console.log(node)]} />
+
+  <input ref={[input, trackedInput, (node) => console.log(node)]} />
 }
 ```
 
@@ -112,14 +116,15 @@ a spread onto the host element that should be exposed.
 
 <Code console>
 
-```ripple
+```tsrx
 function Input({ id, ...rest }) {
   return <input {id} {...rest} />
 }
 
-export function App() {
+export function App() @{
   let input: HTMLInputElement | undefined;
-  return <Input id="email" ref={input} />
+
+  <Input id="email" ref={input} />
 }
 ```
 
@@ -130,16 +135,17 @@ Named props such as `inputRef` are ordinary component API props. Pass them into
 
 <Code console>
 
-```ripple
+```tsrx
 export function Field({ inputRef, ...rest }) {
   return <label>
-    "Search"<input type="search" ref={inputRef} {...rest} />
+    Search<input type="search" ref={inputRef} {...rest} />
   </label>
 }
 
-export function App() {
+export function App() @{
   let input: HTMLInputElement | undefined;
-  return <Field inputRef={input} placeholder="Search docs" />
+
+  <Field inputRef={input} placeholder="Search docs" />
 }
 ```
 
@@ -153,10 +159,10 @@ assembled programmatically.
 
 <Code console>
 
-```ripple
+```tsrx
 import { createRefKey, track } from 'ripple';
 
-export function App() {
+export function App() @{
   let &[value] = track('');
   let input: HTMLInputElement | undefined;
 
@@ -180,10 +186,10 @@ export function App() {
     },
   };
 
-  return <>
+  <>
     <input type="text" {...props} />
     <Input {...props} />
-  </>;
+  </>
 }
 
 function Input({ id, value, ...rest }) {

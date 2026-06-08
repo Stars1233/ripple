@@ -2,8 +2,8 @@ import { RippleObject, track } from 'ripple';
 
 describe('basic server > attribute rendering', () => {
 	it('render static attributes', async () => {
-		function Basic() {
-			return <><div class="foo" id="bar" style="color: red;">{'Hello World'}</div></>;
+		function Basic() @{
+			<div class="foo" id="bar" style="color: red;">{'Hello World'}</div>
 		}
 
 		const { body } = await render(Basic);
@@ -18,16 +18,16 @@ describe('basic server > attribute rendering', () => {
 	});
 
 	it('render dynamic class attribute', async () => {
-		function Basic() {
-			return <>
-				let &[active] = track(false);
+		function Basic() @{
+			let &[active] = track(false);
+			<>
 				<div class={active ? 'active' : 'inactive'}>{'Dynamic Class'}</div>
 				<style>
 					.active {
 						color: green;
 					}
 				</style>
-			</>;
+			</>
 		}
 
 		const { body } = await render(Basic);
@@ -42,8 +42,8 @@ describe('basic server > attribute rendering', () => {
 	});
 
 	it('render class attribute with array, nested array, nested object', async () => {
-		function Basic() {
-			return <>
+		function Basic() @{
+			<>
 				<div
 					class={[
 						'foo',
@@ -57,15 +57,13 @@ describe('basic server > attribute rendering', () => {
 							{ eee: true, fff: false },
 						],
 					]}
-				>
-					{'Class Array'}
-				</div>
+				>{'Class Array'}</div>
 				<style>
 					.foo {
 						color: red;
 					}
 				</style>
-			</>;
+			</>
 		}
 
 		const { body } = await render(Basic);
@@ -89,8 +87,8 @@ describe('basic server > attribute rendering', () => {
 	});
 
 	it('applies scoped classes inside tsx blocks and fragment shorthand', async () => {
-		function App() {
-			return <>
+		function App() @{
+			<>
 				<>
 					<div class="card">
 						<h2>{'tsx block'}</h2>
@@ -110,7 +108,7 @@ describe('basic server > attribute rendering', () => {
 						color: red;
 					}
 				</style>
-			</>;
+			</>
 		}
 
 		const { body } = await render(App);
@@ -136,16 +134,16 @@ describe('basic server > attribute rendering', () => {
 	});
 
 	it('render dynamic class object', async () => {
-		function Basic() {
-			return <>
-				let &[active] = track(false);
+		function Basic() @{
+			let &[active] = track(false);
+			<>
 				<div class={{ active: active, inactive: !active }}>{'Dynamic Class'}</div>
 				<style>
 					.active {
 						color: green;
 					}
 				</style>
-			</>;
+			</>
 		}
 
 		const { body } = await render(Basic);
@@ -163,9 +161,9 @@ describe('basic server > attribute rendering', () => {
 	it(
 		'applies scoped ripple class to multiple elements with dynamic class expressions',
 		async () => {
-			function Basic() {
-				return <>
-					let &[selected] = track(1);
+			function Basic() @{
+				let &[selected] = track(1);
+				<>
 					<div class={selected === 0 ? 'selected' : ''}>{`div 1`}</div>
 					<div class={selected === 0 ? 'selected' : ''}>{`div 2`}</div>
 					<style>
@@ -177,7 +175,7 @@ describe('basic server > attribute rendering', () => {
 							background: indigo;
 						}
 					</style>
-				</>;
+				</>
 			}
 
 			const { body } = await render(Basic);
@@ -194,11 +192,9 @@ describe('basic server > attribute rendering', () => {
 	);
 
 	it('render dynamic id attribute', async () => {
-		function Basic() {
-			return <>
-				let &[count] = track(0);
-				<div id={`item-${count}`}>{'Dynamic ID'}</div>
-			</>;
+		function Basic() @{
+			let &[count] = track(0);
+			<div id={`item-${count}`}>{'Dynamic ID'}</div>
 		}
 
 		const { body } = await render(Basic);
@@ -210,11 +206,9 @@ describe('basic server > attribute rendering', () => {
 	});
 
 	it('render dynamic style attribute', async () => {
-		function Basic() {
-			return <>
-				let &[color] = track('red');
-				<div style={`color: ${color}; font-weight: bold;`}>{'Dynamic Style'}</div>
-			</>;
+		function Basic() @{
+			let &[color] = track('red');
+			<div style={`color: ${color}; font-weight: bold;`}>{'Dynamic Style'}</div>
 		}
 
 		const { body } = await render(Basic);
@@ -227,11 +221,9 @@ describe('basic server > attribute rendering', () => {
 	});
 
 	it('render style attribute as dynamic object', async () => {
-		function Basic() {
-			return <>
-				let &[color] = track('red');
-				<div style={{ color: color, fontWeight: 'bold' }}>{'Dynamic Style'}</div>
-			</>;
+		function Basic() @{
+			let &[color] = track('red');
+			<div style={{ color: color, fontWeight: 'bold' }}>{'Dynamic Style'}</div>
 		}
 
 		const { body } = await render(Basic);
@@ -244,11 +236,9 @@ describe('basic server > attribute rendering', () => {
 	});
 
 	it('render tracked variable as style attribute', async () => {
-		function Basic() {
-			return <>
-				let &[style] = track({ color: 'red', fontWeight: 'bold' });
-				<div {style}>{'Dynamic Style'}</div>
-			</>;
+		function Basic() @{
+			let &[style] = track({ color: 'red', fontWeight: 'bold' });
+			<div {style}>{'Dynamic Style'}</div>
 		}
 
 		const { body } = await render(Basic);
@@ -261,14 +251,12 @@ describe('basic server > attribute rendering', () => {
 	});
 
 	it('render tracked object as style attribute', async () => {
-		function Basic() {
-			return <>
-				let style = new RippleObject({
-					color: 'red',
-					fontWeight: 'bold',
-				});
-				<div style={{ color: style.color, fontWeight: style.fontWeight }}>{'Dynamic Style'}</div>
-			</>;
+		function Basic() @{
+			let style = new RippleObject({
+				color: 'red',
+				fontWeight: 'bold',
+			});
+			<div style={{ color: style.color, fontWeight: style.fontWeight }}>{'Dynamic Style'}</div>
 		}
 
 		const { body } = await render(Basic);
@@ -281,14 +269,12 @@ describe('basic server > attribute rendering', () => {
 	});
 
 	it('render spread attributes with style and class', async () => {
-		function Basic() {
-			return <>
-				const attributes = {
-					style: { color: 'red', fontWeight: 'bold' },
-					class: ['foo', false && 'bar'],
-				};
-				<div {...attributes}>{'Attributes with style and class'}</div>
-			</>;
+		function Basic() @{
+			const attributes = {
+				style: { color: 'red', fontWeight: 'bold' },
+				class: ['foo', false && 'bar'],
+			};
+			<div {...attributes}>{'Attributes with style and class'}</div>
 		}
 
 		const { body } = await render(Basic);
@@ -304,11 +290,9 @@ describe('basic server > attribute rendering', () => {
 	});
 
 	it('renders host innerHTML as content instead of an attribute', async () => {
-		function Basic() {
-			return <>
-				const html = '<span>Direct HTML</span>';
-				<code innerHTML={html} />
-			</>;
+		function Basic() @{
+			const html = '<span>Direct HTML</span>';
+			<code innerHTML={html} />
 		}
 
 		const { body } = await render(Basic);
@@ -321,11 +305,9 @@ describe('basic server > attribute rendering', () => {
 	});
 
 	it('renders spread innerHTML as content instead of an attribute', async () => {
-		function Basic() {
-			return <>
-				const attributes = { innerHTML: '<span>Spread HTML</span>' };
-				<code {...attributes} />
-			</>;
+		function Basic() @{
+			const attributes = { innerHTML: '<span>Spread HTML</span>' };
+			<code {...attributes} />
 		}
 
 		const { body } = await render(Basic);
@@ -338,11 +320,9 @@ describe('basic server > attribute rendering', () => {
 	});
 
 	it('uses the last innerHTML value when spreads and direct props are mixed', async () => {
-		function Basic() {
-			return <>
-				const attributes = { innerHTML: '<span>Spread HTML</span>' };
-				<code {...attributes} innerHTML="<em>Direct HTML</em>" />
-			</>;
+		function Basic() @{
+			const attributes = { innerHTML: '<span>Spread HTML</span>' };
+			<code {...attributes} innerHTML="<em>Direct HTML</em>" />
 		}
 
 		const { body } = await render(Basic);
@@ -354,13 +334,11 @@ describe('basic server > attribute rendering', () => {
 	});
 
 	it('render spread props without duplication', async () => {
-		function Basic() {
-			return <>
-				const checkBoxProp = { name: 'car' };
-				<div>
-					<input {...checkBoxProp} type="checkbox" id="vehicle1" value="Bike" />
-				</div>
-			</>;
+		function Basic() @{
+			const checkBoxProp = { name: 'car' };
+			<div>
+				<input {...checkBoxProp} type="checkbox" id="vehicle1" value="Bike" />
+			</div>
 		}
 
 		const { body } = await render(Basic);
@@ -384,12 +362,10 @@ describe('basic server > attribute rendering', () => {
 	});
 
 	it('render dynamic boolean attributes as false', async () => {
-		function Basic() {
-			return <>
-				let &[disabled] = track(false);
-				let &[checked] = track(false);
-				<input type="checkbox" {disabled} {checked} />
-			</>;
+		function Basic() @{
+			let &[disabled] = track(false);
+			let &[checked] = track(false);
+			<input type="checkbox" {disabled} {checked} />
 		}
 
 		const { body } = await render(Basic);
@@ -403,11 +379,9 @@ describe('basic server > attribute rendering', () => {
 	});
 
 	it('render dynamic boolean attributes as false via spread', async () => {
-		function Basic() {
-			return <>
-				const spread = { disabled: false, checked: false };
-				<input type="checkbox" {...spread} />
-			</>;
+		function Basic() @{
+			const spread = { disabled: false, checked: false };
+			<input type="checkbox" {...spread} />
 		}
 
 		const { body } = await render(Basic);
@@ -421,12 +395,10 @@ describe('basic server > attribute rendering', () => {
 	});
 
 	it('render dynamic boolean attributes as true', async () => {
-		function Basic() {
-			return <>
-				let &[disabled] = track(true);
-				let &[checked] = track(true);
-				<input type="checkbox" {disabled} {checked} />
-			</>;
+		function Basic() @{
+			let &[disabled] = track(true);
+			let &[checked] = track(true);
+			<input type="checkbox" {disabled} {checked} />
 		}
 
 		const { body } = await render(Basic);
@@ -440,11 +412,9 @@ describe('basic server > attribute rendering', () => {
 	});
 
 	it('render dynamic boolean attributes as true via spread', async () => {
-		function Basic() {
-			return <>
-				const spread = { disabled: true, checked: true };
-				<input type="checkbox" {...spread} />
-			</>;
+		function Basic() @{
+			const spread = { disabled: true, checked: true };
+			<input type="checkbox" {...spread} />
 		}
 
 		const { body } = await render(Basic);
@@ -458,11 +428,9 @@ describe('basic server > attribute rendering', () => {
 	});
 
 	it('renders formnovalidate as a boolean attribute', async () => {
-		function Basic() {
-			return <>
-				let &[formnovalidate] = track(true);
-				<button {formnovalidate}>{'Submit'}</button>
-			</>;
+		function Basic() @{
+			let &[formnovalidate] = track(true);
+			<button {formnovalidate}>{'Submit'}</button>
 		}
 
 		const { body } = await render(Basic);
@@ -476,11 +444,9 @@ describe('basic server > attribute rendering', () => {
 	});
 
 	it('renders hidden as a boolean attribute when true', async () => {
-		function Basic() {
-			return <>
-				let &[hidden] = track(true);
-				<div {hidden}>{'Hidden content'}</div>
-			</>;
+		function Basic() @{
+			let &[hidden] = track(true);
+			<div {hidden}>{'Hidden content'}</div>
 		}
 
 		const { body } = await render(Basic);
@@ -494,11 +460,9 @@ describe('basic server > attribute rendering', () => {
 	});
 
 	it('does not render hidden when false', async () => {
-		function Basic() {
-			return <>
-				let &[hidden] = track(false);
-				<div {hidden}>{'Visible content'}</div>
-			</>;
+		function Basic() @{
+			let &[hidden] = track(false);
+			<div {hidden}>{'Visible content'}</div>
 		}
 
 		const { body } = await render(Basic);
@@ -511,14 +475,14 @@ describe('basic server > attribute rendering', () => {
 	});
 
 	it('render multiple dynamic attributes', async () => {
-		function Basic() {
-			return <>
-				let &[theme] = track('light');
-				let &[size] = track('medium');
-				<div class={`theme-${theme} size-${size}`} data-theme={theme} data-size={size}>
-					{'Multiple Dynamic Attributes'}
-				</div>
-			</>;
+		function Basic() @{
+			let &[theme] = track('light');
+			let &[size] = track('medium');
+			<div
+				class={`theme-${theme} size-${size}`}
+				data-theme={theme}
+				data-size={size}
+			>{'Multiple Dynamic Attributes'}</div>
 		}
 
 		const { body } = await render(Basic);
@@ -532,17 +496,13 @@ describe('basic server > attribute rendering', () => {
 	});
 
 	it('render conditional attributes', async () => {
-		function Basic() {
-			return <>
-				let &[showTitle] = track(false);
-				let &[showAria] = track(false);
-				<div
-					title={showTitle ? 'This is a title' : undefined}
-					aria-label={showAria ? 'Accessible label' : undefined}
-				>
-					{'Conditional Attributes'}
-				</div>
-			</>;
+		function Basic() @{
+			let &[showTitle] = track(false);
+			let &[showAria] = track(false);
+			<div
+				title={showTitle ? 'This is a title' : undefined}
+				aria-label={showAria ? 'Accessible label' : undefined}
+			>{'Conditional Attributes'}</div>
 		}
 
 		const { body } = await render(Basic);
@@ -555,14 +515,12 @@ describe('basic server > attribute rendering', () => {
 	});
 
 	it('render spread attributes', async () => {
-		function Basic() {
-			return <>
-				let &[attrs] = track<TestAttributes>({
-					class: 'initial',
-					id: 'test-1',
-				});
-				<div {...attrs}>{'Spread Attributes'}</div>
-			</>;
+		function Basic() @{
+			let &[attrs] = track<TestAttributes>({
+				class: 'initial',
+				id: 'test-1',
+			});
+			<div {...attrs}>{'Spread Attributes'}</div>
 		}
 
 		const { body } = await render(Basic);
@@ -576,16 +534,15 @@ describe('basic server > attribute rendering', () => {
 	});
 
 	it('renders with reactive attributes with nested reactive attributes', async () => {
-		function Basic() {
-			return <>
-				let &[value] = track('parent-class');
+		function Basic() @{
+			let &[value] = track('parent-class');
+			let &[nested] = track('nested-class');
+			<>
 				<p class={value}>{'Colored parent value'}</p>
 				<div>
-					let &[nested] = track('nested-class');
-
 					<p class={nested}>{'Colored nested value'}</p>
 				</div>
-			</>;
+			</>
 		}
 
 		const { body } = await render(Basic);
@@ -598,12 +555,10 @@ describe('basic server > attribute rendering', () => {
 	});
 
 	it('handles boolean attributes with no prop value provides', async () => {
-		function Basic() {
-			return <>
-				<div class="container">
-					<input type="checkbox" checked />
-				</div>
-			</>;
+		function Basic() @{
+			<div class="container">
+				<input type="checkbox" checked />
+			</div>
 		}
 
 		const { body } = await render(Basic);
@@ -611,15 +566,15 @@ describe('basic server > attribute rendering', () => {
 	});
 
 	it('handles boolean props correctly', async () => {
-		function Basic() {
-			return <>
+		function Basic() @{
+			<>
 				<div data-disabled />
 				<Child isDisabled />
-			</>;
+			</>
 		}
 
-		function Child({ isDisabled }: { isDisabled: boolean }) {
-			return <><input disabled={isDisabled} /></>;
+		function Child({ isDisabled }: { isDisabled: boolean }) @{
+			<input disabled={isDisabled} />
 		}
 
 		const { body } = await render(Basic);

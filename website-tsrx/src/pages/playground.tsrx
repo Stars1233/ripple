@@ -1,9 +1,9 @@
 import { CompilerDemo } from '../components/compiler-demo.tsrx';
 
-export function PlaygroundPage() {
-	return <>
+export function PlaygroundPage() @{
+	<>
 		<head>
-			<title>{'TSRX | Playground'}</title>
+			<title>TSRX | Playground</title>
 			<meta
 				name="description"
 				content="Try TSRX in the browser. Write component code and see the compiled code in real time."
@@ -15,22 +15,20 @@ export function PlaygroundPage() {
 					<img class="header-logo" src="/images/tsrx-mark.svg?v=4" alt="TSRX logo" />
 				</a>
 				<nav class="nav-links">
-					<a href="/getting-started">{'Getting Started'}</a>
-					<a href="/features">{'Features'}</a>
-					<a href="/specification">{'Specification'}</a>
-					<a href="/playground" aria-current="page">{'Playground'}</a>
-					<a href="/blog">{'Blog'}</a>
+					<a href="/getting-started">Getting Started</a>
+					<a href="/features">Features</a>
+					<a href="/specification">Specification</a>
+					<a href="/playground" aria-current="page">Playground</a>
+					<a href="/blog">Blog</a>
 					<a href="https://discord.gg/HCYpT5QHQR" target="_blank" rel="noopener noreferrer">
-						{'Discord'}
+						Discord
 					</a>
 					<a
 						href="https://github.com/Ripple-TS/ripple/tree/main/packages/tsrx"
 						target="_blank"
 						rel="noopener noreferrer"
-					>
-						{'GitHub'}
-					</a>
-					<a href="/llms.txt" target="_blank" rel="noopener noreferrer">{'llms.txt'}</a>
+					>GitHub</a>
+					<a href="/llms.txt" target="_blank" rel="noopener noreferrer">llms.txt</a>
 				</nav>
 			</header>
 
@@ -202,5 +200,5 @@ export function PlaygroundPage() {
 				}
 			}
 		</style>
-	</>;
+	</>
 }

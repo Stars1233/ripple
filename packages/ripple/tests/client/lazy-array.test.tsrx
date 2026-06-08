@@ -3,24 +3,18 @@ import { flushSync, track } from 'ripple';
 
 describe('lazy array destructuring', () => {
 	it('updates unknown lazy array bindings through tracked values', () => {
-		function Child({ tr: &[count, tr] }) {
-			return <>
-				<button
-					onClick={() => {
-						count++;
-						tr[0]++;
-					}}
-				>
-					{count}
-				</button>
-			</>;
+		function Child({ tr: &[count, tr] }) @{
+			<button
+				onClick={() => {
+					count++;
+					tr[0]++;
+				}}
+			>{count}</button>
 		}
 
-		function App() {
-			return <>
-				let tracked = track(0);
-				<Child tr={tracked} />
-			</>;
+		function App() @{
+			let tracked = track(0);
+			<Child tr={tracked} />
 		}
 
 		render(App);

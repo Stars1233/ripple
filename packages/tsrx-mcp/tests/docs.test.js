@@ -13,19 +13,32 @@ describe('@tsrx/mcp documentation index', () => {
 	});
 
 	it('includes generated specification grammar in language sections', () => {
-		expect(find_documentation_section('components')?.content ?? '').toContain('function Button');
-		expect(find_documentation_section('expression-values')?.content ?? '').toContain(
-			'TsrxExpression',
+		const legacy_expression_node = ['Tsrx', 'Expression'].join('');
+		expect(find_documentation_section('components')?.content ?? '').toContain(
+			'export function Button',
 		);
+		expect(find_documentation_section('components')?.content ?? '').toContain('@{');
+		expect(find_documentation_section('expression-values')?.content ?? '').toContain(
+			'PrimaryExpression',
+		);
+		expect(find_documentation_section('expression-values')?.content ?? '').toContain('JSXElement');
 		expect(find_documentation_section('expression-values')?.content ?? '').not.toContain('tsx:');
+		expect(find_documentation_section('expression-values')?.content ?? '').not.toContain(
+			legacy_expression_node,
+		);
+		expect(find_documentation_section('overview')?.content ?? '').toContain(
+			'every directive body uses a `{...}` template block',
+		);
 	});
 
 	it('documents component loop control-flow rules', () => {
 		const content = find_documentation_section('control-flow')?.content ?? '';
 
-		expect(content).toContain('continue');
-		expect(content).toContain('`return` statements are invalid anywhere');
-		expect(content).toContain('`break` is invalid inside TSRX `for...of` loops');
+		expect(content).toContain(' { ... }');
+		expect(content).toContain('`return` statements are not template output');
+		expect(content).toContain('Inside TSRX `@if` branches and `@for ... of` loops');
+		expect(content).toContain('direct `continue`, `break`, and `return` statements are invalid');
+		expect(content).toContain('both `break` and `return` are invalid');
 		expect(content).toContain('Regular `for`, `for...in`, `while`, and `do...while`');
 	});
 

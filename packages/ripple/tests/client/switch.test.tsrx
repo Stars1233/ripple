@@ -2,25 +2,26 @@ import { flushSync, track } from 'ripple';
 
 describe('switch statements', () => {
 	it('renders simple switch with literal cases', () => {
-		function App() {
-			return <>
-				let &[value] = track('b');
+		function App() @{
+			let &[value] = track('b');
+			<>
 				<button onClick={() => (value = 'c')}>{'Change to C'}</button>
 				<button onClick={() => (value = 'a')}>{'Change to A'}</button>
-				switch (value) {
-					case 'a':
-						<div>{'Case A'}</div>
-						break;
-					case 'b':
-						<div>{'Case B'}</div>
-						break;
-					case 'c':
+				@switch (value) {
+					@case 'a': {
+						<div>Case A</div>
+					}
+					@case 'b': {
+						<div>Case B</div>
+					}
+					@case 'c': {
 						<div>{'Case C'}</div>
-						break;
-					default:
+					}
+					@default: {
 						<div>{'Default Case'}</div>
+					}
 				}
-			</>;
+			</>
 		}
 
 		render(App);
@@ -37,21 +38,22 @@ describe('switch statements', () => {
 	});
 
 	it('renders switch with reactive discriminant', () => {
-		function App() {
-			return <>
-				let &[count] = track(1);
+		function App() @{
+			let &[count] = track(1);
+			<>
 				<button onClick={() => count++}>{'Increment'}</button>
-				switch (count) {
-					case 1:
+				@switch (count) {
+					@case 1: {
 						<div>{'Count is 1'}</div>
-						break;
-					case 2:
+					}
+					@case 2: {
 						<div>{'Count is 2'}</div>
-						break;
-					default:
+					}
+					@default: {
 						<div>{'Count is other'}</div>
+					}
 				}
-			</>;
+			</>
 		}
 
 		render(App);
@@ -69,15 +71,18 @@ describe('switch statements', () => {
 	});
 
 	it('renders switch with default clause only', () => {
-		function App() {
-			return <>
-				let &[value] = track('x');
+		function App() @{
+			let &[value] = track('x');
+			<>
 				<button onClick={() => (value = 'y')}>{'Change Value'}</button>
-				switch (value) {
-					default:
-						<div>{'Default for ' + value}</div>
+				@switch (value) {
+					@default: {
+						<div>
+							{'Default for ' + value}
+						</div>
+					}
 				}
-			</>;
+			</>
 		}
 
 		render(App);
@@ -89,24 +94,26 @@ describe('switch statements', () => {
 		expect(container.querySelector('div').textContent).toBe('Default for y');
 	});
 
-	it('renders switch using empty case fall-through', () => {
-		function App() {
-			return <>
-				let &[value] = track('a');
+	it('renders switch with isolated empty cases', () => {
+		function App() @{
+			let &[value] = track('a');
+			<>
 				<button onClick={() => (value = 'b')}>{'Change to B'}</button>
 				<button onClick={() => (value = 'c')}>{'Change to C'}</button>
-				switch (value) {
-					case 'a':
-						<div>{'Case A'}</div>
-						break;
-					case 'b':
-					case 'c':
-						<div>{'Case B or C'}</div>
-						break;
-					default:
+				@switch (value) {
+					@case 'a': {
+						<div>Case A</div>
+					}
+					@case 'b': {
+					}
+					@case 'c': {
+						<div>Case B or C</div>
+					}
+					@default: {
 						<div>{'Default Case'}</div>
+					}
 				}
-			</>;
+			</>
 		}
 
 		render(App);
@@ -117,7 +124,7 @@ describe('switch statements', () => {
 		buttonB.click();
 		flushSync();
 
-		expect(container.querySelector('div').textContent).toBe('Case B or C');
+		expect(container.querySelector('div')).toBeNull();
 
 		buttonC.click();
 		flushSync();
@@ -125,38 +132,47 @@ describe('switch statements', () => {
 		expect(container.querySelector('div').textContent).toBe('Case B or C');
 
 		container.querySelector('div').textContent = 'DOM check';
-		buttonB.click();
+		buttonC.click();
 		flushSync();
 
 		expect(container.querySelector('div').textContent).toBe('DOM check');
 	});
 
 	it('renders switch with template content and reacts to tracked changes', () => {
-		function App() {
-			return <>
-				let &[status] = track('active');
-				let &[message] = track('');
+		function App() @{
+			let &[status] = track('active');
+			let &[message] = track('');
+			<>
 				<button onClick={() => (status = 'pending')}>{'Pending'}</button>
 				<button onClick={() => (status = 'completed')}>{'Completed'}</button>
 				<button onClick={() => (status = 'error')}>{'Error'}</button>
-				switch (status) {
-					case 'active':
+				@switch (status) {
+					@case 'active': {
 						message = 'Currently active.';
-						<div>{'Status: ' + message}</div>
-						break;
-					case 'pending':
+						<div>
+							{'Status: ' + message}
+						</div>
+					}
+					@case 'pending': {
 						message = 'Waiting for completion.';
-						<div>{'Status: ' + message}</div>
-						break;
-					case 'completed':
+						<div>
+							{'Status: ' + message}
+						</div>
+					}
+					@case 'completed': {
 						message = 'Task finished!';
-						<div class="success">{'Status: ' + message}</div>
-						break;
-					default:
+						<div class="success">
+							{'Status: ' + message}
+						</div>
+					}
+					@default: {
 						message = 'An error occurred.';
-						<div class="error">{'Status: ' + message}</div>
+						<div class="error">
+							{'Status: ' + message}
+						</div>
+					}
 				}
-			</>;
+			</>
 		}
 
 		render(App);
@@ -182,50 +198,56 @@ describe('switch statements', () => {
 	});
 
 	it(
-		'renders switch with multiple non-empty fall-through cases and reacts to tracked changes without recreating DOM unnecessarily',
+		'renders switch with isolated cases and reacts to tracked changes without recreating DOM unnecessarily',
 		() => {
-			function App() {
-				return <>
-					let &[status] = track(0);
+			function App() @{
+				let &[status] = track(0);
+				<>
 					<div>
-						switch (status) {
-							case -1:
-							case 0:
+						@switch (status) {
+							@case -1: {
+							}
+							@case 0: {
 								<p>{' Idle'}</p>
-							case 1:
+							}
+							@case 1: {
 								<p>{' Loading'}</p>
-							case 2:
+							}
+							@case 2: {
 								<p>{' Success'}</p>
-								break;
-							default:
-								<p>{' Unknown status'}</p>
-								<p>{' Unknown 2'}</p>
-							case 3:
-								<p>{' Error'}</p>
-								<p>{' Error 2'}</p>
-								<p>{' Error 3'}</p>
-								break;
+							}
+							@default: {
+								<>
+									<p>{' Unknown status'}</p>
+									<p>{' Unknown 2'}</p>
+								</>
+							}
+							@case 3: {
+								<>
+									<p>{' Error'}</p>
+									<p>{' Error 2'}</p>
+									<p>{' Error 3'}</p>
+								</>
+							}
 						}
 					</div>
 					<button
 						onClick={() => {
 							status = (status + 1) % 5;
 						}}
-					>
-						{'Next Status'}
-					</button>
-				</>;
+					>{'Next Status'}</button>
+				</>
 			}
 
 			render(App);
 			const button = container.querySelector('button');
 
-			expect(container.querySelector('div').textContent).toBe(' Idle Loading Success');
+			expect(container.querySelector('div').textContent).toBe(' Idle');
 
 			button.click();
 			flushSync();
 
-			expect(container.querySelector('div').textContent).toBe(' Loading Success');
+			expect(container.querySelector('div').textContent).toBe(' Loading');
 
 			button.click();
 			flushSync();
@@ -240,152 +262,140 @@ describe('switch statements', () => {
 			button.click();
 			flushSync();
 
-			expect(container.querySelector('div').textContent).toBe(
-				' Unknown status Unknown 2 Error Error 2 Error 3',
-			);
+			expect(container.querySelector('div').textContent).toBe(' Unknown status Unknown 2');
 
 			button.click();
 			flushSync();
 
-			expect(container.querySelector('div').textContent).toBe(' Idle Loading Success');
+			expect(container.querySelector('div').textContent).toBe(' Idle');
 		},
 	);
 
-	it(
-		'renders a fall-through default in the middle of switch cases and reacts to changes without recreating DOM unnecessarily',
-		() => {
-			function App() {
-				return <>
-					let &[value] = track('x');
-					<button onClick={() => (value = 'a')}>{'Set A'}</button>
-					<button onClick={() => (value = 'b')}>{'Set B'}</button>
-					<button onClick={() => (value = 'c')}>{'Set C'}</button>
-					<button onClick={() => (value = 'x')}>{'Set X'}</button>
-					<div>
-						switch (value) {
-							case 'a':
-								<div>{' Case A'}</div>
-								break;
-							// NOTE: This should be the default in the middle of the cases
-							// However, jsdom (and other node-based dom libs) has a bug
-							// that breaks out of the switch even if the default doesn't have a break
-							// The browser works correctly.
-							// So, we're just using a defined case in the middle to simulate default.
-							case 'x':
-								<div>{' Default Case for ' + value}</div>
-							case 'b':
-								<div>{' Case B'}</div>
-								break;
-							case 'c':
-								<div>{' Case C'}</div>
-						}
-					</div>
-				</>;
-			}
-
-			render(App);
-			const [buttonA, buttonB, buttonC, buttonX] = container.querySelectorAll('button');
-
-			expect(container.querySelector('div').textContent).toBe(' Default Case for x Case B');
-			expect(container.querySelector('div').querySelectorAll('div').length).toBe(2);
-
-			buttonA.click();
-			flushSync();
-
-			expect(container.querySelector('div').textContent).toBe(' Case A');
-			expect(container.querySelector('div').querySelectorAll('div').length).toBe(1);
-
-			buttonC.click();
-			flushSync();
-
-			expect(container.querySelector('div').textContent).toBe(' Case C');
-			expect(container.querySelector('div').querySelectorAll('div').length).toBe(1);
-
-			buttonB.click();
-			flushSync();
-
-			const bDiv = container.querySelector('div').querySelectorAll('div')[0];
-			expect(bDiv.textContent).toBe(' Case B');
-			bDiv.id = 'b';
-
-			buttonX.click();
-			flushSync();
-
-			// order should be correct with the previously rendered B element
-			expect(container.querySelector('div').textContent).toBe(' Default Case for x Case B');
-			expect(container.querySelector('div').querySelectorAll('div').length).toBe(2);
-			// the previously rendered div should be preserved
-			expect(container.querySelector('div').querySelectorAll('div')[1].id).toBe('b');
-		},
-	);
-
-	it('renders bare text nodes in switch fall-through cases without element wrappers', () => {
-		function App() {
-			return <>
-				let value = 'a';
+	it('renders a middle switch case without falling through to later cases', () => {
+		function App() @{
+			let &[value] = track('x');
+			<>
+				<button onClick={() => (value = 'a')}>{'Set A'}</button>
+				<button onClick={() => (value = 'b')}>{'Set B'}</button>
+				<button onClick={() => (value = 'c')}>{'Set C'}</button>
+				<button onClick={() => (value = 'x')}>{'Set X'}</button>
 				<div>
-					<span>{'before'}</span>
-					switch (value) {
-						case 'a':
-							{'Case A'}
-						case 'b':
-							{'Case B'}
+					@switch (value) {
+						@case 'a': {
+							<div>{' Case A'}</div>
+						}
+						@case 'x': {
+							<div>
+								{' Default Case for ' + value}
+							</div>
+						}
+						@case 'b': {
+							<div>{' Case B'}</div>
+						}
+						@case 'c': {
+							<div>{' Case C'}</div>
+						}
 					}
 				</div>
-			</>;
+			</>
 		}
 
 		render(App);
-		expect(container.querySelector('div').textContent).toBe('beforeCase ACase B');
+		const [buttonA, buttonB, buttonC, buttonX] = container.querySelectorAll('button');
+
+		expect(container.querySelector('div').textContent).toBe(' Default Case for x');
+		expect(container.querySelector('div').querySelectorAll('div').length).toBe(1);
+
+		buttonA.click();
+		flushSync();
+
+		expect(container.querySelector('div').textContent).toBe(' Case A');
+		expect(container.querySelector('div').querySelectorAll('div').length).toBe(1);
+
+		buttonC.click();
+		flushSync();
+
+		expect(container.querySelector('div').textContent).toBe(' Case C');
+		expect(container.querySelector('div').querySelectorAll('div').length).toBe(1);
+
+		buttonB.click();
+		flushSync();
+
+		const bDiv = container.querySelector('div').querySelectorAll('div')[0];
+		expect(bDiv.textContent).toBe(' Case B');
+		bDiv.id = 'b';
+
+		buttonX.click();
+		flushSync();
+
+		expect(container.querySelector('div').textContent).toBe(' Default Case for x');
+		expect(container.querySelector('div').querySelectorAll('div').length).toBe(1);
+		expect(container.querySelector('#b')).toBeNull();
 	});
 
-	it('renders bare text nodes in switch cases without element wrappers', () => {
-		function App() {
-			return <>
-				let value = 'a';
-				<div>
-					<span>{'before'}</span>
-					switch (value) {
-						case 'a':
-							{'Case A'}
-							break;
-						case 'b':
-							{'Case B'}
-							break;
+	it('renders bare text nodes in switch cases without falling through', () => {
+		function App() @{
+			let value = 'a';
+			<div>
+				<span>{'before'}</span>
+				@switch (value) {
+					@case 'a': {
+						<>Case A</>
 					}
-				</div>
-			</>;
+					@case 'b': {
+						<>Case B</>
+					}
+				}
+			</div>
 		}
 
 		render(App);
 		expect(container.querySelector('div').textContent).toBe('beforeCase A');
 	});
 
-	it('renders switch with block-scoped cases and break inside blocks', () => {
-		function App() {
-			return <>
-				let &[level] = track(1);
+	it('renders bare text nodes in switch cases without element wrappers', () => {
+		function App() @{
+			let value = 'a';
+			<div>
+				<span>{'before'}</span>
+				@switch (value) {
+					@case 'a': {
+						<>Case A</>
+					}
+					@case 'b': {
+						<>Case B</>
+					}
+				}
+			</div>
+		}
+
+		render(App);
+		expect(container.querySelector('div').textContent).toBe('beforeCase A');
+	});
+
+	it('renders switch with isolated block-scoped cases', () => {
+		function App() @{
+			let &[level] = track(1);
+			<>
 				<button
 					onClick={() => {
 						if (level === 1) level = 2;
 						else if (level === 2) level = 3;
 						else level = 1;
 					}}
-				>
-					{'Toggle'}
-				</button>
-				switch (level) {
-					case 1:
+				>{'Toggle'}</button>
+				@switch (level) {
+					@case 1: {
 						<div class="level">{'Level 1'}</div>
-						break;
-					case 2:
+					}
+					@case 2: {
 						<div class="level">{'Level 2'}</div>
-						break;
-					case 3:
+					}
+					@case 3: {
 						<div class="level">{'Level 3'}</div>
-						break;
+					}
 				}
-			</>;
+			</>
 		}
 
 		render(App);

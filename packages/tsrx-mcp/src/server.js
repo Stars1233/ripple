@@ -305,9 +305,10 @@ function create_tsrx_task_prompt(options) {
 1. Identify whether the task is about target-neutral TSRX syntax, target runtime behavior, or both.
 ${project_context_step}
 3. For syntax uncertainty, use \`list-sections\`, \`get-documentation\`, or read \`tsrx://docs/{slug}.md\`.
-4. Keep core TSRX advice target-neutral: component functions, statement templates, control flow, TSX expression values, lazy destructuring, style identifiers, and submodule declarations.
+4. Keep core TSRX advice target-neutral: component functions, JSX expression values, JSX statement containers \`@{ ... }\`, JSX text, directive control flow, lazy destructuring, style identifiers, and submodule declarations.
 5. Use \`tsrx://targets/{target}.md\` as the handoff point for target-specific responsibilities.
-5a. In component template scope, render lists with \`for...of\`; use \`continue\` to skip an item; do not use \`return\` anywhere inside TSRX element or fragment bodies, do not use \`break\` inside \`for...of\` template loops, and do not use regular \`for\`, \`for...in\`, \`while\`, or \`do...while\` loops there.
+5a. In template output, render lists with \`@for (... of ...)\`; filter the iterable before rendering when items should be skipped, and use \` { ... }\` for the no-items fallback; use \`@if\`, \`@switch\`, and \`@try\` for rendering control flow. Every directive body uses a \`{...}\` template block. When a scope mixes setup with output, setup comes first and the scope ends with exactly one JSX element, JSX fragment, or JSX control-flow expression.
+5b. \`return\` is JavaScript function control flow, not template output. Use guard returns before a JSX statement container or return value, or render conditionally with \`@if\`. Do not use \`continue\`, \`break\`, or \`return\` inside \`@if\` template branches or \`@for\` template loops. \`@switch\` cases are isolated blocks and do not use \`break\` or \`return\`.
 ${file_validation_step}
 ${compile_step}
 ${authoring_step}
@@ -600,7 +601,7 @@ export function createTSRXMcpServer(options = {}) {
 		{
 			title: 'Review TSRX Accessibility',
 			description:
-				'Reviews TSRX source for common accessibility issues before browser-based Axe validation, including missing button names, unlabeled form controls, and direct quoted text that may not render as accessible text.',
+				'Reviews TSRX source for common accessibility issues before browser-based Axe validation, including missing button names, unlabeled form controls, and visible text accidentally wrapped in quote characters.',
 			inputSchema: {
 				code: z.string(),
 				filename: z.string().optional(),

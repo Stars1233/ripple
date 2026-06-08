@@ -10,18 +10,17 @@ module server {
 
 import { load_doc } from server;
 
-export function HeadManagementPage() {
-	return <>
-		const doc = load_doc();
-		<DocsLayout
-			title={doc.title}
-			editPath={doc.editPath}
-			prevLink={doc.prev}
-			nextLink={doc.next}
-			toc={doc.toc}
-			currentPath="/docs/guide/head-management"
-		>
-			<div class="doc-content" innerHTML={doc.html} />
-		</DocsLayout>
-	</>;
+export function HeadManagementPage() @{
+	const doc = load_doc();
+
+	<DocsLayout
+		title={doc.title}
+		editPath={doc.editPath}
+		prevLink={doc.prev}
+		nextLink={doc.next}
+		toc={doc.toc}
+		currentPath="/docs/guide/head-management"
+	>
+		<div class="doc-content" innerHTML={doc.html} />
+	</DocsLayout>
 }

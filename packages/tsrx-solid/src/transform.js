@@ -13,7 +13,6 @@ import {
 	collectParamBindings as collect_param_bindings,
 	collectStatementBindings as collect_statement_bindings,
 	extractJsxSetupDeclarations as extract_jsx_setup_declarations,
-	rewriteLoopContinuesToBareReturns as rewrite_loop_continues_to_bare_returns,
 	isInterleavedBody as is_interleaved_body_core,
 	isCapturableJsxChild as is_capturable_jsx_child,
 	captureJsxChild,
@@ -25,7 +24,6 @@ import {
 	clone_expression_node,
 	clone_identifier,
 	clone_jsx_name,
-	cloneSwitchHelperInvocation as clone_switch_helper_invocation,
 	contains_component_jsx,
 	create_generated_identifier,
 	create_null_literal,
@@ -34,13 +32,24 @@ import {
 	planSwitchLift as plan_switch_lift,
 	identifier_to_jsx_name,
 	is_bare_render_expression,
-	is_dynamic_element_id,
 	is_jsx_child,
+	jsx_name_to_expression,
 	set_loc,
-	to_text_expression,
 } from '@tsrx/core';
 
 import { builders as b } from '@tsrx/core';
+
+const TSRX_FOR_RETURN_ERROR =
+	'Return statements are not allowed inside TSRX template for...of loops. Filter the iterable before rendering or use an @for empty fallback for empty lists.';
+const TSRX_FOR_BREAK_ERROR =
+	'Break statements are not allowed inside TSRX template for...of loops.';
+const TSRX_FOR_CONTINUE_ERROR =
+	'Continue statements are not allowed inside TSRX template for...of loops. Filter the iterable before rendering.';
+const TSRX_IF_RETURN_ERROR =
+	'Return statements are not allowed inside TSRX template @if blocks. Move the return before the template output or render conditionally instead.';
+const TSRX_IF_BREAK_ERROR = 'Break statements are not allowed inside TSRX template @if blocks.';
+const TSRX_IF_CONTINUE_ERROR =
+	'Continue statements are not allowed inside TSRX template @if blocks. Filter before rendering or use conditional output instead.';
 
 /**
  * Solid extends the shared `JsxTransformContext` with `needs_*` flags that
@@ -73,8 +82,8 @@ import { builders as b } from '@tsrx/core';
  *   `<Switch>/<Match>` / `<Errored>/<Loading>` instead of inline JSX.
  * - Uppercase native TSRX functions use Solid render-time control flow, so
  *   branches stay reactive without reintroducing a TSRX-specific declaration.
- * - Element attributes support composite elements and lift a lone direct text
- *   child into a `textContent` attribute.
+ * - Element attributes support composite elements and Solid's `class`
+ *   attribute spelling.
  * - `needs_show` / `needs_for` / etc. flags track which runtime
  *   primitives must be imported, injected by `inject_solid_imports`.
  *
@@ -159,17 +168,8 @@ const solid_platform = {
 		// `transformElementAttributes` is never reached for Solid. Attribute
 		// lowering happens in Solid's local `transform_element_attributes`,
 		// which `to_jsx_element` and `create_dynamic_jsx_element` call directly.
-		transformElementChildren(node, walked_children, raw_children, attributes, ctx) {
-			return rewrite_solid_host_children(
-				node,
-				walked_children,
-				raw_children,
-				attributes,
-				/** @type {any} */ (ctx),
-			);
-		},
-		transformElement: (inner, ctx, raw_children) =>
-			to_jsx_element(/** @type {any} */ (inner), /** @type {any} */ (ctx), raw_children),
+		transformElement: (inner, ctx) =>
+			to_jsx_element(/** @type {any} */ (inner), /** @type {any} */ (ctx)),
 	},
 };
 
@@ -185,7 +185,10 @@ function get_await_keyword_start(await_node, source) {
 		return await_node.start ?? 0;
 	}
 
-	if (await_node?.type === 'ForOfStatement' && await_node.await === true) {
+	if (
+		(await_node?.type === 'ForOfStatement' || await_node?.type === 'JSXForExpression') &&
+		await_node.await === true
+	) {
 		const statement_start = await_node.start ?? 0;
 		const statement_end = await_node.end ?? statement_start;
 		const statement_source = source.slice(statement_start, statement_end);
@@ -210,25 +213,66 @@ function get_await_keyword_start(await_node, source) {
 function to_jsx_child(node, transform_context) {
 	if (!node) return node;
 	switch (node.type) {
-		case 'TsrxFragment':
-			return tsrx_node_to_jsx_expression(node, transform_context, true);
-		case 'Element':
-			return to_jsx_element(node, transform_context);
-		case 'Text':
-			return to_jsx_expression_container(to_text_expression(node.expression, node), node);
-		case 'TSRXExpression':
-			return to_jsx_expression_container(node.expression, node);
+		case 'JSXFragment':
+			if (node.metadata?.native_tsrx) {
+				return tsrx_node_to_jsx_expression(node, transform_context, true);
+			}
+			return node;
+		case 'JSXElement':
+			if (node.metadata?.native_tsrx) {
+				return to_jsx_element(node, transform_context);
+			}
+			return node;
+		case 'JSXIfExpression':
+			return if_statement_to_jsx_child(
+				jsx_control_expression_to_statement(node),
+				transform_context,
+			);
 		case 'IfStatement':
 			return if_statement_to_jsx_child(node, transform_context);
+		case 'JSXForExpression':
+			if (node.statementType !== 'ForOfStatement') {
+				error(
+					'TSRX `@for` currently supports `for...of` loops in template output.',
+					transform_context.filename,
+					node,
+					transform_context.errors,
+					transform_context.comments,
+				);
+				return to_jsx_expression_container(create_null_literal(), node);
+			}
+			return for_of_statement_to_jsx_child(
+				jsx_control_expression_to_statement(node),
+				transform_context,
+			);
 		case 'ForOfStatement':
 			return for_of_statement_to_jsx_child(node, transform_context);
+		case 'JSXSwitchExpression':
+			return switch_statement_to_jsx_child(
+				jsx_control_expression_to_statement(node),
+				transform_context,
+			);
 		case 'SwitchStatement':
 			return switch_statement_to_jsx_child(node, transform_context);
+		case 'JSXTryExpression':
+			return try_statement_to_jsx_child(
+				jsx_control_expression_to_statement(node),
+				transform_context,
+			);
 		case 'TryStatement':
 			return try_statement_to_jsx_child(node, transform_context);
 		default:
 			return node;
 	}
+}
+
+/**
+ * @param {any} node
+ * @returns {any}
+ */
+function jsx_control_expression_to_statement(node) {
+	if (!node?.statementType) return node;
+	return { ...node, type: node.statementType };
 }
 
 /**
@@ -344,12 +388,7 @@ function body_to_jsx_child(body_nodes, transform_context) {
 
 	if (statements.length === 0) {
 		if (children.length === 0) return create_null_literal();
-		if (children.length === 1) {
-			const only = children[0];
-			if (only.type === 'JSXExpressionContainer') return only.expression;
-			return only;
-		}
-		return build_return_expression(children);
+		return build_return_expression(children) || create_null_literal();
 	}
 
 	// Branch body has non-JSX statements: wrap everything in an arrow so the
@@ -372,11 +411,7 @@ function body_to_jsx_child(body_nodes, transform_context) {
  * @returns {boolean}
  */
 function is_bare_return_statement(node) {
-	return (
-		node?.type === 'ReturnStatement' &&
-		node.argument == null &&
-		node.metadata?.generated_loop_continue_return === true
-	);
+	return node?.type === 'ReturnStatement' && node.metadata?.generated_loop_continue_return === true;
 }
 
 /**
@@ -395,6 +430,138 @@ function body_has_loop_skip(body_nodes) {
 	return body_nodes.some(
 		(node) => is_bare_return_statement(node) || get_returning_if_info(node) !== null,
 	);
+}
+
+/**
+ * @param {any} node
+ * @returns {boolean}
+ */
+function is_function_or_class_boundary(node) {
+	return (
+		node?.type === 'FunctionDeclaration' ||
+		node?.type === 'FunctionExpression' ||
+		node?.type === 'ArrowFunctionExpression' ||
+		node?.type === 'ClassDeclaration' ||
+		node?.type === 'ClassExpression'
+	);
+}
+
+/**
+ * @param {any} node
+ * @returns {boolean}
+ */
+function is_loop_statement(node) {
+	return (
+		node?.type === 'ForStatement' ||
+		node?.type === 'ForInStatement' ||
+		node?.type === 'ForOfStatement' ||
+		node?.type === 'JSXForExpression' ||
+		node?.type === 'WhileStatement' ||
+		node?.type === 'DoWhileStatement'
+	);
+}
+
+/**
+ * @param {any} node
+ * @returns {boolean}
+ */
+function is_template_if_node(node) {
+	return (
+		node?.type === 'JSXIfExpression' ||
+		node?.metadata?.tsrxDirective === 'if' ||
+		(node?.type === 'IfStatement' && node?.statementType === 'IfStatement')
+	);
+}
+
+/**
+ * @param {any[] | any} node
+ * @param {TransformContext} transform_context
+ * @param {boolean} [is_root]
+ */
+function validate_for_body_control_flow(node, transform_context, is_root = true) {
+	if (Array.isArray(node)) {
+		for (const child of node) {
+			validate_for_body_control_flow(
+				child,
+				transform_context,
+				is_root && !is_loop_statement(child),
+			);
+		}
+		return;
+	}
+
+	if (!node || typeof node !== 'object') {
+		return;
+	}
+
+	if (is_template_if_node(node)) {
+		return;
+	}
+
+	if (node.type === 'ReturnStatement') {
+		error(TSRX_FOR_RETURN_ERROR, transform_context.filename, node, transform_context.errors);
+		return;
+	}
+	if (node.type === 'BreakStatement') {
+		error(TSRX_FOR_BREAK_ERROR, transform_context.filename, node, transform_context.errors);
+		return;
+	}
+	if (node.type === 'ContinueStatement') {
+		error(TSRX_FOR_CONTINUE_ERROR, transform_context.filename, node, transform_context.errors);
+		return;
+	}
+
+	if (is_function_or_class_boundary(node) || (!is_root && is_loop_statement(node))) {
+		return;
+	}
+
+	for (const key of Object.keys(node)) {
+		if (key === 'loc' || key === 'start' || key === 'end' || key === 'metadata') {
+			continue;
+		}
+		validate_for_body_control_flow(node[key], transform_context, false);
+	}
+}
+
+/**
+ * @param {any[] | any} node
+ * @param {TransformContext} transform_context
+ */
+function validate_if_body_control_flow(node, transform_context) {
+	if (Array.isArray(node)) {
+		for (const child of node) {
+			validate_if_body_control_flow(child, transform_context);
+		}
+		return;
+	}
+
+	if (!node || typeof node !== 'object') {
+		return;
+	}
+
+	if (node.type === 'ReturnStatement') {
+		error(TSRX_IF_RETURN_ERROR, transform_context.filename, node, transform_context.errors);
+		return;
+	}
+	if (node.type === 'BreakStatement') {
+		error(TSRX_IF_BREAK_ERROR, transform_context.filename, node, transform_context.errors);
+		return;
+	}
+	if (node.type === 'ContinueStatement') {
+		error(TSRX_IF_CONTINUE_ERROR, transform_context.filename, node, transform_context.errors);
+		return;
+	}
+
+	if (is_function_or_class_boundary(node)) {
+		return;
+	}
+
+	for (const key of Object.keys(node)) {
+		if (key === 'loc' || key === 'start' || key === 'end' || key === 'metadata') {
+			continue;
+		}
+		validate_if_body_control_flow(node[key], transform_context);
+	}
 }
 
 /**
@@ -674,6 +841,11 @@ function iife_if_arrow(node) {
  */
 function if_statement_to_jsx_child(node, transform_context) {
 	const branches = flatten_if_chain(node);
+	if (is_template_if_node(node)) {
+		for (const branch of branches) {
+			validate_if_body_control_flow(branch.body, transform_context);
+		}
+	}
 
 	if (branches.length === 1) {
 		// Single `if` with no else → <Show when>
@@ -815,10 +987,9 @@ function for_of_statement_to_jsx_child(node, transform_context) {
 
 	const loop_params = get_for_of_iteration_params(node.left, node.index);
 	const loop_body = /** @type {any[]} */ (
-		rewrite_loop_continues_to_bare_returns(
-			node.body.type === 'BlockStatement' ? node.body.body : [node.body],
-		)
+		node.body.type === 'BlockStatement' ? node.body.body : [node.body]
 	);
+	validate_for_body_control_flow(loop_body, transform_context);
 
 	let arrow;
 
@@ -834,6 +1005,15 @@ function for_of_statement_to_jsx_child(node, transform_context) {
 	}
 
 	const attributes = [b.jsx_attribute(b.jsx_id('each'), to_jsx_expression_container(node.right))];
+	if (node.empty) {
+		const empty_body = node.empty.type === 'BlockStatement' ? node.empty.body : [node.empty];
+		attributes.push(
+			b.jsx_attribute(
+				b.jsx_id('fallback'),
+				to_jsx_expression_container(body_to_jsx_child(empty_body, transform_context), node.empty),
+			),
+		);
+	}
 
 	if (node.key) {
 		const item_param = clone_expression_node(loop_params[0]);
@@ -852,14 +1032,13 @@ function for_of_statement_to_jsx_child(node, transform_context) {
  * statement with a discriminant `d` and cases `[c1, c2, default]` becomes:
  *   <Switch fallback={...default}><Match when={d === c1}>...</Match>...</Switch>
  *
- * Fall-through across cases reuses the shared `plan_switch_lift` pipeline
- * from `@tsrx/core`: each duplicated case body is hoisted into a
- * `StatementBodyHook` helper component that chains into the next helper, and
- * each `<Match>` body just renders the appropriate helper element. The
- * client transform hoists those helpers to module scope (Solid's platform
- * sets `moduleScopedHookComponents: true`); `compile_to_volar_mappings` opts
- * back out and emits the helpers locally inside the component body so Volar
- * still sees closure-captured bindings against the component scope.
+ * Cases are isolated: `@switch` does not fall through and does not use `break`.
+ * Hook-bearing case bodies reuse the shared `plan_switch_lift` pipeline from
+ * `@tsrx/core`. The client transform hoists those helpers to module scope
+ * (Solid's platform sets `moduleScopedHookComponents: true`);
+ * `compile_to_volar_mappings` opts back out and emits the helpers locally
+ * inside the component body so Volar still sees closure-captured bindings
+ * against the component scope.
  *
  * When any case is lifted in `typeOnly` mode the helper declarations have to
  * live somewhere local-scoped — we wrap the whole `<Switch>` in an IIFE that
@@ -874,10 +1053,7 @@ function switch_statement_to_jsx_child(node, transform_context) {
 	transform_context.needs_switch = true;
 	transform_context.needs_match = true;
 
-	const { case_info, case_helpers, find_next_helper_after, setup_statements } = plan_switch_lift(
-		node,
-		transform_context,
-	);
+	const { case_info, case_helpers, setup_statements } = plan_switch_lift(node, transform_context);
 
 	/** @type {any} */
 	let fallback = null;
@@ -897,25 +1073,9 @@ function switch_statement_to_jsx_child(node, transform_context) {
 			// definition's `loc` is what the case position should map to.
 			body_jsx = helper.component_element;
 		} else if (info.own_body.length === 0) {
-			// Empty case in the source. If a downstream chain exists (alias
-			// pattern like `case 1: case 2: body; break;`), the `<Match>` for
-			// the empty label still has to render that downstream body —
-			// Solid's `<Match>` arms are exclusive, so JS fall-through can't
-			// rescue us here.
-			const next_helper = find_next_helper_after(i);
-			body_jsx = next_helper ? clone_switch_helper_invocation(next_helper) : create_null_literal();
+			body_jsx = create_null_literal();
 		} else {
-			// Inline case body: process JSX/non-JSX statements just like Solid
-			// does for any other branch body, then append the chain helper if
-			// this case falls through with no terminator.
-			const inline_body = [...info.own_body];
-			if (!info.has_terminator) {
-				const next_helper = find_next_helper_after(i);
-				if (next_helper) {
-					inline_body.push(clone_switch_helper_invocation(next_helper));
-				}
-			}
-			body_jsx = body_to_jsx_child(inline_body, transform_context);
+			body_jsx = body_to_jsx_child(info.own_body, transform_context);
 		}
 
 		if (original_case.test === null) {
@@ -975,7 +1135,7 @@ function switch_statement_to_jsx_child(node, transform_context) {
 }
 
 /**
- * Transform a `try { ... } pending { ... } catch (err, reset) { ... }` block
+ * Transform an `@try { ... } @pending { ... } @catch (err, reset) { ... }` block
  * into Solid's `<Errored>` and/or `<Loading>` JSX elements.
  *
  * @param {any} node
@@ -1879,159 +2039,35 @@ function inject_solid_imports(program, transform_context) {
 // =====================================================================
 
 /**
- * @param {any} node
- * @param {any[]} walked_children
- * @param {any[]} raw_children
- * @param {any[]} attributes
+ * @param {any} node - walker-transformed JSX element whose children have
+ *   already had nested template rewrites applied.
  * @param {TransformContext} transform_context
- * @returns {{ children: any[], selfClosing?: boolean } | null}
- */
-function rewrite_solid_host_children(
-	node,
-	walked_children,
-	raw_children,
-	attributes,
-	transform_context,
-) {
-	const source_children = raw_children ?? walked_children;
-	if (
-		!is_component_like_element(node) &&
-		source_children.length === 1 &&
-		source_children[0]?.type === 'Text' &&
-		!has_text_content_attribute(attributes)
-	) {
-		const text_child = source_children[0];
-		attributes.push(
-			set_loc(
-				/** @type {any} */ ({
-					type: 'JSXAttribute',
-					name: {
-						type: 'JSXIdentifier',
-						name: 'textContent',
-						metadata: { path: [] },
-					},
-					value:
-						walked_children[0] && walked_children[0].type === 'JSXExpressionContainer'
-							? walked_children[0]
-							: to_jsx_expression_container(
-									to_text_expression(text_child.expression, text_child),
-									text_child,
-								),
-					shorthand: false,
-					metadata: { path: [] },
-				}),
-				text_child,
-			),
-		);
-		return { children: [], selfClosing: true };
-	}
-
-	return null;
-}
-
-/**
- * @param {any} node - walker-transformed Element whose `children` have
- *   already had `Style` / `TSRXExpression` / nested `Element`
- *   walker rewrites applied.
- * @param {TransformContext} transform_context
- * @param {any[]} [pre_walk_children] - optional pre-walk children list
- *   from the `transformElement` hook. Only used to detect the
- *   "single `Text` child" shape for the `textContent` optimization —
- *   once detected we build the attribute from the original `Text.expression`.
- *   The factory's `Text` walker lowers `Text` → `JSXExpressionContainer`, so
- *   without these we'd miss the optimization. For rendering non-textContent
- *   children we keep using `node.children` (walker-transformed).
  * @returns {any}
  */
-function to_jsx_element(node, transform_context, pre_walk_children) {
-	if (node.type === 'JSXElement') return node;
+function to_jsx_element(node, transform_context) {
+	if (node.type === 'JSXElement' && !node.metadata?.native_tsrx) return node;
 
 	const walked_children = node.children || [];
-	const text_optimization_children = pre_walk_children ?? walked_children;
 
-	if (!node.id) {
-		error(
-			TEMPLATE_FRAGMENT_ERROR,
-			transform_context.filename,
-			node,
-			transform_context.errors,
-			transform_context.comments,
-		);
-		return set_loc(
-			/** @type {any} */ ({
-				type: 'JSXFragment',
-				openingFragment: { type: 'JSXOpeningFragment' },
-				closingFragment: { type: 'JSXClosingFragment' },
-				children: [],
-			}),
-			node,
-		);
+	if (!node.openingElement?.name) {
+		return tsrx_node_to_jsx_expression(node, transform_context, true);
 	}
 
-	if (is_dynamic_element_id(node.id)) {
+	if (node.dynamic) {
 		return dynamic_element_to_jsx_child(node, transform_context);
 	}
 
-	const name = identifier_to_jsx_name(node.id);
+	const name = clone_jsx_name(node.openingElement.name, node.openingElement.name);
 	const is_composite = is_component_like_element(node);
 	const attributes = transform_element_attributes(
-		node.attributes || [],
+		node.openingElement.attributes || [],
 		is_composite,
 		transform_context,
 		node,
 	);
 
-	// Optimization: `<el>"text"</el>` with a single direct text child on a host
-	// (DOM) element lowers to `<el textContent={expr} />`. Solid
-	// writes `textContent` as a direct DOM property, which is cheaper than
-	// the `insert()`-based text node binding it would otherwise emit for
-	// child expressions. Only safe when the direct text child is the sole child and
-	// the parent is a host element (composite components receive
-	// `textContent` as an opaque prop with no DOM semantics), and when the
-	// user hasn't already set `textContent` themselves.
-	//
-	// We check `text_optimization_children` (pre-walk) rather than
-	// `walked_children` because the factory's `Text` walker has already
-	// lowered `Text` → `JSXExpressionContainer`, which wouldn't match.
-	let selfClosing = !!node.selfClosing;
-	let children;
-	if (
-		!is_composite &&
-		text_optimization_children.length === 1 &&
-		text_optimization_children[0] &&
-		text_optimization_children[0].type === 'Text' &&
-		!has_text_content_attribute(attributes)
-	) {
-		const text_child = text_optimization_children[0];
-		attributes.push(
-			set_loc(
-				/** @type {any} */ ({
-					type: 'JSXAttribute',
-					name: {
-						type: 'JSXIdentifier',
-						name: 'textContent',
-						metadata: { path: [] },
-					},
-					// preserves the walker's rewrites on the Text's inner expression
-					value:
-						walked_children[0] && walked_children[0].type === 'JSXExpressionContainer'
-							? walked_children[0]
-							: to_jsx_expression_container(
-									to_text_expression(text_child.expression, text_child),
-									text_child,
-								),
-					shorthand: false,
-					metadata: { path: [] },
-				}),
-				text_child,
-			),
-		);
-		children = [];
-		selfClosing = true;
-	} else {
-		// Use walker-transformed children in the emitted JSX.
-		children = create_element_children(walked_children, transform_context);
-	}
+	const selfClosing = !!node.openingElement.selfClosing;
+	const children = create_element_children(walked_children, transform_context);
 
 	const openingElement = set_loc(
 		b.jsx_opening_element(name, attributes, selfClosing, node.openingElement?.typeArguments),
@@ -2069,7 +2105,8 @@ function to_jsx_element(node, transform_context, pre_walk_children) {
  * @returns {any[]}
  */
 function create_element_children(children, transform_context) {
-	if (children.length === 0) return [];
+	const visible_children = children;
+	if (visible_children.length === 0) return [];
 
 	// If any child is a plain statement (VariableDeclaration, ExpressionStatement,
 	// DebuggerStatement, etc.) interleaved with JSX, we can't emit it as a JSX
@@ -2078,39 +2115,17 @@ function create_element_children(children, transform_context) {
 	// children list in an IIFE so the statements execute during render and
 	// their locals scope to the block, matching the authored intent of
 	// mid-template locals.
-	const has_non_jsx_child = children.some(
+	const has_non_jsx_child = visible_children.some(
 		(/** @type {any} */ child) => child && !is_jsx_child(child),
 	);
 	if (has_non_jsx_child) {
-		const body_jsx = body_to_jsx_child(children, transform_context);
+		const body_jsx = body_to_jsx_child(visible_children, transform_context);
 		return [jsx_child_wrap(iife_if_arrow(body_jsx))];
 	}
 
-	return children.map((/** @type {any} */ child) => to_jsx_child(child, transform_context));
-}
-
-/**
- * Check if the user already supplied a `textContent` attribute on the
- * element, or if a spread attribute could supply one. If either is true the
- * compiler mustn't emit another `textContent` — the direct-text →
- * `textContent={...}` optimization bails out. Spreads are treated as
- * potentially setting `textContent` because the spread's runtime shape
- * isn't knowable at compile time; emitting a second `textContent` attribute
- * would produce a duplicate-key conflict at runtime.
- *
- * @param {any[]} attributes
- * @returns {boolean}
- */
-function has_text_content_attribute(attributes) {
-	return attributes.some(
-		(/** @type {any} */ attr) =>
-			attr &&
-			((attr.type === 'JSXAttribute' &&
-				attr.name &&
-				attr.name.type === 'JSXIdentifier' &&
-				attr.name.name === 'textContent') ||
-				attr.type === 'JSXSpreadAttribute'),
-	);
+	return visible_children
+		.map((/** @type {any} */ child) => to_jsx_child(child, transform_context))
+		.filter(Boolean);
 }
 
 /**
@@ -2231,8 +2246,12 @@ function is_solid_jsx_ref_attribute(attr) {
  * @returns {any}
  */
 function dynamic_element_to_jsx_child(node, transform_context) {
-	const dynamic_id = set_loc(create_generated_identifier('DynamicElement'), node.id);
-	const alias_declaration = set_loc(b.const(dynamic_id, clone_expression_node(node.id)), node);
+	const element_name = node.openingElement.name;
+	const dynamic_id = set_loc(create_generated_identifier('DynamicElement'), element_name);
+	const alias_declaration = set_loc(
+		b.const(dynamic_id, jsx_name_to_expression(element_name)),
+		node,
+	);
 	const jsx_element = create_dynamic_jsx_element(dynamic_id, node, transform_context);
 
 	return to_jsx_expression_container(
@@ -2258,12 +2277,12 @@ function dynamic_element_to_jsx_child(node, transform_context) {
 function create_dynamic_jsx_element(dynamic_id, node, transform_context) {
 	const is_composite = is_component_like_element(node);
 	const attributes = transform_element_attributes(
-		node.attributes || [],
+		node.openingElement?.attributes || [],
 		is_composite,
 		transform_context,
 		null,
 	);
-	const selfClosing = !!node.selfClosing;
+	const selfClosing = !!node.openingElement?.selfClosing;
 	const children = create_element_children(node.children || [], transform_context);
 	const name = identifier_to_jsx_name(clone_identifier(dynamic_id));
 
@@ -2317,6 +2336,10 @@ function build_return_expression(render_nodes) {
 	if (render_nodes.length === 1) {
 		const only = render_nodes[0];
 		if (only.type === 'JSXExpressionContainer') return only.expression;
+		if (only.type === 'JSXText') {
+			const value = (only.value ?? '').trim();
+			return b.literal(value, JSON.stringify(value), only);
+		}
 		return only;
 	}
 	const first = render_nodes[0];

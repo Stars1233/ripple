@@ -14,19 +14,19 @@ describe('passing reactivity between boundaries tests', () => {
 			return double;
 		}
 
-		function App() {
-			return <>
-				let &[count, countTracked] = track(0);
-				const &[double] = createDouble(countTracked);
-				<div>{'Double: ' + double}</div>
+		function App() @{
+			let &[count, countTracked] = track(0);
+			const &[double] = createDouble(countTracked);
+			<>
+				<div>
+					{'Double: ' + double}
+				</div>
 				<button
 					onClick={() => {
 						count++;
 					}}
-				>
-					{'Increment'}
-				</button>
-			</>;
+				>{'Increment'}</button>
+			</>
 		}
 
 		render(App);
@@ -63,19 +63,19 @@ describe('passing reactivity between boundaries tests', () => {
 			return { double };
 		}
 
-		function App() {
-			return <>
-				let count = track(0);
-				const { double } = createDouble({ count });
-				<div>{'Double: ' + double.value}</div>
+		function App() @{
+			let count = track(0);
+			const { double } = createDouble({ count });
+			<>
+				<div>
+					{'Double: ' + double.value}
+				</div>
 				<button
 					onClick={() => {
 						count.value++;
 					}}
-				>
-					{'Increment'}
-				</button>
-			</>;
+				>{'Increment'}</button>
+			</>
 		}
 
 		render(App);

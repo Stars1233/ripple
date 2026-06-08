@@ -10,8 +10,10 @@ truth for current work.
 
 Use the nearest live source rather than historical summaries:
 
-- `website/public/llms.txt` for current Ripple syntax, runtime APIs, and authoring
-  guidance
+- `website-tsrx/public/llms.txt` for current target-neutral TSRX syntax,
+  compiler-facing authoring guidance, and examples
+- `website/public/llms.txt` for Ripple runtime APIs, Ripple target behavior, and
+  Ripple-specific authoring guidance
 - `README.md` for project overview, positioning, and quick-start examples
 - `packages/*/README.md` for package-specific usage and public APIs
 - `vitest.config.js` for the current test projects and file globs
@@ -73,6 +75,19 @@ than editing generated output, tests, or editor integrations first.
 
 - Default component files are `.tsrx`. Do not describe the project as primarily
   using `.ripple` files unless the local file you are editing actually does.
+- Prefer the current TSRX component shape: `function Component(props) @{ ... }`
+  when setup and output share a scope, or
+  `function Component(props) { return <div />; }` for simple single-root output.
+- TSRX templates use JSX-shaped elements, fragments, text, expression containers,
+  and directive control flow. Do not introduce removed experimental
+  template-boundary or legacy component syntaxes in new examples.
+- When a template scope mixes TypeScript setup with rendered output, setup
+  statements come first and the scope finishes with one output node: a JSX
+  element, JSX fragment, or JSX control-flow expression. Wrap text, expression
+  containers, or multiple siblings in a fragment when they are the output after
+  setup.
+- Use `@if`, `@for`, `@switch`, and `@try` for template control flow. Plain
+  JavaScript control flow remains ordinary setup code.
 - Some packages still preserve compatibility or historical references. Treat them
   as compatibility context, not the default architecture description.
 - Use `pnpm` for all package management and workspace scripts.
@@ -138,8 +153,8 @@ pnpm changeset:check
 
 ## Practical Guidance For Agents
 
-- Prefer the current docs in `website/public/llms.txt` over stale architectural
-  summaries.
+- Prefer the current docs in `website-tsrx/public/llms.txt` and
+  `website/public/llms.txt` over stale architectural summaries.
 - Avoid copying removed compiler APIs, old package layouts, or legacy `.ripple`
   examples into new guidance.
 - If you need exact behavior, read the owning package and its tests instead of

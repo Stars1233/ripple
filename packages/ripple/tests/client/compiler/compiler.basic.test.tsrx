@@ -8,6 +8,10 @@ function get_returned_tsrx(node: any): any {
 	const body =
 		target.type === 'VariableDeclarator' ? target.init.body : target.body;
 
+	if (body.type === 'JSXCodeBlock') {
+		return body.render;
+	}
+
 	if (body.type !== 'BlockStatement') {
 		return body;
 	}
@@ -29,11 +33,12 @@ function count_occurrences(string: string, subString: string): number {
 
 describe('compiler > basics', () => {
 	it('parses style content correctly', () => {
-		const source = `export function App() { return <>
-  <div id="myid" class="myclass">{"Hello World"}</div>
-
-  <style>__STYLE__</style>
-</>; }`;
+		const source = `export function App() @{
+  <>
+    <div id="myid" class="myclass">{"Hello World"}</div>
+    <style>__STYLE__</style>
+  </>
+		}`;
 		const style1 = '.myid {color: green }';
 		const style2 = '#myid {color: green }';
 		const style3 = 'div {color: green }';
@@ -52,13 +57,15 @@ describe('compiler > basics', () => {
 	});
 
 	it('parses text as an ordinary expression identifier', () => {
-		const source = `export function App() { return <>
+		const source = `export function App() @{
 	const markup = '<span>Not HTML</span>';
 	const text = markup;
 
-	<div>{markup}</div>
-	<div>{text}</div>
-</>; }`;
+	<>
+		<div>{markup}</div>
+		<div>{text}</div>
+	</>
+		}`;
 
 		const ast = parse(source);
 		const elements = get_returned_tsrx(ast.body[0]).children.filter(
@@ -76,11 +83,11 @@ describe('compiler > basics', () => {
 		const { code } = compile(source, 'text-directive.tsrx', { mode: 'client' });
 		expect(code).not.toContain('_$_.html');
 
-		const invalid_source = `export function App() { return <>
+		const invalid_source = `export function App() @{
 	const markup = 'plain';
 
 	<div>{text markup}</div>
-</>; }`;
+		}`;
 
 		expect(() => parse(invalid_source)).toThrow();
 	});
@@ -88,28 +95,30 @@ describe('compiler > basics', () => {
 	it('optimizes string-shaped expressions as text nodes', () => {
 		const source = `export function App(
 	{ title, props }: { title: string; props: { label: string } },
-) { return <>
+) @{
 	const element = <span />;
 
-	<div>{String(title)}</div>
-	<div>{title + ''}</div>
-	<div>{title as string}</div>
-	<div>{title}</div>
-	<div>{props.label}</div>
-	<div>{element}</div>
-</>; }`;
+	<>
+		<div>{String(title)}</div>
+		<div>{title + ''}</div>
+		<div>{title as string}</div>
+		<div>{title}</div>
+		<div>{props.label}</div>
+		<div>{element}</div>
+	</>
+}`;
 
 		const { code } = compile(source, 'stringish-text.tsrx', { mode: 'client' });
 
 		expect(code).toContain('_$_.set_text');
 		expect(code).toContain('nodeValue = title');
-		expect(count_occurrences(code, '_$_.expression')).toBe(1);
+		expect(count_occurrences(code, '_$_.expression')).toBe(2);
 	});
 
 	it('does not merge adjacent call-containing children into stringified text', () => {
-		const setup = `function child(label) {
-	return <><span>{label}</span></>;
-}
+		const setup = `function child(label) @{
+	<span>{label}</span>
+		}
 function Constructed(label) {
 	return child(label);
 }
@@ -164,10 +173,8 @@ const values = { member: 0 };`;
 
 		for (const test_case of cases) {
 			const source = `${setup}
-export function App() {
-	return <>
+export function App() @{
 		<div>{'${test_case.name}:'}{${test_case.expression}}</div>
-	</>;
 }`;
 
 			const { code } = compile(source, `${test_case.name}.tsrx`, { mode: 'client' });
@@ -179,161 +186,143 @@ export function App() {
 	});
 
 	it('parses backtick expressions inside TSRX fragments as template literals', () => {
-		const source = `let a = function() {
-			return <>
+		const source = `let a = function() @{
 				<>
-					\`333\`
+					{\`333\`}
 				</>
-			</>;
 		}`;
 
 		const ast = parse(source);
 		const declaration = (ast.body[0] as AST.VariableDeclaration).declarations[0];
-		const fragment = get_returned_tsrx(declaration).children[0] as any;
+		const fragment = get_returned_tsrx(declaration) as any;
 
 		expect(fragment.type).toBe('TsrxFragment');
-		expect(fragment.children[0].type).toBe('ExpressionStatement');
+		expect(fragment.children[0].type).toBe('TSRXExpression');
 		expect(fragment.children[0].expression.type).toBe('TemplateLiteral');
 		expect(fragment.children[0].expression.quasis[0].value.raw).toBe('333');
 	});
 
 	it('parses backtick expressions around tag-like text inside TSRX fragments', () => {
-		const source = `let a = function() {
-			return <>
+		const source = `let a = function() @{
 				<>
-					\`
+					{\`
 					<b></b>
-					\`
+					\`}
 				</>
-			</>;
 		}`;
 
 		const ast = parse(source);
 		const declaration = (ast.body[0] as AST.VariableDeclaration).declarations[0];
-		const fragment = get_returned_tsrx(declaration).children[0] as any;
+		const fragment = get_returned_tsrx(declaration) as any;
 
 		expect(fragment.type).toBe('TsrxFragment');
 		expect(fragment.children.map((child: any) => child.type)).toEqual([
-			'ExpressionStatement',
+			'TSRXExpression',
 		]);
 		expect(fragment.children[0].expression.type).toBe('TemplateLiteral');
 		expect(fragment.children[0].expression.quasis[0].value.raw).toContain('<b></b>');
 	});
 
 	it('renders without crashing', () => {
-		function App() {
-			return <>
-				let foo: Record<string, number>;
-				let bar: Record<string, number>;
-				let baz: Record<string, number>;
-				foo = {};
-				foo = { test: 0 };
-				foo['abc'] = 123;
-				bar = { def: 456 };
-				baz = { ghi: 789 };
-				baz['jkl'] = 987;
-			</>;
+		function App() @{
+			let foo: Record<string, number>;
+			let bar: Record<string, number>;
+			let baz: Record<string, number>;
+			foo = {};
+			foo = { test: 0 };
+			foo['abc'] = 123;
+			bar = { def: 456 };
+			baz = { ghi: 789 };
+			baz['jkl'] = 987;
 		}
 
 		render(App);
 	});
 
 	it('renders without crashing using < character', () => {
-		function App() {
-			return <>
-				function bar() {
-					for (let i = 0; i < 10; i++) {
-						// do nothing
-					}
-					const x = 1 < 1;
+		function App() @{
+			function bar() {
+				for (let i = 0; i < 10; i++) {
+					// do nothing
 				}
-				let x = 5 < 10;
-				<div>{x}</div>
-			</>;
+				const x = 1 < 1;
+			}
+			let x = 5 < 10;
+			<div>{x}</div>
 		}
 
 		render(App);
 	});
 
 	it('renders lexical blocks without crashing', () => {
-		function App() {
-			return <>
+		function App() @{
+			<>
 				<div>
 					const a = 1;
-					<div>
-						const b = 1;
-					</div>
-					<div>
-						const b = 1;
-					</div>
+					<div>const b = 1;</div>
+					<div>const b = 1;</div>
 				</div>
 				<div>
 					const a = 2;
-					<div>
-						const b = 1;
-					</div>
+					<div>const b = 1;</div>
 				</div>
-			</>;
+			</>
 		}
 
 		render(App);
 	});
 
 	it('renders without crashing using mapped types', () => {
-		function App() {
-			return <>
-				type RecordKey = 'test';
-				type RecordValue = { a: string; b: number };
-				const config: Record<RecordKey, RecordValue> = {
-					test: {
-						a: 'test',
-						b: 1,
-					},
-				};
-				const config2: { [key in RecordKey]: RecordValue } = {
-					test: {
-						a: 'test2',
-						b: 2,
-					},
-				};
-				const config3: { [key: string]: RecordValue } = {
-					test: {
-						a: 'test3',
-						b: 3,
-					},
-				};
-			</>;
+		function App() @{
+			type RecordKey = 'test';
+			type RecordValue = { a: string; b: number };
+			const config: Record<RecordKey, RecordValue> = {
+				test: {
+					a: 'test',
+					b: 1,
+				},
+			};
+			const config2: { [key in RecordKey]: RecordValue } = {
+				test: {
+					a: 'test2',
+					b: 2,
+				},
+			};
+			const config3: { [key: string]: RecordValue } = {
+				test: {
+					a: 'test3',
+					b: 3,
+				},
+			};
 		}
 
 		render(App);
 	});
 
 	it('renders without crashing using object destructuring', () => {
-		function App() {
-			return <>
-				const obj = { a: 1, b: 2, c: 3 };
-				const { a, b, ...rest } = obj;
-				<div>
-					{'a '}
-					{a}
-					{'b '}
-					{b}
-					{'rest '}
-					{JSON.stringify(rest)}
+		function App() @{
+			const obj = { a: 1, b: 2, c: 3 };
+			const { a, b, ...rest } = obj;
+			<div>
+				{'a '}
+				{a}
+				{'b '}
+				{b}
+				{'rest '}
+				{JSON.stringify(rest)}
 
-					<div />
-				</div>
-			</>;
+				<div />
+			</div>
 		}
 
 		render(App);
 	});
 
 	it('renders without crashing using object destructuring #2', () => {
-		function App() {
-			return <>
-				const obj = { a: 1, b: 2, c: 3 };
-				const { a, b, ...rest } = obj;
+		function App() @{
+			const obj = { a: 1, b: 2, c: 3 };
+			const { a, b, ...rest } = obj;
+			<>
 				{'a '}
 				{a}
 				{'b '}
@@ -341,7 +330,7 @@ export function App() {
 				{'rest '}
 				{JSON.stringify(rest)}
 				<div />
-			</>;
+			</>
 		}
 
 		render(App);
@@ -360,35 +349,33 @@ export function App() {
 			};
 		}
 
-		function App() {
-			return <>
-				let x: number[] = [] as number[];
-				const n = Wrapper<number>().unwrap<string>();
-				const tagResult = tagFn`value`;
-				interface Node<T> {
-					value: T;
-				}
-				class Box<T> {
-					value: T;
+		function App() @{
+			let x: number[] = [] as number[];
+			const n = Wrapper<number>().unwrap<string>();
+			const tagResult = tagFn`value`;
+			interface Node<T> {
+				value: T;
+			}
+			class Box<T> {
+				value: T;
 
-					method<U extends T>(): U {
-						return this.value as U;
-					}
-
-					constructor(value: T) {
-						this.value = value;
-					}
+				method<U extends T>(): U {
+					return this.value as U;
 				}
-				let flag = true;
-				const s = flag ? new Box<number>(1) : new Box<string>('string');
-			</>;
+
+				constructor(value: T) {
+					this.value = value;
+				}
+			}
+			let flag = true;
+			const s = flag ? new Box<number>(1) : new Box<string>('string');
 		}
 
 		render(App);
 	});
 
 	it('compiles without needing semicolons between statements and JSX', () => {
-		const source = `export function App() { return <>
+		const source = `export function App() @{
 	<div>const code4 = 4
 
 	const code3 = 3
@@ -399,16 +386,18 @@ export function App() {
 			const code2 = 2
 		</div>
 	</div>
-</>; }`;
+		}`;
 
 		const result = compile(source, 'test.tsrx', { mode: 'client' });
 	});
 
 	it('calculates fragment hop count for sibling fragments', () => {
-		const source = `export function App() { return <>
-	<div class="a">{'a'}</div>
-	<div class="b">{'b'}</div>
-</>; }`;
+		const source = `export function App() @{
+	<>
+		<div class="a">{'a'}</div>
+		<div class="b">{'b'}</div>
+	</>
+		}`;
 
 		const { code } = compile(source, 'grouped-count.tsrx', { mode: 'client' });
 
@@ -418,9 +407,9 @@ export function App() {
 
 	it('emits anonymous component expressions as arrows in client output', () => {
 		const source = `
-const Inline = (props) => <>
+const Inline = (props) => @{
 	<div>{props.x}</div>
-</>
+}
 `;
 		const result = compile(source, 'anonymous-component.tsrx', { mode: 'client' }).code;
 
@@ -433,9 +422,9 @@ const Inline = (props) => <>
 
 	it('emits function-expression components as functions in client output', () => {
 		const source = `
-const Inline = function(props) { return <>
+const Inline = function(props) @{
 	<div>{props.x}</div>
-</>; }
+}
 `;
 		const result = compile(source, 'anonymous-component.tsrx', { mode: 'client' }).code;
 
@@ -448,17 +437,17 @@ const Inline = function(props) { return <>
 
 	it('emits function calls with nested template returns as expressions in client output', () => {
 		const source = `
-function App() { return <>
+function App() @{
 	function make(flag) {
 		if (flag) {
-			return <><span>{'nested'}</span></>;
+			return <span>{'nested'}</span>;
 		}
 
 		return null;
 	}
 
 	<div>{make(true)}</div>
-</>; }
+}
 `;
 		const result = compile(source, 'nested-template-return.tsrx', { mode: 'client' }).code;
 
@@ -470,11 +459,11 @@ function App() { return <>
 	// 		() => {
 	// 			const source = `
 	// import { RippleArray, RippleObject, RippleSet, RippleMap, createRefKey } from 'ripple';
-	// function App() { return <>
+	// function App() @{
 	// 	const items = new RippleArray(1, 2, 3);
 	// 	const obj = new RippleObject({ a: 1, b: 2, c: 3 });
-	// 	const set = RippleSet([1, 2, 3]);
-	// 	const map = RippleMap([['a', 1], ['b', 2], ['c', 3]]);
+	// 	const set = new RippleSet([1, 2, 3]);
+	// 	const map = new RippleMap([['a', 1], ['b', 2], ['c', 3]]);
 
 	// 	<div ref={() => {}} />
 	// }
@@ -494,11 +483,11 @@ function App() { return <>
 	// 		() => {
 	// 			const source = `
 	// import { RippleArray as TA, RippleObject as TO, RippleSet as TS, RippleMap as TM, createRefKey as crk } from 'ripple';
-	// function App() { return <>
+	// function App() @{
 	// 	const items = new RippleArray(1, 2, 3);
 	// 	const obj = new RippleObject({ a: 1, b: 2, c: 3 });
-	// 	const set = RippleSet([1, 2, 3]);
-	// 	const map = RippleMap([['a', 1], ['b', 2], ['c', 3]]);
+	// 	const set = new RippleSet([1, 2, 3]);
+	// 	const map = new RippleMap([['a', 1], ['b', 2], ['c', 3]]);
 
 	// 	<div ref={() => {}} />
 	// }
@@ -520,11 +509,11 @@ function App() { return <>
 
 	// 	it('adds hidden obfuscated imports for shorthand syntax', () => {
 	// 		const source = `
-	// function App() { return <>
+	// function App() @{
 	// 	const items = new RippleArray(1, 2, 3);
 	// 	const obj = new RippleObject({ a: 1, b: 2, c: 3 });
-	// 	const set = RippleSet([1, 2, 3]);
-	// 	const map = RippleMap([['a', 1], ['b', 2], ['c', 3]]);
+	// 	const set = new RippleSet([1, 2, 3]);
+	// 	const map = new RippleMap([['a', 1], ['b', 2], ['c', 3]]);
 
 	// 	<div ref={() => {}} />
 	// }
@@ -541,7 +530,7 @@ function App() { return <>
 	it('prints longhand tracked property values in to_ts output while preserving [\'#v\']', () => {
 		const source = `
 import { RippleArray, RippleMap, RippleObject, RippleSet, createRefKey, effect, track, untrack } from 'ripple';
-function App() { return <>
+function App() @{
     let value = track('test');
     function inputRef(node) {}
 
@@ -550,7 +539,7 @@ function App() { return <>
             value: value.value,
             [createRefKey()]: inputRef,
     };
-</>; }
+}
 `;
 
 		const result = compile_to_volar_mappings(source, 'test.tsrx').code;
@@ -561,10 +550,10 @@ function App() { return <>
 	it('keeps lazy destructuring as plain destructuring in to_ts output', () => {
 		const track_source = `
 import { track } from 'ripple';
-function App() { return <>
+function App() @{
 	let &[value, ...rest] = track(0);
 	const x = value;
-</>; }
+}
 `;
 		const track_result = compile_to_volar_mappings(track_source, 'test.tsrx').code;
 		expect(track_result).toContain('let [value, ...rest] = track(0);');
@@ -577,7 +566,7 @@ function App() { return <>
 
 	it('lowers native expression values in to_ts output', () => {
 		const source = `
-function App() { return <>
+function App() @{
 	const nested = <>
 		<span class="nested-tsx">
 			{'inside nested tsx'}
@@ -585,25 +574,25 @@ function App() { return <>
 	</>;
 	const content = <div class="native">{nested}</div>;
 
-	{content}
-</>; }
+	<>{content}</>
+}
 `;
 		const result = compile_to_volar_mappings(source, 'test.tsrx').code;
 
 		expect(result).toContain('const nested = <span class="nested-tsx">');
-		expect(result).toContain('return <>{children}</>;');
+		expect(result).toContain('return content;');
 		expect(result).toContain('const content = <div class="native">');
 	});
 
 	it('keeps assigned style blocks anchored in to_ts output', () => {
 		const source = `
-function App() { return <>
+function App() @{
 	const styles = <style>
 		.logo { display: block; }
 	</style>;
 
 	<div class={styles.logo} />
-</>; }
+}
 `;
 		const result = compile_to_volar_mappings(source, 'test.tsrx', { loose: true });
 		const source_offset = source.indexOf('<style>') + 1;
@@ -627,7 +616,7 @@ function App() { return <>
 
 	it('maps identifiers from native expression values in to_ts output', () => {
 		const source = `
-function App() { return <>
+function App() @{
 	const nested = <>
 		<span class="nested-tsx">
 			{'inside nested tsx'}
@@ -635,14 +624,14 @@ function App() { return <>
 	</>;
 	const content = <div class="native">{nested}</div>;
 
-	{content}
-</>; }
+	<>{content}</>
+}
 `;
 		const result = compile_to_volar_mappings(source, 'test.tsrx', { loose: true });
 		const source_declaration = source.indexOf('nested =');
 		const source_reference = source.indexOf('nested}</div>');
 		const generated_declaration = result.code.indexOf('const nested') + 'const '.length;
-		const generated_reference = result.code.indexOf('nested;', generated_declaration);
+		const generated_reference = result.code.indexOf('nested}</div>', generated_declaration);
 
 		function find_mapping(source_offset: number, generated_offset: number) {
 			return result.mappings.find(
@@ -683,9 +672,9 @@ type Props<Item> = {
 	items: readonly Item[];
 }
 
-export function MyComponent<Item>(props: Props<Item>) { return <>
+export function MyComponent<Item>(props: Props<Item>) @{
 	<div />
-</>; }
+}
 `;
 		const result = compile_to_volar_mappings(source, 'test.tsrx').code;
 
@@ -694,22 +683,23 @@ export function MyComponent<Item>(props: Props<Item>) { return <>
 
 	it('preserves arrow functions that return TSRX in to_ts output', () => {
 		const source = `
-const Inline = (props: { x: string }) => <>
+const Inline = (props: { x: string }) => @{
 	<div>{props.x}</div>
-</>
+}
 `;
 		const result = compile_to_volar_mappings(source, 'test.tsrx').code;
 
-		expect(result).toContain('const Inline = (props: { x: string }) => <div>');
+		expect(result).toContain('const Inline = (props: { x: string }) => {');
+		expect(result).toContain('return <div>');
 		expect(result).not.toContain('function Inline');
 		expect(result).not.toContain('function (props');
 	});
 
 	it('preserves function expressions that return TSRX in to_ts output', () => {
 		const source = `
-const Inline = function(props: { x: string }) { return <>
+const Inline = function(props: { x: string }) @{
 	<div>{props.x}</div>
-</>; }
+}
 `;
 		const result = compile_to_volar_mappings(source, 'test.tsrx').code;
 
@@ -722,13 +712,13 @@ const Inline = function(props: { x: string }) { return <>
 		const source = `
 type User = { name: string };
 
-function RenderProp<Item>(props: { children: (item: Item) => any }) { return <></>; }
+function RenderProp<Item>(props: { children: (item: Item) => any }) @{}
 
-export function App() { return <>
+export function App() @{
 	<RenderProp<User>>
 		{(item) => item.name}
 	</RenderProp>
-</>; }
+}
 `;
 		const result = compile_to_volar_mappings(source, 'test.tsrx').code;
 
@@ -737,13 +727,13 @@ export function App() { return <>
 
 	it('preserves generic type arguments on self-closing JSX component tags in to_ts output', () => {
 		const source = `
-function Box<T>({ value }: { value: T }) { return <>
+function Box<T>({ value }: { value: T }) @{
 	<div>{String(value)}</div>
-</>; }
+}
 
-export function App() { return <>
+export function App() @{
 	<Box<string> value="hi" />
-</>; }
+}
 `;
 		const result = compile_to_volar_mappings(source, 'test.tsrx').code;
 
@@ -843,9 +833,9 @@ interface Props extends PolymorphicProps<'div'> {
 	id: string;
 }
 
-export function App(props: Props) { return <>
+export function App(props: Props) @{
 	<div id={props.id} />
-</>; }
+}
 `;
 
 		const result = compile_to_volar_mappings(source, 'test.tsrx').code;
@@ -856,7 +846,7 @@ export function App(props: Props) { return <>
 	it('handles if-else expression statements in Volar mappings', () => {
 		const source = `
 import { track } from 'ripple';
-export function App() { return <>
+export function App() @{
 	let &[level] = track(1);
 
 	<button
@@ -868,58 +858,61 @@ export function App() { return <>
 	>
 		{'Toggle'}
 	</button>
-</>; }
+}
 `;
 
 		expect(() => compile_to_volar_mappings(source, 'test.tsrx')).not.toThrow();
 	});
 
-	it('should not error on having js below markup in the same scope', () => {
+	it('errors on having js below markup in the same scope', () => {
 		const code = `
-function Card(props) { return <>
+function Card(props) @{
 	<div class="card">
 		{props.children}
 	</div>
-</>; }
+}
 
-export function App() { return <>
-		function children() { return <>
+export function App() @{
+		function children() @{
 			<p>{'Card content here'}</p>
-		</>; }
+		}
 
 		<Card {children} />
 
 	const test = 5;
 
 	<div>{test}</div>
-</>; }
+}
 `;
-		expect(() => compile(code, 'test.tsrx')).not.toThrow();
+		expect(() => compile(code, 'test.tsrx')).toThrow(
+			/Code must be at the top of '@\{ \}'; statements cannot follow the rendered output/,
+		);
 	});
 
-	it('allows component functions inside composite children', () => {
+	it('allows component functions passed to composite children', () => {
 		const source = `
-export function App() { return <>
-	<ark.div class="host-class" data-value="42">
-		function asChild({ children, href, ...rest }: { href: string; [key: string]: any }) { return <>
-			<a id="aschild-anchor" {href} {...rest} data-extra="yes">{'Link'}</a>
-		</>; }
-	</ark.div>
-</>; }
+export function App() @{
+	function asChild({ children, href, ...rest }: { href: string; [key: string]: any }) @{
+		<a id="aschild-anchor" {href} {...rest} data-extra="yes">{'Link'}</a>
+	}
+
+	<ark.div class="host-class" data-value="42" {asChild} />
+}
 `;
 
 		expect(() => compile_to_volar_mappings(source, 'test.tsrx')).not.toThrow();
 	});
 
-	it('allows parent element attributes referencing child-declared functions', () => {
+	it('allows parent element attributes referencing setup-declared functions', () => {
 		const source = `
-export function App() { return <>
+export function App() @{
+	function Z() @{
+		<div>{'hello'}</div>
+	}
+
 	<Test {Z}>
-		function Z() { return <>
-			<div>{'hello'}</div>
-		</>; }
 	</Test>
-</>; }
+}
 `;
 
 		expect(() => compile(source, 'test.tsrx')).not.toThrow();
@@ -927,13 +920,13 @@ export function App() { return <>
 
 	it('preserves explicit component props in Volar mappings', () => {
 		const source = `
-export function App() { return <>
-	function asChild({ children, href, ...rest }: { href: string; [key: string]: any }) { return <>
+export function App() @{
+	function asChild({ children, href, ...rest }: { href: string; [key: string]: any }) @{
 		<a id="aschild-anchor" {href} {...rest} data-extra="yes">{'Link'}</a>
-	</>; }
+	}
 
 	<ark.div class="host-class" data-value="42" {asChild} />
-</>; }
+}
 `;
 		const result = compile_to_volar_mappings(source, 'test.tsrx').code;
 
@@ -941,19 +934,58 @@ export function App() { return <>
 		expect(result).not.toContain('children={() =>');
 	});
 
+	it('uses direct TSRX render expressions for component children in Volar mappings', () => {
+		const source = `
+function OtherComponent({ children }: { children: string }) @{
+	<div>{children}</div>
+}
+
+export const App = () => @{
+	<>
+		@try {
+			<ComponentThatSuspends />
+		} @pending {
+			<div>Loading</div>
+		}
+		<OtherComponent children={'I like TSRX'} />
+	</>
+};
+`;
+		const result = compile_to_volar_mappings(source, 'test.tsrx', { loose: true });
+		const source_offset = source.indexOf('\'I like TSRX\'');
+		const generated_offset = result.code.indexOf('\'I like TSRX\'');
+
+		expect(result.code).toContain('<OtherComponent children={\'I like TSRX\'}');
+		expect(result.code).not.toContain('children={() =>');
+		expect(
+			result.mappings.find(
+				(mapping: {
+					sourceOffsets: number[];
+					generatedOffsets: number[];
+					lengths: number[];
+					generatedLengths: number[];
+				}) =>
+					mapping.sourceOffsets[0] === source_offset &&
+						mapping.generatedOffsets[0] === generated_offset &&
+						mapping.lengths[0] === '\'I like TSRX\''.length &&
+						mapping.generatedLengths[0] === '\'I like TSRX\''.length,
+			),
+		).toBeDefined();
+	});
+
 	it('merges explicit children prop with implicit children in client output', () => {
 		const source = `
-function Card(props) { return <>
+function Card(props) @{
 	<div>{props.children}</div>
-</>; }
+}
 
-export function App() { return <>
+export function App() @{
 	const fallback = 'fallback';
 
 	<Card children={fallback}>
 		<span>{'content'}</span>
 	</Card>
-</>; }
+}
 `;
 
 		const result = compile(source, 'test.tsrx', { mode: 'client' }).code;
@@ -972,10 +1004,10 @@ class Test {
 	}
 }
 
-export function App() { return <>
+export function App() @{
 	const test = new Test();
 	<div>{test.count}</div>
-</>; }
+}
 `;
 		expect(() => compile(code, 'test.tsrx')).not.toThrow();
 	});
@@ -991,10 +1023,10 @@ class Store {
 	}
 }
 
-export function App() { return <>
+export function App() @{
 	const store = new Store();
 	<div>{store.count}</div>
-</>; }
+}
 `;
 		const result = compile(source, 'test.tsrx', { mode: 'client' });
 		const code = result.code;
@@ -1008,14 +1040,14 @@ export function App() { return <>
 		const source = `
 import { track, effect, untrack } from 'ripple';
 
-function App() { return <>
+function App() @{
 	let &[count] = track(0);
 
 	effect(() => {
 		const snapshot = untrack(() => count);
 		console.log(snapshot);
 	});
-</>; }
+}
 `;
 
 		const ast = parse(source);
@@ -1028,10 +1060,10 @@ function App() { return <>
 	it('collects duplicate declaration parser errors in loose mode', () => {
 		const source = `
 import { track } from 'ripple';
-export function App() { return <>
+export function App() @{
 	let test = track(false);
 	let test = 'hey';
-</>; }
+}
 `;
 
 		expect(() => compile(source, 'test.tsrx')).toThrow(
@@ -1057,11 +1089,11 @@ export function App() { return <>
 import { loadUser as getUser } from server;
 import { loadUser } from server;
 
-function App() { return <>
+function App() @{
 	const user = getUser();
 	const user2 = loadUser();
 	<div>{user.id}{user2.id}</div>
-</>; }`;
+}`;
 		const result = compile_to_volar_mappings(source, 'test.tsrx', { loose: true });
 		const generated_member = '_$_server_$_.loadUser';
 		const generated_member_offset = result.code.indexOf(generated_member);
@@ -1117,23 +1149,12 @@ function App() { return <>
 		).toBeDefined();
 	});
 
-	it('reports return statements inside returned TSRX fragments in Volar mappings', () => {
-		const result = compile_to_volar_mappings(
-			`function App() { return <>
+	it('allows return statements inside returned TSRX fragments in Volar mappings', () => {
+		const result = compile_to_volar_mappings(`function App() @{
 				return <div />;
-			</>; }`,
-			'test.tsrx',
-		);
+			}`, 'test.tsrx');
 
-		expect(result.errors.map((error) => error.code)).toEqual(['tsrx-template-return-statement']);
-	});
-
-	it('throws for namespaced template tags', () => {
-		const source = `export function App() { return <foo:bar></foo:bar>; }`;
-
-		expect(() => compile(source, 'test.tsrx')).toThrow(
-			'Namespaced elements are not supported in TSRX templates: <foo:bar>.',
-		);
+		expect(result.errors).toEqual([]);
 	});
 
 	it('collects analyzer errors outside loose mode', () => {
@@ -1142,7 +1163,7 @@ import { track } from 'ripple';
 
 const outside = track(0);
 
-export function App() { return <></>; }
+export function App() @{}
 `;
 
 		const result = compile(source, 'test.tsrx', { collect: true });
@@ -1153,23 +1174,23 @@ export function App() { return <></>; }
 
 	it('does not let nested for...of continues satisfy an outer if body', () => {
 		const source = `
-export function App({ items }: { items: string[] }) { return <>
+export function App({ items }: { items: string[] }) @{
 	if (items.length) {
 		for (const item of items) {
 			if (!item) continue
 		}
 	}
-</>; }`;
+}`;
 
 		const result = compile(source, 'test.tsrx', { collect: true });
-		expect(result.errors.map((error) => error.message)).toContain(
+		expect(result.errors.map((error) => error.message)).not.toContain(
 			'Component if statements must contain a template in their "then" body. Move the if statement into an effect if it does not render anything.',
 		);
 	});
 
 	it('preserves class extends generic type arguments in volar output', () => {
 		const source = `class StringMap extends Map<string, string> {}
-export function App() { return <></>; }`;
+export function App() @{}`;
 
 		expect(() => compile_to_volar_mappings(source, 'test.tsrx', { loose: true })).not.toThrow();
 
@@ -1180,15 +1201,15 @@ export function App() { return <></>; }`;
 
 	it('wraps children in normalize_children for explicit children prop passed to component', () => {
 		const source = `
-function Card(props) { return <>
+function Card(props) @{
 	<div>{props.children}</div>
-</>; }
+}
 
-export function App() { return <>
+export function App() @{
 	const content = 'hello';
 
 	<Card children={content} />
-</>; }
+}
 `;
 
 		const result = compile(source, 'test.tsrx', { mode: 'client' }).code;
@@ -1199,35 +1220,35 @@ export function App() { return <>
 	it(
 		'parses a JS statement inside an element with no trailing whitespace before the closing tag',
 		() => {
-			const source = `function TodoList({ items }: { items: { text: string }[] }) { return <>
+			const source = `function TodoList({ items }: { items: { text: string }[] }) @{
   <ul>var a = "123"</ul>
-</>; }`;
+			}`;
 			const ast = parse(source);
-			const ul = get_returned_tsrx(ast.body[0]).children.find(
-				(n: AST.Node) => n.type === 'Element',
-			) as AST.Element;
+			const returned = get_returned_tsrx(ast.body[0]);
+			const ul =
+				returned.type === 'Element'
+					? returned
+					: returned.children.find((n: AST.Node) => n.type === 'Element') as AST.Element;
 			expect((ul.id as AST.Identifier).name).toBe('ul');
 			expect(ul.children).toHaveLength(1);
-			const decl = ul.children[0] as unknown as AST.VariableDeclaration;
-			expect(decl.type).toBe('VariableDeclaration');
-			expect(decl.kind).toBe('var');
-			expect((decl.declarations[0].id as AST.Identifier).name).toBe('a');
-			expect((decl.declarations[0].init as AST.Literal).value).toBe('123');
+			const text = ul.children[0] as unknown as { type: string; expression: AST.Literal };
+			expect(text.type).toBe('Text');
+			expect(text.expression.value).toBe('var a = "123"');
 			expect((ul.closingElement?.name as ESTreeJSX.JSXIdentifier)?.name).toBe('ul');
 		},
 	);
 
 	it('uses spread_props for spreads that may contain children', () => {
 		const source = `
-function Card(props) { return <>
+function Card(props) @{
 	<div>{props.children}</div>
-</>; }
+}
 
-export function App() { return <>
+export function App() @{
 	const props = { children: 'hello' };
 
 	<Card {...props} />
-</>; }
+}
 `;
 
 		const result = compile(source, 'test.tsrx', { mode: 'client' }).code;
@@ -1235,19 +1256,12 @@ export function App() { return <>
 		expect(result).toContain('_$_.spread_props(');
 	});
 
-	it('parses less-than comparisons at line start in element children without whitespace', () => {
-		const source = `function TodoList({ items }: { items: { text: string }[] }) { return <>
+	it('rejects less-than comparisons at line start in element children without whitespace', () => {
+		const source = `function TodoList({ items }: { items: { text: string }[] }) @{
 	<ul>var a = 3
 	<4;</ul>
-</>; }`;
+		}`;
 
-		const ast = parse(source);
-		const ul = get_returned_tsrx(ast.body[0]).children.find(
-			(n: AST.Node) => n.type === 'Element',
-		) as AST.Element;
-		expect((ul.id as AST.Identifier).name).toBe('ul');
-		expect(ul.children.length).toBeGreaterThanOrEqual(1);
-		const decl = ul.children[0] as unknown as AST.VariableDeclaration;
-		expect(decl.type).toBe('VariableDeclaration');
+		expect(() => parse(source)).toThrow();
 	});
 });

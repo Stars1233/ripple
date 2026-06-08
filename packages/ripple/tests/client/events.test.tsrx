@@ -3,21 +3,19 @@ import { effect, flushSync, on, track } from 'ripple';
 
 describe('on() event handler', () => {
 	it('should attach multiple handlers via onClick attribute (delegated)', () => {
-		function Basic() {
-			return <>
-				let &[count1] = track(0);
-				let &[count2] = track(0);
+		function Basic() @{
+			let &[count1] = track(0);
+			let &[count2] = track(0);
+			<>
 				<button
 					onClick={() => {
 						count1++;
 						count2++;
 					}}
-				>
-					{'Click me'}
-				</button>
+				>{'Click me'}</button>
 				<div class="count1">{count1}</div>
 				<div class="count2">{count2}</div>
-			</>;
+			</>
 		}
 
 		render(Basic);
@@ -36,18 +34,18 @@ describe('on() event handler', () => {
 	});
 
 	it('should attach and remove a single event handler', () => {
-		function Basic() {
-			return <>
-				let &[count] = track(0);
-				const setupListener = (node: HTMLButtonElement) => {
-					const remove = on(node, 'click', () => {
-						count++;
-					});
-					return remove;
-				};
+		function Basic() @{
+			let &[count] = track(0);
+			const setupListener = (node: HTMLButtonElement) => {
+				const remove = on(node, 'click', () => {
+					count++;
+				});
+				return remove;
+			};
+			<>
 				<button ref={setupListener}>{'Click me'}</button>
 				<div class="count">{count}</div>
-			</>;
+			</>
 		}
 
 		render(Basic);
@@ -68,26 +66,26 @@ describe('on() event handler', () => {
 	});
 
 	it('should handle multiple different event types on same element', () => {
-		function Basic() {
-			return <>
-				let &[clickCount] = track(0);
-				let &[mousedownCount] = track(0);
-				const setupListeners = (node: HTMLButtonElement) => {
-					const remove1 = on(node, 'click', () => {
-						clickCount++;
-					});
-					const remove2 = on(node, 'mousedown', () => {
-						mousedownCount++;
-					});
-					return () => {
-						remove1();
-						remove2();
-					};
+		function Basic() @{
+			let &[clickCount] = track(0);
+			let &[mousedownCount] = track(0);
+			const setupListeners = (node: HTMLButtonElement) => {
+				const remove1 = on(node, 'click', () => {
+					clickCount++;
+				});
+				const remove2 = on(node, 'mousedown', () => {
+					mousedownCount++;
+				});
+				return () => {
+					remove1();
+					remove2();
 				};
+			};
+			<>
 				<button ref={setupListeners}>{'Test'}</button>
 				<div class="click-count">{clickCount}</div>
 				<div class="mousedown-count">{mousedownCount}</div>
-			</>;
+			</>
 		}
 
 		render(Basic);
@@ -118,28 +116,28 @@ describe('on() event handler', () => {
 	});
 
 	it('should handle multiple handlers for same event type on same element', () => {
-		function Basic() {
-			return <>
-				let &[callOrder] = track<number[]>([]);
-				const setupListeners = (node: HTMLButtonElement) => {
-					const remove1 = on(node, 'click', () => {
-						callOrder = [...callOrder, 1];
-					});
-					const remove2 = on(node, 'click', () => {
-						callOrder = [...callOrder, 2];
-					});
-					const remove3 = on(node, 'click', () => {
-						callOrder = [...callOrder, 3];
-					});
-					return () => {
-						remove1();
-						remove2();
-						remove3();
-					};
+		function Basic() @{
+			let &[callOrder] = track<number[]>([]);
+			const setupListeners = (node: HTMLButtonElement) => {
+				const remove1 = on(node, 'click', () => {
+					callOrder = [...callOrder, 1];
+				});
+				const remove2 = on(node, 'click', () => {
+					callOrder = [...callOrder, 2];
+				});
+				const remove3 = on(node, 'click', () => {
+					callOrder = [...callOrder, 3];
+				});
+				return () => {
+					remove1();
+					remove2();
+					remove3();
 				};
+			};
+			<>
 				<button ref={setupListeners}>{'Click me'}</button>
 				<div class="order">{callOrder.join(',')}</div>
-			</>;
+			</>
 		}
 
 		render(Basic);
@@ -161,44 +159,40 @@ describe('on() event handler', () => {
 	});
 
 	it('should remove specific handler without affecting others', () => {
-		function Basic() {
-			return <>
-				let &[handler1Called] = track(0);
-				let &[handler2Called] = track(0);
-				let &[handler3Called] = track(0);
-				let removeHandler2: OnEventListenerRemover | undefined;
-				const setupListeners = (node: HTMLButtonElement) => {
-					const remove1 = on(node, 'click', () => {
-						handler1Called++;
-					});
-					removeHandler2 = on(node, 'click', () => {
-						handler2Called++;
-					});
-					const remove3 = on(node, 'click', () => {
-						handler3Called++;
-					});
-					return () => {
-						remove1();
-						removeHandler2?.();
-						remove3();
-					};
+		function Basic() @{
+			let &[handler1Called] = track(0);
+			let &[handler2Called] = track(0);
+			let &[handler3Called] = track(0);
+			let removeHandler2: OnEventListenerRemover | undefined;
+			const setupListeners = (node: HTMLButtonElement) => {
+				const remove1 = on(node, 'click', () => {
+					handler1Called++;
+				});
+				removeHandler2 = on(node, 'click', () => {
+					handler2Called++;
+				});
+				const remove3 = on(node, 'click', () => {
+					handler3Called++;
+				});
+				return () => {
+					remove1();
+					removeHandler2?.();
+					remove3();
 				};
-				<div>
-					<button class="test-btn" ref={setupListeners}>{'Click me'}</button>
-					<button
-						class="remove-btn"
-						onClick={() => {
-							removeHandler2?.();
-							removeHandler2 = undefined;
-						}}
-					>
-						{'Remove handler 2'}
-					</button>
-					<div class="h1">{handler1Called}</div>
-					<div class="h2">{handler2Called}</div>
-					<div class="h3">{handler3Called}</div>
-				</div>
-			</>;
+			};
+			<div>
+				<button class="test-btn" ref={setupListeners}>{'Click me'}</button>
+				<button
+					class="remove-btn"
+					onClick={() => {
+						removeHandler2?.();
+						removeHandler2 = undefined;
+					}}
+				>{'Remove handler 2'}</button>
+				<div class="h1">{handler1Called}</div>
+				<div class="h2">{handler2Called}</div>
+				<div class="h3">{handler3Called}</div>
+			</div>
 		}
 
 		render(Basic);
@@ -239,31 +233,33 @@ describe('on() event handler', () => {
 	it(
 		'should handle change event with multiple handlers (like bindChecked and bindIndeterminate)',
 		() => {
-			function Basic() {
-				return <>
-					let &[checked] = track(false);
-					let &[indeterminate] = track(true);
-					const setupListeners = (node: HTMLInputElement) => {
-						node.indeterminate = indeterminate;
-						node.checked = checked;
+			function Basic() @{
+				let &[checked] = track(false);
+				let &[indeterminate] = track(true);
+				const setupListeners = (node: HTMLInputElement) => {
+					node.indeterminate = indeterminate;
+					node.checked = checked;
 
-						const remove1 = on(node, 'change', () => {
-							checked = node.checked;
-						});
-						const remove2 = on(node, 'change', () => {
-							indeterminate = node.indeterminate;
-						});
-						return () => {
-							remove1();
-							remove2();
-						};
+					const remove1 = on(node, 'change', () => {
+						checked = node.checked;
+					});
+					const remove2 = on(node, 'change', () => {
+						indeterminate = node.indeterminate;
+					});
+					return () => {
+						remove1();
+						remove2();
 					};
-					<div>
-						<input type="checkbox" ref={setupListeners} />
-						<div class="checked">{checked ? 'true' : 'false'}</div>
-						<div class="indeterminate">{indeterminate ? 'true' : 'false'}</div>
+				};
+				<div>
+					<input type="checkbox" ref={setupListeners} />
+					<div class="checked">
+						{checked ? 'true' : 'false'}
 					</div>
-				</>;
+					<div class="indeterminate">
+						{indeterminate ? 'true' : 'false'}
+					</div>
+				</div>
 			}
 
 			render(Basic);
@@ -288,18 +284,18 @@ describe('on() event handler', () => {
 	);
 
 	it('should support non-delegated events', () => {
-		function Basic() {
-			return <>
-				let &[focusCount] = track(0);
-				const setupListener = (node: HTMLInputElement) => {
-					const remove = on(node, 'focus', () => {
-						focusCount++;
-					});
-					return remove;
-				};
+		function Basic() @{
+			let &[focusCount] = track(0);
+			const setupListener = (node: HTMLInputElement) => {
+				const remove = on(node, 'focus', () => {
+					focusCount++;
+				});
+				return remove;
+			};
+			<>
 				<input ref={setupListener} />
 				<div class="focus-count">{focusCount}</div>
-			</>;
+			</>
 		}
 
 		render(Basic);
@@ -320,44 +316,40 @@ describe('on() event handler', () => {
 	});
 
 	it('should handle removal of all handlers for same event type', () => {
-		function Basic() {
-			return <>
-				let &[count] = track(0);
-				let remove1: OnEventListenerRemover | undefined;
-				let remove2: OnEventListenerRemover | undefined;
-				let remove3: OnEventListenerRemover | undefined;
-				const setupListeners = (node: HTMLButtonElement) => {
-					remove1 = on(node, 'click', () => {
-						count++;
-					});
-					remove2 = on(node, 'click', () => {
-						count += 10;
-					});
-					remove3 = on(node, 'click', () => {
-						count += 100;
-					});
-					return () => {
+		function Basic() @{
+			let &[count] = track(0);
+			let remove1: OnEventListenerRemover | undefined;
+			let remove2: OnEventListenerRemover | undefined;
+			let remove3: OnEventListenerRemover | undefined;
+			const setupListeners = (node: HTMLButtonElement) => {
+				remove1 = on(node, 'click', () => {
+					count++;
+				});
+				remove2 = on(node, 'click', () => {
+					count += 10;
+				});
+				remove3 = on(node, 'click', () => {
+					count += 100;
+				});
+				return () => {
+					remove1?.();
+					remove2?.();
+					remove3?.();
+				};
+			};
+			<div>
+				<button class="test-btn" ref={setupListeners}>{'Click me'}</button>
+				<button
+					class="remove-all"
+					onClick={() => {
 						remove1?.();
 						remove2?.();
 						remove3?.();
-					};
-				};
-				<div>
-					<button class="test-btn" ref={setupListeners}>{'Click me'}</button>
-					<button
-						class="remove-all"
-						onClick={() => {
-							remove1?.();
-							remove2?.();
-							remove3?.();
-							remove1 = remove2 = remove3 = undefined;
-						}}
-					>
-						{'Remove all'}
-					</button>
-					<div class="count">{count}</div>
-				</div>
-			</>;
+						remove1 = remove2 = remove3 = undefined;
+					}}
+				>{'Remove all'}</button>
+				<div class="count">{count}</div>
+			</div>
 		}
 
 		render(Basic);
@@ -385,27 +377,27 @@ describe('on() event handler', () => {
 	});
 
 	it('should not add duplicate handlers when same handler is attached multiple times', () => {
-		function Basic() {
-			return <>
-				let &[count] = track(0);
-				const sharedHandler = () => {
-					count++;
-				};
-				const setupListeners = (node: HTMLButtonElement) => {
-					// Attach the same handler multiple times
-					const remove1 = on(node, 'click', sharedHandler);
-					const remove2 = on(node, 'click', sharedHandler);
-					const remove3 = on(node, 'click', sharedHandler);
+		function Basic() @{
+			let &[count] = track(0);
+			const sharedHandler = () => {
+				count++;
+			};
+			const setupListeners = (node: HTMLButtonElement) => {
+				// Attach the same handler multiple times
+				const remove1 = on(node, 'click', sharedHandler);
+				const remove2 = on(node, 'click', sharedHandler);
+				const remove3 = on(node, 'click', sharedHandler);
 
-					return () => {
-						remove1?.();
-						remove2?.();
-						remove3?.();
-					};
+				return () => {
+					remove1?.();
+					remove2?.();
+					remove3?.();
 				};
+			};
+			<>
 				<button ref={setupListeners}>{'Click me'}</button>
 				<div class="count">{count}</div>
-			</>;
+			</>
 		}
 
 		render(Basic);
@@ -427,27 +419,27 @@ describe('on() event handler', () => {
 	});
 
 	it('should allow duplicate handlers when delegated is false (no deduplication)', () => {
-		function Basic() {
-			return <>
-				let &[count] = track(0);
-				const sharedHandler = () => {
-					count++;
-				};
-				const setupListeners = (node: HTMLButtonElement) => {
-					// Attach the same handler multiple times with delegated: false
-					const remove1 = on(node, 'click', sharedHandler, { delegated: false });
-					const remove2 = on(node, 'click', sharedHandler, { delegated: false });
-					const remove3 = on(node, 'click', sharedHandler, { delegated: false });
+		function Basic() @{
+			let &[count] = track(0);
+			const sharedHandler = () => {
+				count++;
+			};
+			const setupListeners = (node: HTMLButtonElement) => {
+				// Attach the same handler multiple times with delegated: false
+				const remove1 = on(node, 'click', sharedHandler, { delegated: false });
+				const remove2 = on(node, 'click', sharedHandler, { delegated: false });
+				const remove3 = on(node, 'click', sharedHandler, { delegated: false });
 
-					return () => {
-						remove1?.();
-						remove2?.();
-						remove3?.();
-					};
+				return () => {
+					remove1?.();
+					remove2?.();
+					remove3?.();
 				};
+			};
+			<>
 				<button ref={setupListeners}>{'Click me'}</button>
 				<div class="count">{count}</div>
-			</>;
+			</>
 		}
 
 		render(Basic);
@@ -470,26 +462,26 @@ describe('on() event handler', () => {
 	});
 
 	it('should fire capture event on parent before bubbling event on child', () => {
-		function Basic() {
-			return <>
-				let &[callOrder] = track<string[]>([]);
-				const parentCaptureHandler = () => {
-					callOrder = [...callOrder, 'parent-capture'];
-				};
-				const childBubbleHandler = () => {
-					callOrder = [...callOrder, 'child-bubble'];
-				};
-				const setupParent = (node: HTMLDivElement) => {
-					return on(node, 'clickCapture', parentCaptureHandler);
-				};
-				const setupChild = (node: HTMLButtonElement) => {
-					return on(node, 'click', childBubbleHandler);
-				};
+		function Basic() @{
+			let &[callOrder] = track<string[]>([]);
+			const parentCaptureHandler = () => {
+				callOrder = [...callOrder, 'parent-capture'];
+			};
+			const childBubbleHandler = () => {
+				callOrder = [...callOrder, 'child-bubble'];
+			};
+			const setupParent = (node: HTMLDivElement) => {
+				return on(node, 'clickCapture', parentCaptureHandler);
+			};
+			const setupChild = (node: HTMLButtonElement) => {
+				return on(node, 'click', childBubbleHandler);
+			};
+			<>
 				<div ref={setupParent} class="parent">
 					<button ref={setupChild} class="child">{'Click me'}</button>
 				</div>
 				<div class="order">{callOrder.join(',')}</div>
-			</>;
+			</>
 		}
 
 		render(Basic);
@@ -512,28 +504,28 @@ describe('on() event handler', () => {
 	});
 
 	it('should fire handler only once when once option is true', () => {
-		function Basic() {
-			return <>
-				let &[count] = track(0);
-				let &[permanentCount] = track(0);
-				const setupListeners = (node: HTMLButtonElement) => {
-					const onceHandler = on(node, 'click', () => {
-						count++;
-					}, { once: true });
+		function Basic() @{
+			let &[count] = track(0);
+			let &[permanentCount] = track(0);
+			const setupListeners = (node: HTMLButtonElement) => {
+				const onceHandler = on(node, 'click', () => {
+					count++;
+				}, { once: true });
 
-					const permanentHandler = on(node, 'click', () => {
-						permanentCount++;
-					});
+				const permanentHandler = on(node, 'click', () => {
+					permanentCount++;
+				});
 
-					return () => {
-						onceHandler?.();
-						permanentHandler?.();
-					};
+				return () => {
+					onceHandler?.();
+					permanentHandler?.();
 				};
+			};
+			<>
 				<button ref={setupListeners}>{'Click me'}</button>
 				<div class="once-count">{count}</div>
 				<div class="permanent-count">{permanentCount}</div>
-			</>;
+			</>
 		}
 
 		render(Basic);
@@ -566,20 +558,18 @@ describe('on() event handler', () => {
 	});
 
 	it('should handle click events on window', () => {
-		function Basic() {
-			return <>
-				let &[windowClickCount] = track(0);
-				effect(() => {
-					const removeWindowListener = on(window, 'click', () => {
-						windowClickCount++;
-					});
-					return removeWindowListener;
+		function Basic() @{
+			let &[windowClickCount] = track(0);
+			effect(() => {
+				const removeWindowListener = on(window, 'click', () => {
+					windowClickCount++;
 				});
-				<div>
-					<button class="test-btn">{'Click me'}</button>
-					<div class="window-count">{windowClickCount}</div>
-				</div>
-			</>;
+				return removeWindowListener;
+			});
+			<div>
+				<button class="test-btn">{'Click me'}</button>
+				<div class="window-count">{windowClickCount}</div>
+			</div>
 		}
 
 		render(Basic);
@@ -602,20 +592,18 @@ describe('on() event handler', () => {
 	});
 
 	it('should handle click events on document', () => {
-		function Basic() {
-			return <>
-				let &[documentClickCount] = track(0);
-				effect(() => {
-					const removeDocumentListener = on(document, 'click', () => {
-						documentClickCount++;
-					});
-					return removeDocumentListener;
+		function Basic() @{
+			let &[documentClickCount] = track(0);
+			effect(() => {
+				const removeDocumentListener = on(document, 'click', () => {
+					documentClickCount++;
 				});
-				<div>
-					<button class="test-btn">{'Click me'}</button>
-					<div class="document-count">{documentClickCount}</div>
-				</div>
-			</>;
+				return removeDocumentListener;
+			});
+			<div>
+				<button class="test-btn">{'Click me'}</button>
+				<div class="document-count">{documentClickCount}</div>
+			</div>
 		}
 
 		render(Basic);
@@ -638,20 +626,18 @@ describe('on() event handler', () => {
 	});
 
 	it('should handle click events on body', () => {
-		function Basic() {
-			return <>
-				let &[bodyClickCount] = track(0);
-				effect(() => {
-					const removeBodyListener = on(document.body, 'click', () => {
-						bodyClickCount++;
-					});
-					return removeBodyListener;
+		function Basic() @{
+			let &[bodyClickCount] = track(0);
+			effect(() => {
+				const removeBodyListener = on(document.body, 'click', () => {
+					bodyClickCount++;
 				});
-				<div>
-					<button class="test-btn">{'Click me'}</button>
-					<div class="body-count">{bodyClickCount}</div>
-				</div>
-			</>;
+				return removeBodyListener;
+			});
+			<div>
+				<button class="test-btn">{'Click me'}</button>
+				<div class="body-count">{bodyClickCount}</div>
+			</div>
 		}
 
 		render(Basic);

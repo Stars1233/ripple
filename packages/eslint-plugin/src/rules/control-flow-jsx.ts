@@ -1,18 +1,28 @@
 import type { Rule } from 'eslint';
 import type * as AST from '@tsrx/core/types/estree';
-import { functionReturnsNativeTsrx, isNativeTsrxNode } from '../utils/tsrx.js';
+import { functionReturnsNativeTsrx } from '../utils/tsrx.js';
+
+const NESTED_BOUNDARY_TYPES = new Set([
+	'FunctionDeclaration',
+	'FunctionExpression',
+	'ArrowFunctionExpression',
+	'ClassDeclaration',
+	'ClassExpression',
+	'MethodDefinition',
+	'PropertyDefinition',
+]);
 
 const rule: Rule.RuleModule = {
 	meta: {
 		type: 'problem',
 		docs: {
 			description:
-				'Require JSX in for...of loops within components, but disallow JSX in for...of loops within effects',
+				'Require template output in @for blocks, but disallow JSX output in effect loops',
 			recommended: true,
 		},
 		messages: {
 			requireJsxInLoop:
-				'For...of loops in returned TSRX should contain JSX elements. Use JSX to render items.',
+				'@for blocks in returned TSRX should contain template output. Render an element, fragment, or nested template directive.',
 			noJsxInEffectLoop:
 				'For...of loops inside effect() should not contain JSX. Effects are for side effects, not rendering.',
 		},
@@ -24,19 +34,32 @@ const rule: Rule.RuleModule = {
 		let nonComponentFunctionDepth = 0;
 		const functionStack: boolean[] = [];
 
-		function containsJSX(node: AST.Node, visited: Set<AST.Node> = new Set()): boolean {
+		function containsTemplateOutput(node: AST.Node, visited: Set<AST.Node> = new Set()): boolean {
 			if (!node) return false;
 
 			// Avoid infinite loops from circular references
 			if (visited.has(node)) return false;
 			visited.add(node);
 
+			if (visited.size > 1 && NESTED_BOUNDARY_TYPES.has(node.type)) {
+				return false;
+			}
+
 			if (
 				node.type === ('JSXElement' as string) ||
 				node.type === ('JSXFragment' as string) ||
-				isNativeTsrxNode(node)
+				node.type === ('JSXStyleElement' as string) ||
+				node.type === ('JSXIfExpression' as string) ||
+				node.type === ('JSXForExpression' as string) ||
+				node.type === ('JSXSwitchExpression' as string) ||
+				node.type === ('JSXTryExpression' as string)
 			) {
 				return true;
+			}
+
+			if (node.type === ('JSXCodeBlock' as string)) {
+				const render = (node as any).render;
+				return !!render && containsTemplateOutput(render, visited);
 			}
 
 			const keys = Object.keys(node);
@@ -49,11 +72,11 @@ const rule: Rule.RuleModule = {
 				if (value && typeof value === 'object') {
 					if (Array.isArray(value)) {
 						for (const item of value) {
-							if (item && typeof item === 'object' && containsJSX(item, visited)) {
+							if (item && typeof item === 'object' && containsTemplateOutput(item, visited)) {
 								return true;
 							}
 						}
-					} else if (value.type && containsJSX(value, visited)) {
+					} else if (value.type && containsTemplateOutput(value, visited)) {
 						return true;
 					}
 				}
@@ -78,27 +101,30 @@ const rule: Rule.RuleModule = {
 			},
 
 			ForOfStatement(node: AST.ForOfStatement) {
-				if (insideComponent === 0) return;
+				if (insideComponent === 0 || insideEffect === 0) return;
 
-				const hasJSX = containsJSX(node.body);
-
-				if (insideEffect > 0) {
-					if (hasJSX) {
-						context.report({
-							node,
-							messageId: 'noJsxInEffectLoop',
-						});
-					}
-				} else if (nonComponentFunctionDepth > 0) {
-					return;
-				} else {
-					if (!hasJSX) {
-						context.report({
-							node,
-							messageId: 'requireJsxInLoop',
-						});
-					}
+				if (containsTemplateOutput(node.body)) {
+					context.report({
+						node,
+						messageId: 'noJsxInEffectLoop',
+					});
 				}
+			},
+
+			JSXForExpression(node: AST.Node) {
+				if (insideComponent === 0 || nonComponentFunctionDepth > 0) {
+					return;
+				}
+
+				const body = (node as any).body;
+				if (!body || containsTemplateOutput(body)) {
+					return;
+				}
+
+				context.report({
+					node,
+					messageId: 'requireJsxInLoop',
+				});
 			},
 		};
 

@@ -2,15 +2,15 @@ import { RippleURL, RippleURLSearchParams, flushSync, track } from 'ripple';
 
 describe('RippleURLSearchParams > retrieval', () => {
 	it('handles get operation with reactivity', () => {
-		function URLTest() {
-			return <>
-				const params = RippleURLSearchParams('foo=bar&baz=qux');
-				let &[foo] = track(() => params.get('foo'));
-				let &[baz] = track(() => params.get('baz'));
+		function URLTest() @{
+			const params = RippleURLSearchParams('foo=bar&baz=qux');
+			let &[foo] = track(() => params.get('foo'));
+			let &[baz] = track(() => params.get('baz'));
+			<>
 				<button onClick={() => params.set('foo', 'updated')}>{'update foo'}</button>
 				<pre>{foo}</pre>
 				<pre>{baz}</pre>
-			</>;
+			</>
 		}
 
 		render(URLTest);
@@ -30,12 +30,10 @@ describe('RippleURLSearchParams > retrieval', () => {
 	});
 
 	it('handles get for nonexistent key', () => {
-		function URLTest() {
-			return <>
-				const params = RippleURLSearchParams('foo=bar');
-				let &[nonexistent] = track(() => params.get('nonexistent'));
-				<pre>{String(nonexistent)}</pre>
-			</>;
+		function URLTest() @{
+			const params = RippleURLSearchParams('foo=bar');
+			let &[nonexistent] = track(() => params.get('nonexistent'));
+			<pre>{String(nonexistent)}</pre>
 		}
 
 		render(URLTest);
@@ -44,13 +42,13 @@ describe('RippleURLSearchParams > retrieval', () => {
 	});
 
 	it('handles getAll operation with reactivity', () => {
-		function URLTest() {
-			return <>
-				const params = RippleURLSearchParams('foo=bar&foo=baz');
-				let &[allFoo] = track(() => params.getAll('foo'));
+		function URLTest() @{
+			const params = RippleURLSearchParams('foo=bar&foo=baz');
+			let &[allFoo] = track(() => params.getAll('foo'));
+			<>
 				<button onClick={() => params.append('foo', 'qux')}>{'append foo'}</button>
 				<pre>{JSON.stringify(allFoo)}</pre>
-			</>;
+			</>
 		}
 
 		render(URLTest);
@@ -68,16 +66,16 @@ describe('RippleURLSearchParams > retrieval', () => {
 	});
 
 	it('handles has operation with reactivity', () => {
-		function URLTest() {
-			return <>
-				const params = RippleURLSearchParams('foo=bar');
-				let &[hasFoo] = track(() => params.has('foo'));
-				let &[hasBaz] = track(() => params.has('baz'));
+		function URLTest() @{
+			const params = RippleURLSearchParams('foo=bar');
+			let &[hasFoo] = track(() => params.has('foo'));
+			let &[hasBaz] = track(() => params.has('baz'));
+			<>
 				<button onClick={() => params.append('baz', 'qux')}>{'add baz'}</button>
 				<button onClick={() => params.delete('foo')}>{'delete foo'}</button>
 				<pre>{hasFoo.toString()}</pre>
 				<pre>{hasBaz.toString()}</pre>
-			</>;
+			</>
 		}
 
 		render(URLTest);
@@ -105,15 +103,15 @@ describe('RippleURLSearchParams > retrieval', () => {
 	});
 
 	it('handles has with specific value', () => {
-		function URLTest() {
-			return <>
-				const params = RippleURLSearchParams('foo=bar&foo=baz');
-				let &[hasBarValue] = track(() => params.has('foo', 'bar'));
-				let &[hasQuxValue] = track(() => params.has('foo', 'qux'));
+		function URLTest() @{
+			const params = RippleURLSearchParams('foo=bar&foo=baz');
+			let &[hasBarValue] = track(() => params.has('foo', 'bar'));
+			let &[hasQuxValue] = track(() => params.has('foo', 'qux'));
+			<>
 				<button onClick={() => params.append('foo', 'qux')}>{'add qux'}</button>
 				<pre>{hasBarValue.toString()}</pre>
 				<pre>{hasQuxValue.toString()}</pre>
-			</>;
+			</>
 		}
 
 		render(URLTest);
@@ -133,14 +131,14 @@ describe('RippleURLSearchParams > retrieval', () => {
 	});
 
 	it('handles size property with reactivity', () => {
-		function URLTest() {
-			return <>
-				const params = RippleURLSearchParams('foo=bar');
-				let &[size] = track(() => params.size);
+		function URLTest() @{
+			const params = RippleURLSearchParams('foo=bar');
+			let &[size] = track(() => params.size);
+			<>
 				<button onClick={() => params.append('baz', 'qux')}>{'add'}</button>
 				<button onClick={() => params.delete('foo')}>{'delete'}</button>
 				<pre>{size}</pre>
-			</>;
+			</>
 		}
 
 		render(URLTest);

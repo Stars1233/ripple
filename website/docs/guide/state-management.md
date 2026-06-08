@@ -25,14 +25,14 @@ Example with tracked / reactive contents:
 
 <Code>
 
-```ripple
+```tsrx
 import { Context, track } from 'ripple';
 
 // create context with an empty object
 const context = new Context({});
 const context2 = new Context();
 
-export function App() {
+export function App() @{
   // get reference to the object
   const obj = context.get();
   // set your reactive value
@@ -44,16 +44,16 @@ export function App() {
   // context2 now contains a tracked variable
   context2.set(count2Tracked);
 
-  return <>
+  <>
     <button onClick={() => {
       count++;
       count2++;
-    }}>"Click Me"</button>
+    }}>Click Me</button>
 
     // context's reactive property count gets updated
-    <pre>"Context: "{count}</pre>
-    <pre>"Context2: "{count2}</pre>
-  </>;
+    <pre>Context: {count}</pre>
+    <pre>Context2: {count2}</pre>
+  </>
 }
 ```
 
@@ -63,7 +63,7 @@ Passing data between components:
 
 <Code console>
 
-```ripple
+```tsrx
 import { Context } from 'ripple';
 
 const MyContext = new Context(null);
@@ -75,7 +75,7 @@ function Child() {
   // value is "Hello from context!"
   console.log(value);
 
-  return <p>"Value in Child: "{value}</p>;
+  return <p>Value in Child: {value}</p>;
 }
 
 export function Parent() {

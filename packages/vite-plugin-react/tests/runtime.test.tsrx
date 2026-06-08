@@ -44,204 +44,203 @@ function text(selector: string): string | null {
 
 // ── Basic rendering ──
 
-function BasicApp() {
-	return <><div class="greeting">{'Hello world'}</div></>;
+function BasicApp() @{
+	<div className="greeting">{'Hello world'}</div>
 }
 
-function DirectQuotedTextApp() {
-	return <>
-		<div class="direct-quoted-entities">"Rock &amp; &quot;Roll&quot;"</div>
-		<div class="direct-quoted-backslash">"line\nbreak"</div>
-		<pre class="direct-quoted-multiline">"first
-second"</pre>
-	</>;
+function JsxTextApp() @{
+	<>
+		<div className="jsx-text-entities">Rock &amp; &quot;Roll&quot;</div>
+		<div className="jsx-text-backslash">line\nbreak</div>
+		<pre className="jsx-text-multiline">
+			first
+second
+		</pre>
+	</>
 }
 
-function DirectQuotedTextIfElseTrueApp() {
-	return <>
-		if (true) {
-			"Hello Ripple"
-		} else "Hello React"
-	</>;
+function JsxTextIfElseTrueApp() @{
+	@if (true) {
+		<>Hello Ripple</>
+	} @else {
+		<>Hello React</>
+	}
 }
 
-function DirectQuotedTextIfElseFalseApp() {
-	return <>
-		if (false) {
-			"Hello Ripple"
-		} else "Hello React"
-	</>;
+function JsxTextIfElseFalseApp() @{
+	@if (false) {
+		<>Hello Ripple</>
+	} @else {
+		<>Hello React</>
+	}
 }
 
-function DirectQuotedTextIfElseApp() {
-	return <>
-		<div class="direct-quoted-if-then">
-			<DirectQuotedTextIfElseTrueApp />
+function JsxTextIfElseApp() @{
+	<>
+		<div className="jsx-text-if-then">
+			<JsxTextIfElseTrueApp />
 		</div>
-		<div class="direct-quoted-if-else">
-			<DirectQuotedTextIfElseFalseApp />
+		<div className="jsx-text-if-else">
+			<JsxTextIfElseFalseApp />
 		</div>
-	</>;
+	</>
 }
 
-function Child(props: { text: string }) {
-	return <><span class="child">{props.text}</span></>;
+function Child(props: { text: string }) @{
+	<span className="child">{props.text}</span>
 }
 
-function NestedApp() {
-	return <>
-		<div>
-			<Child text="nested" />
+function NestedApp() @{
+	<div>
+		<Child text="nested" />
+	</div>
+}
+
+function ExplicitTextApp() @{
+	const markup = '<span>Not HTML</span>';
+	const hidden = false;
+	const empty = null;
+	const missing = undefined;
+
+	<>
+		<div className="explicit-text-markup">{String(markup)}</div>
+		<div className="explicit-text-boolean">{String(hidden)}</div>
+		<div className="explicit-text-null">
+			{empty == null ? '' : String(empty)}
 		</div>
-	</>;
+		<div className="explicit-text-undefined">
+			{missing == null ? '' : String(missing)}
+		</div>
+	</>
 }
 
-function ExplicitTextApp() {
-	return <>
-		const markup = '<span>Not HTML</span>';
-		const hidden = false;
-		const empty = null;
-		const missing = undefined;
-		<div class="explicit-text-markup">{String(markup)}</div>
-		<div class="explicit-text-boolean">{String(hidden)}</div>
-		<div class="explicit-text-null">{empty == null ? '' : String(empty)}</div>
-		<div class="explicit-text-undefined">{missing == null ? '' : String(missing)}</div>
-	</>;
-}
+function ExplicitHtmlApp() @{
+	const [markup, setMarkup] = useState('<span class="html-node">safe enough</span>');
 
-function ExplicitHtmlApp() {
-	return <>
-		const [markup, setMarkup] = useState('<span class="html-node">safe enough</span>');
-		<div class="explicit-html-child" dangerouslySetInnerHTML={{ __html: markup }} />
+	<>
+		<div className="explicit-html-child" dangerouslySetInnerHTML={{ __html: markup }} />
 		<button
-			class="explicit-html-update"
+			className="explicit-html-update"
 			onClick={() => {
 				setMarkup('<strong class="html-node">updated</strong>');
 			}}
-		>
-			{'update'}
-		</button>
-	</>;
+		>{'update'}</button>
+	</>
 }
 
-function SpreadHtmlApp() {
-	return <>
-		const [spreadProps, setSpreadProps] = useState({
-			dangerouslySetInnerHTML: { __html: '<em class="html-node">spread</em>' },
-		});
-		const [markup, setMarkup] = useState('<span class="html-node">safe enough</span>');
-		<div class="spread-html-child" {...spreadProps} dangerouslySetInnerHTML={{ __html: markup }} />
+function SpreadHtmlApp() @{
+	const [spreadProps, setSpreadProps] = useState({
+		dangerouslySetInnerHTML: { __html: '<em class="html-node">spread</em>' },
+	});
+	const [markup, setMarkup] = useState('<span class="html-node">safe enough</span>');
+
+	<>
+		<div
+			className="spread-html-child"
+			{...spreadProps}
+			dangerouslySetInnerHTML={{ __html: markup }}
+		/>
 		<button
-			class="spread-html-update-spread"
+			className="spread-html-update-spread"
 			onClick={() => {
 				setSpreadProps({
 					dangerouslySetInnerHTML: { __html: '<i class="html-node">spread update</i>' },
 				});
 			}}
-		>
-			{'spread'}
-		</button>
+		>{'spread'}</button>
 		<button
-			class="spread-html-update-markup"
+			className="spread-html-update-markup"
 			onClick={() => {
 				setMarkup('<strong class="html-node">updated</strong>');
 			}}
-		>
-			{'markup'}
-		</button>
-	</>;
+		>{'markup'}</button>
+	</>
 }
 
-function CallableBlockRuntimeApp() {
-	return <>
-		function readDeclaration() {
-			const marker = 'decl-outer';
+function CallableBlockRuntimeApp() @{
+	function readDeclaration() {
+		const marker = 'decl-outer';
+		let selected = marker;
+
+		{
+			const marker = 'decl-inner';
+			selected = marker;
+		}
+
+		return `${selected}/${marker}`;
+	}
+	const readArrow = () => {
+		const base = 10;
+		let total = base;
+
+		{
+			const base = 32;
+			total += base;
+		}
+
+		return total;
+	};
+	class MethodReader {
+		read() {
+			const marker = 'method-outer';
 			let selected = marker;
 
 			{
-				const marker = 'decl-inner';
+				const marker = 'method-inner';
 				selected = marker;
 			}
 
 			return `${selected}/${marker}`;
 		}
-		const readArrow = () => {
-			const base = 10;
-			let total = base;
+	}
+	const reader = new MethodReader();
 
-			{
-				const base = 32;
-				total += base;
-			}
-
-			return total;
-		};
-		class MethodReader {
-			read() {
-				const marker = 'method-outer';
-				let selected = marker;
-
-				{
-					const marker = 'method-inner';
-					selected = marker;
-				}
-
-				return `${selected}/${marker}`;
-			}
-		}
-		const reader = new MethodReader();
-		<section class="callable-block-runtime">
-			<p class="decl-block">{readDeclaration()}</p>
-			<p class="arrow-block">{readArrow()}</p>
-			<p class="method-block">{reader.read()}</p>
-		</section>
-	</>;
+	<section className="callable-block-runtime">
+		<p className="decl-block">{readDeclaration()}</p>
+		<p className="arrow-block">{readArrow()}</p>
+		<p className="method-block">{reader.read()}</p>
+	</section>
 }
 
 // ── Reactive counter ──
 
-function CounterApp() {
-	return <>
-		const [count, setCount] = useState(0);
-		<p class="count">{count}</p>
-		<button class="inc" onClick={() => setCount(count + 1)}>{'+'}</button>
-	</>;
+function CounterApp() @{
+	const [count, setCount] = useState(0);
+
+	<>
+		<p className="count">{count}</p>
+		<button className="inc" onClick={() => setCount(count + 1)}>{'+'}</button>
+	</>
 }
 
 // ── Refs on elements ──
 
 let element_ref_captured: HTMLDivElement | null = null;
 
-function ElementRefApp() {
-	return <>
-		<div
-			ref={(node: HTMLDivElement) => {
-				element_ref_captured = node;
-			}}
-			class="ref-target"
-		>
-			{'ref test'}
-		</div>
-	</>;
+function ElementRefApp() @{
+	<div
+		ref={(node: HTMLDivElement) => {
+			element_ref_captured = node;
+		}}
+		className="ref-target"
+	>{'ref test'}</div>
 }
 
 // ── Ref on composite components via prop forwarding ──
 
 let composite_ref_captured: HTMLInputElement | null = null;
 
-function InputComp(props: { type: string; ref?: (node: HTMLInputElement) => void }) {
-	return <><input type={props.type} ref={props.ref} /></>;
+function InputComp(props: { type: string; ref?: (node: HTMLInputElement) => void }) @{
+	<input type={props.type} ref={props.ref} />
 }
 
-function CompositeRefApp() {
-	return <>
-		<InputComp
-			type="text"
-			ref={(node: HTMLInputElement) => {
-				composite_ref_captured = node;
-			}}
-		/>
-	</>;
+function CompositeRefApp() @{
+	<InputComp
+		type="text"
+		ref={(node: HTMLInputElement) => {
+			composite_ref_captured = node;
+		}}
+	/>
 }
 
 // ── Multiple ref callbacks combined into one ──
@@ -249,24 +248,21 @@ function CompositeRefApp() {
 let multi_ref1_node: HTMLDivElement | null = null;
 let multi_ref2_node: HTMLDivElement | null = null;
 
-function MultiRefApp() {
-	return <>
-		function firstRef(node: HTMLDivElement) {
-			multi_ref1_node = node;
-		}
-		function secondRef(node: HTMLDivElement) {
-			multi_ref2_node = node;
-		}
-		<div
-			ref={(node: HTMLDivElement) => {
-				firstRef(node);
-				secondRef(node);
-			}}
-			class="multi-ref"
-		>
-			{'multi ref'}
-		</div>
-	</>;
+function MultiRefApp() @{
+	function firstRef(node: HTMLDivElement) {
+		multi_ref1_node = node;
+	}
+	function secondRef(node: HTMLDivElement) {
+		multi_ref2_node = node;
+	}
+
+	<div
+		ref={(node: HTMLDivElement) => {
+			firstRef(node);
+			secondRef(node);
+		}}
+		className="multi-ref"
+	>{'multi ref'}</div>
 }
 
 // ── Explicitly merged refs ──
@@ -277,34 +273,32 @@ let auto_merged_a: HTMLDivElement | null = null;
 let auto_merged_b: HTMLDivElement | null = null;
 let auto_merged_c: HTMLDivElement | null = null;
 
-function AutoMergedRefApp() {
-	return <>
-		function refA(node: HTMLDivElement) {
-			auto_merged_a = node;
-		}
-		function refB(node: HTMLDivElement) {
-			auto_merged_b = node;
-		}
-		function refC(node: HTMLDivElement) {
-			auto_merged_c = node;
-		}
-		<div ref={mergeRefs(refA, refB, refC)} class="auto-merged">{'auto merged'}</div>
-	</>;
+function AutoMergedRefApp() @{
+	function refA(node: HTMLDivElement) {
+		auto_merged_a = node;
+	}
+	function refB(node: HTMLDivElement) {
+		auto_merged_b = node;
+	}
+	function refC(node: HTMLDivElement) {
+		auto_merged_c = node;
+	}
+
+	<div ref={mergeRefs(refA, refB, refC)} className="auto-merged">{'auto merged'}</div>
 }
 
 let mixed_keyword_node: HTMLDivElement | null = null;
 let mixed_jsx_node: HTMLDivElement | null = null;
 
-function AutoMergedMixedRefApp() {
-	return <>
-		function keywordRef(node: HTMLDivElement) {
-			mixed_keyword_node = node;
-		}
-		function jsxRef(node: HTMLDivElement) {
-			mixed_jsx_node = node;
-		}
-		<div ref={mergeRefs(keywordRef, jsxRef)} class="auto-merged-mixed">{'mixed merged'}</div>
-	</>;
+function AutoMergedMixedRefApp() @{
+	function keywordRef(node: HTMLDivElement) {
+		mixed_keyword_node = node;
+	}
+	function jsxRef(node: HTMLDivElement) {
+		mixed_jsx_node = node;
+	}
+
+	<div ref={mergeRefs(keywordRef, jsxRef)} className="auto-merged-mixed">{'mixed merged'}</div>
 }
 
 // ── Mix callback refs and ref objects under mergeRefs ──
@@ -314,15 +308,15 @@ function AutoMergedMixedRefApp() {
 const ref_object: { current: HTMLDivElement | null } = { current: null };
 let auto_ref_obj_callback_node: HTMLDivElement | null = null;
 
-function AutoMergedRefObjectApp() {
-	return <>
-		function callbackRef(node: HTMLDivElement) {
-			auto_ref_obj_callback_node = node;
-		}
-		<div ref={mergeRefs(ref_object, callbackRef)} class="auto-merged-objects">
-			{'object merged'}
-		</div>
-	</>;
+function AutoMergedRefObjectApp() @{
+	function callbackRef(node: HTMLDivElement) {
+		auto_ref_obj_callback_node = node;
+	}
+
+	<div
+		ref={mergeRefs(ref_object, callbackRef)}
+		className="auto-merged-objects"
+	>{'object merged'}</div>
 }
 
 // ── React 19 cleanup contract through mergeRefs ──
@@ -346,178 +340,176 @@ function modernMountRef(_node: HTMLDivElement) {
 	};
 }
 
-function CleanupRefApp() {
-	return <>
-		const [show, setShow] = useState(true);
-		if (show) {
-			<div ref={mergeRefs(legacyMountRef, modernMountRef)} class="cleanup-target">{'x'}</div>
+function CleanupRefApp() @{
+	const [show, setShow] = useState(true);
+
+	<>
+		@if (show) {
+			<div ref={mergeRefs(legacyMountRef, modernMountRef)} className="cleanup-target">{'x'}</div>
 		}
-		<button class="cleanup-hide" onClick={() => setShow(false)}>{'hide'}</button>
-	</>;
+		<button className="cleanup-hide" onClick={() => setShow(false)}>{'hide'}</button>
+	</>
 }
 
 // ── If-statement with reactivity ──
 
-function IfReactiveApp() {
-	return <>
-		const [show, setShow] = useState(true);
-		if (show) {
-			<span class="visible">{'shown'}</span>
-		} else {
-			<span class="hidden">{'hidden'}</span>
+function IfReactiveApp() @{
+	const [show, setShow] = useState(true);
+
+	<>
+		@if (show) {
+			<span className="visible">{'shown'}</span>
+		} @else {
+			<span className="hidden">{'hidden'}</span>
 		}
-		<button class="toggle" onClick={() => setShow(!show)}>{'toggle'}</button>
-	</>;
+		<button className="toggle" onClick={() => setShow(!show)}>{'toggle'}</button>
+	</>
 }
 
 // ── For-of loop with reactivity ──
 
-function ForReactiveApp() {
-	return <>
-		const [items, setItems] = useState(['a', 'b', 'c']);
-		for (const item of items) {
-			<li class="item" key={item}>{item}</li>
+function ForReactiveApp() @{
+	const [items, setItems] = useState(['a', 'b', 'c']);
+
+	<>
+		@for (const item of items) {
+			<li className="item" key={item}>{item}</li>
 		}
-		<button class="add" onClick={() => setItems([...items, 'd'])}>{'add'}</button>
-		<button class="remove" onClick={() => setItems(items.slice(1))}>{'remove'}</button>
-	</>;
+		<button className="add" onClick={() => setItems([...items, 'd'])}>{'add'}</button>
+		<button className="remove" onClick={() => setItems(items.slice(1))}>{'remove'}</button>
+	</>
 }
 
-function ForContinueApp() {
-	return <>
-		const items = ['a', '', 'c'];
-		for (const item of items) {
-			if (!item) continue;
-			<li class="continue-item" key={item}>{item}</li>
-		}
-	</>;
+function ForFilteredApp() @{
+	const items = ['a', '', 'c'];
+	const visibleItems = items.filter(Boolean);
+
+	@for (const item of visibleItems) {
+		<li className="continue-item" key={item}>{item}</li>
+	}
 }
 
 // ── For-of over a Set ──
 
-function ForOverSetApp() {
-	return <>
-		const items = new Set<string>(['x', 'y', 'z']);
-		for (const item of items) {
-			<li class="set-item" key={item}>{item}</li>
-		}
-	</>;
+function ForOverSetApp() @{
+	const items = new Set<string>(['x', 'y', 'z']);
+
+	@for (const item of items) {
+		<li className="set-item" key={item}>{item}</li>
+	}
 }
 
 // ── For-of over a Map ──
 
-function ForOverMapApp() {
-	return <>
-		const entries = new Map<string, number>([
-			['a', 1],
-			['b', 2],
-			['c', 3],
-		]);
-		for (const [key, value] of entries) {
-			<li class="map-item" {key}>{key + ':' + value}</li>
-		}
-	</>;
+function ForOverMapApp() @{
+	const entries = new Map<string, number>([
+		['a', 1],
+		['b', 2],
+		['c', 3],
+	]);
+
+	@for (const [key, value] of entries) {
+		<li className="map-item" {key}>
+			{key + ':' + value}
+		</li>
+	}
 }
 
 // ── For-of over a custom iterable ──
 
-function ForOverCustomIterableApp() {
-	return <>
-		function* iter() {
-			yield 'one';
-			yield 'two';
-			yield 'three';
-		}
-		const items = iter();
-		for (const item of items) {
-			<li class="generator-item" key={item}>{item}</li>
-		}
-	</>;
+function ForOverCustomIterableApp() @{
+	function* iter() {
+		yield 'one';
+		yield 'two';
+		yield 'three';
+	}
+	const items = iter();
+
+	@for (const item of items) {
+		<li className="generator-item" key={item}>{item}</li>
+	}
 }
 
 // ── Switch with reactivity ──
 
-function SwitchReactiveApp() {
-	return <>
-		const [page, setPage] = useState('home');
-		switch (page) {
-			case 'home':
-				<div class="page">{'Home'}</div>
-				break;
-			case 'about':
-				<div class="page">{'About'}</div>
-				break;
-			default:
-				<div class="page">{'404'}</div>
-				break;
+function SwitchReactiveApp() @{
+	const [page, setPage] = useState('home');
+
+	<>
+		@switch (page) {
+			@case 'home': {
+				<div className="page">{'Home'}</div>
+			}
+			@case 'about': {
+				<div className="page">{'About'}</div>
+			}
+			@default: {
+				<div className="page">{'404'}</div>
+			}
 		}
-		<button class="go-about" onClick={() => setPage('about')}>{'about'}</button>
-		<button class="go-unknown" onClick={() => setPage('other')}>{'other'}</button>
-	</>;
+		<button className="go-about" onClick={() => setPage('about')}>{'about'}</button>
+		<button className="go-unknown" onClick={() => setPage('other')}>{'other'}</button>
+	</>
 }
 
 // ── Composite children ──
 
-function Wrapper(props: { children?: any }) {
-	return <><div class="wrapper">{props.children}</div></>;
+function Wrapper(props: { children?: any }) @{
+	<div className="wrapper">{props.children}</div>
 }
 
-function ChildrenApp() {
-	return <>
-		<Wrapper>
-			<span>{'inside wrapper'}</span>
-		</Wrapper>
-	</>;
+function ChildrenApp() @{
+	<Wrapper>
+		<span>{'inside wrapper'}</span>
+	</Wrapper>
 }
 
 // ── If-statement children through composite ──
 
-function IfChildrenApp() {
-	return <>
-		const [show, setShow] = useState(false);
+function IfChildrenApp() @{
+	const [show, setShow] = useState(false);
+
+	<>
 		<Wrapper>
-			if (show) {
-				<span class="inner-visible">{'inner shown'}</span>
+			@if (show) {
+				<span className="inner-visible">{'inner shown'}</span>
 			}
 		</Wrapper>
-		<button class="toggle" onClick={() => setShow(!show)}>{'toggle'}</button>
-	</>;
+		<button className="toggle" onClick={() => setShow(!show)}>{'toggle'}</button>
+	</>
 }
 
 // ── Scoped CSS ──
 
-function StyledApp() {
-	return <>
-		<div class="styled">{'styled text'}</div>
+function StyledApp() @{
+	<>
+		<div className="styled">{'styled text'}</div>
 		<style>
 			.styled {
 				color: red;
 			}
 		</style>
-	</>;
+	</>
 }
 
 // ── Ref forwarding through spread ──
 
 let spread_ref_captured: HTMLInputElement | null = null;
 
-function SpreadInput(props: { id: string; [key: string]: any }) {
-	return <>
-		const { id, ...rest } = props;
-		<input {id} {...rest} />
-	</>;
+function SpreadInput(props: { id: string; [key: string]: any }) @{
+	const { id, ...rest } = props;
+
+	<input {id} {...rest} />
 }
 
-function SpreadRefApp() {
-	return <>
-		<SpreadInput
-			id="spread-input"
-			type="text"
-			ref={(node: HTMLInputElement) => {
-				spread_ref_captured = node;
-			}}
-		/>
-	</>;
+function SpreadRefApp() @{
+	<SpreadInput
+		id="spread-input"
+		type="text"
+		ref={(node: HTMLInputElement) => {
+			spread_ref_captured = node;
+		}}
+	/>
 }
 
 // ── Named ref props merged with native and anonymous refs ──
@@ -526,39 +518,36 @@ let named_direct_node: HTMLInputElement | null = null;
 let named_direct_native_node: HTMLInputElement | null = null;
 let named_direct_anonymous_node: HTMLInputElement | null = null;
 
-function NamedDirectRefApp() {
-	return <>
-		function nativeRef(node: HTMLInputElement | null) {
-			named_direct_native_node = node;
-		}
-		function anonymousRef(node: HTMLInputElement | null) {
-			named_direct_anonymous_node = node;
-		}
-		<input
-			ref={mergeRefs(nativeRef, anonymousRef, (node: HTMLInputElement | null) => {
-				named_direct_node = node;
-			})}
-			class="named-direct-ref"
-			type="text"
-		/>
-	</>;
+function NamedDirectRefApp() @{
+	function nativeRef(node: HTMLInputElement | null) {
+		named_direct_native_node = node;
+	}
+	function anonymousRef(node: HTMLInputElement | null) {
+		named_direct_anonymous_node = node;
+	}
+
+	<input
+		ref={mergeRefs(nativeRef, anonymousRef, (node: HTMLInputElement | null) => {
+			named_direct_node = node;
+		})}
+		className="named-direct-ref"
+		type="text"
+	/>
 }
 
 let named_forward_node: HTMLInputElement | null = null;
 
-function NamedForwardInput(props: { type: string; input_ref?: any }) {
-	return <><input type={props.type} ref={props.input_ref} class="named-forward-ref" /></>;
+function NamedForwardInput(props: { type: string; input_ref?: any }) @{
+	<input type={props.type} ref={props.input_ref} className="named-forward-ref" />
 }
 
-function NamedForwardRefApp() {
-	return <>
-		<NamedForwardInput
-			type="text"
-			input_ref={(node: HTMLInputElement | null) => {
-				named_forward_node = node;
-			}}
-		/>
-	</>;
+function NamedForwardRefApp() @{
+	<NamedForwardInput
+		type="text"
+		input_ref={(node: HTMLInputElement | null) => {
+			named_forward_node = node;
+		}}
+	/>
 }
 
 let named_spread_before_node: HTMLInputElement | null = null;
@@ -568,25 +557,21 @@ function namedSpreadBeforeNativeRef(node: HTMLInputElement | null) {
 	named_spread_before_native_node = node;
 }
 
-function NamedSpreadBeforeRefInput({ input_ref, ...props }: { type: string; input_ref?: any }) {
-	return <>
-		<input
-			{...props}
-			ref={mergeRefs(input_ref, namedSpreadBeforeNativeRef)}
-			class="named-spread-before-ref"
-		/>
-	</>;
+function NamedSpreadBeforeRefInput({ input_ref, ...props }: { type: string; input_ref?: any }) @{
+	<input
+		{...props}
+		ref={mergeRefs(input_ref, namedSpreadBeforeNativeRef)}
+		className="named-spread-before-ref"
+	/>
 }
 
-function NamedSpreadBeforeRefApp() {
-	return <>
-		<NamedSpreadBeforeRefInput
-			type="text"
-			input_ref={(node: HTMLInputElement | null) => {
-				named_spread_before_node = node;
-			}}
-		/>
-	</>;
+function NamedSpreadBeforeRefApp() @{
+	<NamedSpreadBeforeRefInput
+		type="text"
+		input_ref={(node: HTMLInputElement | null) => {
+			named_spread_before_node = node;
+		}}
+	/>
 }
 
 let named_spread_after_node: HTMLInputElement | null = null;
@@ -596,25 +581,21 @@ function namedSpreadAfterNativeRef(node: HTMLInputElement | null) {
 	named_spread_after_native_node = node;
 }
 
-function NamedSpreadAfterRefInput({ input_ref, ...props }: { type: string; input_ref?: any }) {
-	return <>
-		<input
-			ref={mergeRefs(namedSpreadAfterNativeRef, input_ref)}
-			{...props}
-			class="named-spread-after-ref"
-		/>
-	</>;
+function NamedSpreadAfterRefInput({ input_ref, ...props }: { type: string; input_ref?: any }) @{
+	<input
+		ref={mergeRefs(namedSpreadAfterNativeRef, input_ref)}
+		{...props}
+		className="named-spread-after-ref"
+	/>
 }
 
-function NamedSpreadAfterRefApp() {
-	return <>
-		<NamedSpreadAfterRefInput
-			type="text"
-			input_ref={(node: HTMLInputElement | null) => {
-				named_spread_after_node = node;
-			}}
-		/>
-	</>;
+function NamedSpreadAfterRefApp() @{
+	<NamedSpreadAfterRefInput
+		type="text"
+		input_ref={(node: HTMLInputElement | null) => {
+			named_spread_after_node = node;
+		}}
+	/>
 }
 
 let multi_spread_first_node: HTMLInputElement | null = null;
@@ -629,374 +610,414 @@ function multiSpreadExplicitNativeRef(node: HTMLInputElement | null) {
 	multi_spread_native_node = node;
 }
 
-function MultiSpreadExplicitRefInput(props: { type: string; first_ref?: any; second_ref?: any }) {
-	return <>
-		const first = { type: props.type, ref: props.first_ref };
-		const second = { ref: props.second_ref };
-		<input
-			{...first}
-			{...second}
-			ref={multiSpreadExplicitNativeRef}
-			class="multi-spread-explicit-ref"
-		/>
-	</>;
+function MultiSpreadExplicitRefInput(props: { type: string; first_ref?: any; second_ref?: any }) @{
+	const first = { type: props.type, ref: props.first_ref };
+	const second = { ref: props.second_ref };
+
+	<input
+		{...first}
+		{...second}
+		ref={multiSpreadExplicitNativeRef}
+		className="multi-spread-explicit-ref"
+	/>
 }
 
-function MultiSpreadExplicitRefApp() {
-	return <>
-		<MultiSpreadExplicitRefInput
-			type="text"
-			first_ref={(node: HTMLInputElement | null) => {
-				multi_spread_first_node = node;
-			}}
-			second_ref={(node: HTMLInputElement | null) => {
-				multi_spread_second_node = node;
-			}}
-		/>
-	</>;
+function MultiSpreadExplicitRefApp() @{
+	<MultiSpreadExplicitRefInput
+		type="text"
+		first_ref={(node: HTMLInputElement | null) => {
+			multi_spread_first_node = node;
+		}}
+		second_ref={(node: HTMLInputElement | null) => {
+			multi_spread_second_node = node;
+		}}
+	/>
 }
 
 const named_ref_object: { current: HTMLInputElement | null } = { current: null };
 
-function NamedRefObjectApp() {
-	return <><NamedForwardInput type="text" input_ref={named_ref_object} /></>;
+function NamedRefObjectApp() @{
+	<NamedForwardInput type="text" input_ref={named_ref_object} />
 }
 
 let named_mutable_unmount_slot: HTMLInputElement | null | undefined;
 
-function NamedMutableUnmountApp() {
-	return <>
-		const [show, setShow] = useState(true);
-		if (show) {
+function NamedMutableUnmountApp() @{
+	const [show, setShow] = useState(true);
+
+	<>
+		@if (show) {
 			<input
 				type="text"
-				class="named-mutable-unmount"
+				className="named-mutable-unmount"
 				defaultValue="keep"
 				ref={(node: HTMLInputElement | null) => {
 					named_mutable_unmount_slot = node;
 				}}
 			/>
 		}
-		<button class="named-mutable-unmount-hide" onClick={() => setShow(false)}>{'hide'}</button>
-	</>;
+		<button className="named-mutable-unmount-hide" onClick={() => setShow(false)}>{'hide'}</button>
+	</>
 }
 
 // ── Try/catch: synchronous error boundary ──
 
-function ThrowingChild() {
-	return <>
-		throw new Error('sync boom');
-		<p>{'unreachable'}</p>
-	</>;
+function ThrowingChild() @{
+	throw new Error('sync boom');
+
+	<p>{'unreachable'}</p>
 }
 
-function ErrorBoundaryApp() {
-	return <>
-		try {
-			<ThrowingChild />
-		} catch (err: Error) {
-			<p class="caught">{err.message}</p>
-		}
-	</>;
+function ErrorBoundaryApp() @{
+	@try {
+		<ThrowingChild />
+	} @catch (err: Error) {
+		<p className="caught">{err.message}</p>
+	}
 }
 
 // ── Try/catch with reactive toggle into/out of error ──
 
-function MaybeThrow(props: { shouldThrow: boolean }) {
-	return <>
-		if (props.shouldThrow) {
-			throw new Error('conditional boom');
-		}
-		<p class="ok">{'no error'}</p>
-	</>;
+function MaybeThrow(props: { shouldThrow: boolean }) @{
+	if (props.shouldThrow) {
+		throw new Error('conditional boom');
+	}
+
+	<p className="ok">{'no error'}</p>
 }
 
-function ErrorToggleApp() {
-	return <>
-		const [fail, setFail] = useState(false);
-		try {
+function ErrorToggleApp() @{
+	const [fail, setFail] = useState(false);
+
+	<>
+		@try {
 			<MaybeThrow shouldThrow={fail} />
-		} catch (err: Error, reset: () => void) {
-			<p class="caught">{err.message}</p>
-			<button
-				class="reset"
-				onClick={() => {
-					setFail(false);
-					reset();
-				}}
-			>
-				{'reset'}
-			</button>
+		} @catch (err: Error, reset: () => void) {
+			<>
+				<p className="caught">{err.message}</p>
+				<button
+					className="reset"
+					onClick={() => {
+						setFail(false);
+						reset();
+					}}
+				>{'reset'}</button>
+			</>
 		}
-		<button class="trigger-error" onClick={() => setFail(true)}>{'break'}</button>
-	</>;
+		<button className="trigger-error" onClick={() => setFail(true)}>{'break'}</button>
+	</>
 }
 
 // ── Try/pending: Suspense with use() ──
 
-function AsyncChild(props: { promise: Promise<string> }) {
-	return <>
-		const data = use(props.promise);
-		<p class="resolved">{data}</p>
-	</>;
+function AsyncChild(props: { promise: Promise<string> }) @{
+	const data = use(props.promise);
+
+	<p className="resolved">{data}</p>
 }
 
-function SuspenseApp(props: { promise: Promise<string> }) {
-	return <>
-		try {
-			<AsyncChild promise={props.promise} />
-		} pending {
-			<p class="pending">{'loading...'}</p>
-		}
-	</>;
+function SuspenseApp(props: { promise: Promise<string> }) @{
+	@try {
+		<AsyncChild promise={props.promise} />
+	} @pending {
+		<p className="pending">{'loading...'}</p>
+	}
 }
 
-function EmptyPendingSuspenseApp(props: { promise: Promise<string> }) {
-	return <>
-		try {
-			<AsyncChild promise={props.promise} />
-		} pending {}
-	</>;
+function EmptyPendingSuspenseApp(props: { promise: Promise<string> }) @{
+	@try {
+		<AsyncChild promise={props.promise} />
+	} @pending {}
 }
 
 // ── Try/pending/catch: Suspense + ErrorBoundary ──
 
-function SuspenseErrorApp(props: { promise: Promise<string> }) {
-	return <>
-		try {
-			<AsyncChild promise={props.promise} />
-		} pending {
-			<p class="pending">{'loading...'}</p>
-		} catch (err: Error) {
-			<p class="caught">{err.message}</p>
-		}
-	</>;
+function SuspenseErrorApp(props: { promise: Promise<string> }) @{
+	@try {
+		<AsyncChild promise={props.promise} />
+	} @pending {
+		<p className="pending">{'loading...'}</p>
+	} @catch (err: Error) {
+		<p className="caught">{err.message}</p>
+	}
 }
 
 // ── Try/catch with reset: recover from error ──
 
-function ErrorResetApp(props: { promise: Promise<string> }) {
-	return <>
-		try {
-			<AsyncChild promise={props.promise} />
-		} pending {
-			<p class="pending">{'loading...'}</p>
-		} catch (err: Error, reset: () => void) {
-			<p class="caught">{err.message}</p>
-			<button class="retry" onClick={() => reset()}>{'retry'}</button>
-		}
-	</>;
+function ErrorResetApp(props: { promise: Promise<string> }) @{
+	@try {
+		<AsyncChild promise={props.promise} />
+	} @pending {
+		<p className="pending">{'loading...'}</p>
+	} @catch (err: Error, reset: () => void) {
+		<>
+			<p className="caught">{err.message}</p>
+			<button className="retry" onClick={() => reset()}>{'retry'}</button>
+		</>
+	}
 }
 
 // ── Nested try: inner catch handles inner error ──
 
-function InnerThrow() {
-	return <>
-		throw new Error('inner error');
-		<p>{'unreachable'}</p>
-	</>;
+function InnerThrow() @{
+	throw new Error('inner error');
+
+	<p>{'unreachable'}</p>
 }
 
-function NestedTryApp() {
-	return <>
-		try {
-			<div class="outer">
-				try {
-					<InnerThrow />
-				} catch (err: Error) {
-					<p class="inner-caught">{err.message}</p>
-				}
-			</div>
-		} catch (err: Error) {
-			<p class="outer-caught">{err.message}</p>
-		}
-	</>;
+function NestedTryApp() @{
+	@try {
+		<div className="outer">
+			@try {
+				<InnerThrow />
+			} @catch (err: Error) {
+				<p className="inner-caught">{err.message}</p>
+			}
+		</div>
+	} @catch (err: Error) {
+		<p className="outer-caught">{err.message}</p>
+	}
 }
 
 // ── Try/pending with reactive promise swap ──
 
-function SwappableAsyncApp() {
-	return <>
-		const [promise, setPromise] = useState(() => Promise.resolve('first'));
-		try {
+function SwappableAsyncApp() @{
+	const [promise, setPromise] = useState(() => Promise.resolve('first'));
+
+	<>
+		@try {
 			<AsyncChild {promise} />
-		} pending {
-			<p class="pending">{'loading...'}</p>
+		} @pending {
+			<p className="pending">{'loading...'}</p>
 		}
-		<button class="swap" onClick={() => setPromise(Promise.resolve('second'))}>{'swap'}</button>
-	</>;
+		<button className="swap" onClick={() => setPromise(Promise.resolve('second'))}>{'swap'}</button>
+	</>
 }
 
 // ── If inside try body ──
 
-function IfInsideTryApp() {
-	return <>
-		const [show, setShow] = useState(true);
-		try {
-			if (show) {
-				<p class="branch-a">{'visible'}</p>
-			} else {
-				<p class="branch-b">{'alternate'}</p>
+function IfInsideTryApp() @{
+	const [show, setShow] = useState(true);
+
+	<>
+		@try {
+			@if (show) {
+				<p className="branch-a">{'visible'}</p>
+			} @else {
+				<p className="branch-b">{'alternate'}</p>
 			}
-		} catch (err: Error) {
-			<p class="caught">{'error'}</p>
+		} @catch (err: Error) {
+			<p className="caught">{'error'}</p>
 		}
-		<button class="toggle" onClick={() => setShow(!show)}>{'toggle'}</button>
-	</>;
+		<button className="toggle" onClick={() => setShow(!show)}>{'toggle'}</button>
+	</>
 }
 
 // ── For-of inside try body ──
 
-function ForInsideTryApp() {
-	return <>
-		const [items, setItems] = useState(['x', 'y']);
-		try {
-			for (const item of items) {
-				<span class="try-item" key={item}>{item}</span>
+function ForInsideTryApp() @{
+	const [items, setItems] = useState(['x', 'y']);
+
+	<>
+		@try {
+			@for (const item of items) {
+				<span className="try-item" key={item}>{item}</span>
 			}
-		} catch (err: Error) {
-			<p class="caught">{'error'}</p>
+		} @catch (err: Error) {
+			<p className="caught">{'error'}</p>
 		}
-		<button class="add" onClick={() => setItems([...items, 'z'])}>{'add'}</button>
-	</>;
+		<button className="add" onClick={() => setItems([...items, 'z'])}>{'add'}</button>
+	</>
 }
 
 // ── Hook inside if-branch ──
 
-function HookInIfApp() {
-	return <>
-		const [show, setShow]: [boolean, React.Dispatch<React.SetStateAction<boolean>>] = useState(
-			true,
-		);
-		if (show) {
-			const [count, setCount] = useState(0);
-			<p class="hook-if-count">{count}</p>
-			<button class="hook-if-inc" onClick={() => setCount(count + 1)}>{'inc'}</button>
-		} else {
-			<p class="hook-if-hidden">{'hidden'}</p>
+function HookInIfApp() @{
+	const [show, setShow]: [boolean, React.Dispatch<React.SetStateAction<boolean>>] = useState(true);
+
+	<>
+		@if (show) {
+			@{
+				const [count, setCount] = useState(0);
+
+				<>
+					<p className="hook-if-count">{count}</p>
+					<button className="hook-if-inc" onClick={() => setCount(count + 1)}>{'inc'}</button>
+				</>
+			}
+		} @else {
+			<p className="hook-if-hidden">{'hidden'}</p>
 		}
-		<button class="hook-if-toggle" onClick={() => setShow(!show)}>{'toggle'}</button>
-	</>;
+		<button className="hook-if-toggle" onClick={() => setShow(!show)}>{'toggle'}</button>
+	</>
 }
 
 // ── Hook inside for-of loop ──
 
-function HookInForApp() {
-	return <>
-		const [items, setItems] = useState(['a', 'b']);
-		for (const item of items) {
-			const [clicked, setClicked] = useState(false);
-			<div class="hook-for-item" key={item}>
-				<span>
-					{item}
-					{clicked ? '!' : ''}
-				</span>
-				<button class={'hook-for-click-' + item} onClick={() => setClicked(true)}>{'click'}</button>
-			</div>
+function HookInForApp() @{
+	const [items, setItems] = useState(['a', 'b']);
+
+	<>
+		@for (const item of items) {
+			@{
+				const [clicked, setClicked] = useState(false);
+
+				<div className="hook-for-item" key={item}>
+					<span>
+						{item}
+						{clicked ? '!' : ''}
+					</span>
+					<button
+						className={'hook-for-click-' + item}
+						onClick={() => setClicked(true)}
+					>{'click'}</button>
+				</div>
+			}
 		}
-		<button class="hook-for-add" onClick={() => setItems([...items, 'c'])}>{'add'}</button>
-	</>;
+		<button className="hook-for-add" onClick={() => setItems([...items, 'c'])}>{'add'}</button>
+	</>
 }
 
 // ── Hook inside switch case ──
 
-function HookInSwitchApp() {
-	return <>
-		const [page, setPage] = useState('home');
-		switch (page) {
-			case 'home':
+function HookInSwitchApp() @{
+	const [page, setPage] = useState('home');
+
+	<>
+		@switch (page) {
+			@case 'home': {
 				const [homeCount, setHomeCount] = useState(0);
-				<p class="hook-switch-val">{homeCount}</p>
-				<button class="hook-switch-inc" onClick={() => setHomeCount(homeCount + 1)}>{'inc'}</button>
-				break;
-			case 'about':
-				<p class="hook-switch-val">{'about page'}</p>
-				break;
+				<>
+					<p className="hook-switch-val">{homeCount}</p>
+					<button
+						className="hook-switch-inc"
+						onClick={() => setHomeCount(homeCount + 1)}
+					>{'inc'}</button>
+				</>
+			}
+			@case 'about': {
+				<p className="hook-switch-val">{'about page'}</p>
+			}
 		}
-		<button class="hook-switch-go" onClick={() => setPage('about')}>{'about'}</button>
-	</>;
+		<button className="hook-switch-go" onClick={() => setPage('about')}>{'about'}</button>
+	</>
 }
 
 // ── Hook inside if-else both branches ──
 
-function HookInBothBranchesApp() {
-	return <>
-		const [mode, setMode] = useState('a');
-		if (mode === 'a') {
-			const [x, setX] = useState(10);
-			<p class="branch-val">{x}</p>
-			<button class="branch-inc" onClick={() => setX(x + 1)}>{'inc'}</button>
-		} else {
-			const [y, setY] = useState(20);
-			<p class="branch-val">{y}</p>
-			<button class="branch-inc" onClick={() => setY(y + 1)}>{'inc'}</button>
+function HookInBothBranchesApp() @{
+	const [mode, setMode] = useState('a');
+
+	<>
+		@if (mode === 'a') {
+			@{
+				const [x, setX] = useState(10);
+
+				<>
+					<p className="branch-val">{x}</p>
+					<button className="branch-inc" onClick={() => setX(x + 1)}>{'inc'}</button>
+				</>
+			}
+		} @else {
+			@{
+				const [y, setY] = useState(20);
+
+				<>
+					<p className="branch-val">{y}</p>
+					<button className="branch-inc" onClick={() => setY(y + 1)}>{'inc'}</button>
+				</>
+			}
 		}
-		<button class="branch-toggle" onClick={() => setMode(mode === 'a' ? 'b' : 'a')}>
-			{'toggle'}
-		</button>
-	</>;
+		<button
+			className="branch-toggle"
+			onClick={() => setMode(mode === 'a' ? 'b' : 'a')}
+		>{'toggle'}</button>
+	</>
 }
 
 // ── Hook inside if-branch closing over parent scope ──
 
-function HookClosingOverScopeApp() {
-	return <>
-		const [multiplier, setMultiplier] = useState(2);
-		if (multiplier > 0) {
-			const [base, setBase] = useState(5);
-			<p class="scope-result">{base * multiplier}</p>
-			<button class="scope-inc-base" onClick={() => setBase(base + 1)}>{'inc base'}</button>
+function HookClosingOverScopeApp() @{
+	const [multiplier, setMultiplier] = useState(2);
+
+	<>
+		@if (multiplier > 0) {
+			@{
+				const [base, setBase] = useState(5);
+
+				<>
+					<p className="scope-result">
+						{base * multiplier}
+					</p>
+					<button className="scope-inc-base" onClick={() => setBase(base + 1)}>{'inc base'}</button>
+				</>
+			}
 		}
-		<button class="scope-inc-mult" onClick={() => setMultiplier(multiplier + 1)}>
-			{'inc multiplier'}
-		</button>
-	</>;
+		<button
+			className="scope-inc-mult"
+			onClick={() => setMultiplier(multiplier + 1)}
+		>{'inc multiplier'}</button>
+	</>
 }
 
 // ── Hook inside element children (hooks in nested <div> body) ──
 
-function HookInsideElementApp() {
-	return <>
-		const [label, setLabel] = useState('greeting');
-		<div class="outer">
+function HookInsideElementApp() @{
+	const [label, setLabel] = useState('greeting');
+
+	<>
+		<div className="outer">
 			<h2>{label}</h2>
-			if (label === 'greeting') {
-				const [msg, setMsg] = useState('Hello');
-				<p class="inner-msg">{msg}</p>
-				<button class="inner-update" onClick={() => setMsg('Hi there')}>{'update'}</button>
+			@if (label === 'greeting') {
+				@{
+					const [msg, setMsg] = useState('Hello');
+
+					<>
+						<p className="inner-msg">{msg}</p>
+						<button className="inner-update" onClick={() => setMsg('Hi there')}>{'update'}</button>
+					</>
+				}
 			}
 		</div>
 		<button
-			class="outer-toggle"
+			className="outer-toggle"
 			onClick={() => setLabel(label === 'greeting' ? 'farewell' : 'greeting')}
-		>
-			{'toggle'}
-		</button>
-	</>;
+		>toggle</button>
+	</>
 }
 
 // ── Hook inside for-of closing over parent scope ──
 
-function HookInForClosingScopeApp() {
-	return <>
-		const [prefix, setPrefix] = useState('item');
-		const [items, setItems] = useState(['a', 'b']);
-		for (const item of items) {
-			const [active, setActive] = useState(false);
-			<div class="for-scope-item" key={item}>
-				<span class="for-scope-label">{prefix + '-' + item + (active ? '!' : '')}</span>
-				<button class={'for-scope-toggle-' + item} onClick={() => setActive(!active)}>
-					{'toggle'}
-				</button>
-			</div>
+function HookInForClosingScopeApp() @{
+	const [prefix, setPrefix] = useState('item');
+	const [items, setItems] = useState(['a', 'b']);
+
+	<>
+		@for (const item of items) {
+			@{
+				const [active, setActive] = useState(false);
+
+				<div className="for-scope-item" key={item}>
+					<span className="for-scope-label">
+						{prefix + '-' + item + (active ? '!' : '')}
+					</span>
+					<button
+						className={'for-scope-toggle-' + item}
+						onClick={() => setActive(!active)}
+					>{'toggle'}</button>
+				</div>
+			}
 		}
-		<button class="for-scope-prefix" onClick={() => setPrefix('thing')}>{'change prefix'}</button>
-	</>;
+		<button
+			className="for-scope-prefix"
+			onClick={() => setPrefix('thing')}
+		>{'change prefix'}</button>
+	</>
 }
 
 // ── Component guard return before hooks with parent scope ──
 
-function GuardReturnWithHooksApp() {
+function GuardReturnWithHooksApp() @{
 	const [count, setCount] = useState(0);
 	const [skip, setSkip] = useState(false);
 	if (skip) {
@@ -1004,151 +1025,156 @@ function GuardReturnWithHooksApp() {
 	}
 	const [doubled, setDoubled] = useState(0);
 
-	return <>
-		<p class="early-count">{count}</p>
-		<p class="early-doubled">{doubled}</p>
+	<>
+		<p className="early-count">{count}</p>
+		<p className="early-doubled">{doubled}</p>
 		<button
-			class="early-inc"
+			className="early-inc"
 			onClick={() => {
 				setCount(count + 1);
 				setDoubled((count + 1) * 2);
 			}}
-		>
-			{'inc'}
-		</button>
-		<button class="early-skip" onClick={() => setSkip(true)}>{'skip'}</button>
-	</>;
+		>inc</button>
+		<button className="early-skip" onClick={() => setSkip(true)}>{'skip'}</button>
+	</>
 }
 
 // ── Hook inside switch closing over parent scope ──
 
-function HookInSwitchWithScopeApp() {
-	return <>
-		const [tab, setTab] = useState('counter');
-		const [theme, setTheme] = useState('light');
-		switch (tab) {
-			case 'counter':
+function HookInSwitchWithScopeApp() @{
+	const [tab, setTab] = useState('counter');
+	const [theme, setTheme] = useState('light');
+
+	<>
+		@switch (tab) {
+			@case 'counter': {
 				const [n, setN] = useState(0);
-				<p class="switch-scope-val">{theme + ':' + n}</p>
-				<button class="switch-scope-inc" onClick={() => setN(n + 1)}>{'inc'}</button>
-				break;
-			case 'info':
-				<p class="switch-scope-val">{theme + ':info'}</p>
-				break;
+				<>
+					<p className="switch-scope-val">
+						{theme + ':' + n}
+					</p>
+					<button className="switch-scope-inc" onClick={() => setN(n + 1)}>{'inc'}</button>
+				</>
+			}
+			@case 'info': {
+				<p className="switch-scope-val">
+					{theme + ':info'}
+				</p>
+			}
 		}
-		<button class="switch-scope-tab" onClick={() => setTab(tab === 'counter' ? 'info' : 'counter')}>
-			{'switch tab'}
-		</button>
 		<button
-			class="switch-scope-theme"
+			className="switch-scope-tab"
+			onClick={() => setTab(tab === 'counter' ? 'info' : 'counter')}
+		>{'switch tab'}</button>
+		<button
+			className="switch-scope-theme"
 			onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-		>
-			{'switch theme'}
-		</button>
-	</>;
+		>{'switch theme'}</button>
+	</>
 }
 
-// ── Hook inside expression-position native fragments from a regular function ──
+// ── Hook inside expression-position JSX fragments from a regular function ──
 
-function TsrxExpressionHookPanel(props: { active: boolean; label: string }) {
+function TsrxExpressionHookPanel(props: { active: boolean; label: string }) @{
 	if (!props.active) return null;
 
-	return <>
-		const [count, setCount] = useState(0);
-		<button class="tsrx-expression-hook-count" onClick={() => setCount(count + 1)}>
-			{props.label + ':' + count}
-		</button>
-	</>;
+	const [count, setCount] = useState(0);
+
+	<button className="tsrx-expression-hook-count" onClick={() => setCount(count + 1)}>
+		{props.label + ':' + count}
+	</button>
 }
 
-function TsrxExpressionHookApp() {
-	return <>
-		const [active, setActive] = useState(false);
-		const [label, setLabel] = useState('first');
-		<button class="tsrx-expression-hook-toggle" onClick={() => setActive(!active)}>
+function TsrxExpressionHookApp() @{
+	const [active, setActive] = useState(false);
+	const [label, setLabel] = useState('first');
+
+	<>
+		<button className="tsrx-expression-hook-toggle" onClick={() => setActive(!active)}>
 			{active ? 'hide' : 'show'}
 		</button>
-		<button class="tsrx-expression-hook-label" onClick={() => setLabel('second')}>{'label'}</button>
+		<button
+			className="tsrx-expression-hook-label"
+			onClick={() => setLabel('second')}
+		>{'label'}</button>
 		<TsrxExpressionHookPanel {active} {label} />
-	</>;
+	</>
 }
 
 // ── Static hoisting: mixed static and dynamic siblings ──
 
-function StaticHoistMixedApp() {
-	return <>
-		const [count, setCount] = useState(0);
-		<header class="static-header">
+function StaticHoistMixedApp() @{
+	const [count, setCount] = useState(0);
+
+	<>
+		<header className="static-header">
 			<h1>{'Static Title'}</h1>
 		</header>
-		<p class="dynamic-count">{count}</p>
-		<footer class="static-footer">{'Static Footer'}</footer>
-		<button class="hoist-inc" onClick={() => setCount(count + 1)}>{'inc'}</button>
-	</>;
+		<p className="dynamic-count">{count}</p>
+		<footer className="static-footer">{'Static Footer'}</footer>
+		<button className="hoist-inc" onClick={() => setCount(count + 1)}>{'inc'}</button>
+	</>
 }
 
 // ── Static hoisting: static element inside control flow ──
 
-function StaticHoistInBranchApp() {
-	return <>
-		const [show, setShow] = useState(true);
-		if (show) {
-			<div class="branch-static">
+function StaticHoistInBranchApp() @{
+	const [show, setShow] = useState(true);
+
+	<>
+		@if (show) {
+			<div className="branch-static">
 				<span>{'Always the same'}</span>
 			</div>
 		}
-		<button class="hoist-toggle" onClick={() => setShow(!show)}>{'toggle'}</button>
-	</>;
+		<button className="hoist-toggle" onClick={() => setShow(!show)}>{'toggle'}</button>
+	</>
 }
 
 // ── Static hoisting: fully static component ──
 
-function FullyStaticApp() {
-	return <>
-		<div class="all-static">
-			<h2>{'Title'}</h2>
-			<p>{'Paragraph'}</p>
-		</div>
-	</>;
+function FullyStaticApp() @{
+	<div className="all-static">
+		<h2>{'Title'}</h2>
+		<p>{'Paragraph'}</p>
+	</div>
 }
 
 // ── Lazy destructuring: object in props ──
 
-function LazyPropsChild(&{ name, age }: { name: string; age: number }) {
-	return <>
-		<div class="lazy-props">
-			{name}
-			{' is '}
-			{age}
-		</div>
-	</>;
+function LazyPropsChild(&{ name, age }: { name: string; age: number }) @{
+	<div className="lazy-props">
+		{name}
+		{' is '}
+		{age}
+	</div>
 }
 
-function LazyPropsApp() {
-	return <><LazyPropsChild name="Alice" age={30} /></>;
+function LazyPropsApp() @{
+	<LazyPropsChild name="Alice" age={30} />
 }
 
 // ── Lazy destructuring: array in variable ──
 
-function LazyArrayApp() {
-	return <>
-		const [count, setCount] = useState(0);
-		<p class="lazy-count">{count}</p>
-		<button class="lazy-inc" onClick={() => setCount(count + 1)}>{'+'}</button>
-	</>;
+function LazyArrayApp() @{
+	const [count, setCount] = useState(0);
+
+	<>
+		<p className="lazy-count">{count}</p>
+		<button className="lazy-inc" onClick={() => setCount(count + 1)}>{'+'}</button>
+	</>
 }
 
 // ── Lazy destructuring: object in variable ──
 
-function LazyObjVarApp() {
-	return <>
-		const &{ x, y } = usePosition();
-		<p class="lazy-pos">
-			{x}
-			{','}
-			{y}
-		</p>
-	</>;
+function LazyObjVarApp() @{
+	const &{ x, y } = usePosition();
+
+	<p className="lazy-pos">
+		{x}
+		{','}
+		{y}
+	</p>
 }
 
 function usePosition() {
@@ -1157,16 +1183,17 @@ function usePosition() {
 
 // ── Lazy destructuring: combined props + variable ──
 
-function LazyCombinedApp(&{ label }: { label: string }) {
-	return <>
-		const [count, setCount] = useState(0);
-		<p class="lazy-combined">
+function LazyCombinedApp(&{ label }: { label: string }) @{
+	const [count, setCount] = useState(0);
+
+	<>
+		<p className="lazy-combined">
 			{label}
 			{': '}
 			{count}
 		</p>
-		<button class="lazy-combined-inc" onClick={() => setCount(count + 1)}>{'+'}</button>
-	</>;
+		<button className="lazy-combined-inc" onClick={() => setCount(count + 1)}>{'+'}</button>
+	</>
 }
 
 // ── Tests ──
@@ -1195,17 +1222,17 @@ describe('tsrx-react runtime', () => {
 		expect(text('.greeting')).toBe('Hello world');
 	});
 
-	it('renders direct double-quoted text children as text', async () => {
-		await render(DirectQuotedTextApp);
-		expect(text('.direct-quoted-entities')).toBe('Rock & "Roll"');
-		expect(text('.direct-quoted-backslash')).toBe('line\\nbreak');
-		expect(text('.direct-quoted-multiline')).toBe('first\nsecond');
+	it('renders JSX text children as text', async () => {
+		await render(JsxTextApp);
+		expect(text('.jsx-text-entities')).toBe('Rock & "Roll"');
+		expect(text('.jsx-text-backslash')).toBe('line\\nbreak');
+		expect(text('.jsx-text-multiline')).toBe('first second');
 	});
 
-	it('renders bare direct double-quoted text in if-else branches', async () => {
-		await render(DirectQuotedTextIfElseApp);
-		expect(text('.direct-quoted-if-then')).toBe('Hello Ripple');
-		expect(text('.direct-quoted-if-else')).toBe('Hello React');
+	it('renders bare JSX text in if-else branches', async () => {
+		await render(JsxTextIfElseApp);
+		expect(text('.jsx-text-if-then')).toBe('Hello Ripple');
+		expect(text('.jsx-text-if-else')).toBe('Hello React');
 	});
 
 	it('renders nested components', async () => {
@@ -1436,8 +1463,8 @@ describe('tsrx-react runtime', () => {
 		expect(after[0].textContent).toBe('b');
 	});
 
-	it('skips for-of iterations with continue', async () => {
-		await render(ForContinueApp);
+	it('renders filtered for-of items', async () => {
+		await render(ForFilteredApp);
 		expect(
 			Array.from(container.querySelectorAll('.continue-item'), (item) => item.textContent),
 		).toEqual([

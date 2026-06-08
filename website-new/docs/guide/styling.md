@@ -7,26 +7,24 @@ title: Styling in Ripple
 Ripple supports native CSS styling that's scoped (localized) to the returned
 TSRX template using the `<style>` element.
 
-```ripple
-function MyComponent() {
-  return <>
-  <div class="container">
-    <h1>"Hello World"</h1>
-  </div>
+```tsrx
+function MyComponent() @{
+  <>
+    <div class="container">
+      <h1>Hello World</h1>
+    </div>
 
-  <style>
-    .container {
-      background: blue;
-      padding: 1rem;
-    }
-
-    h1 {
-      color: white;
-      font-size: 2rem;
-    }
-  </style>
-
-  </>;
+    <style>
+      .container {
+        background: blue;
+        padding: 1rem;
+      }
+      h1 {
+        color: white;
+        font-size: 2rem;
+      }
+    </style>
+  </>
 }
 ```
 
@@ -34,8 +32,8 @@ function MyComponent() {
 :::
 
 `<style>` blocks contain static CSS. TSRX template rules for JavaScript
-statements and expressions do not apply inside them, so do not put `{expr}`,
-`if`, `for`, or declarations in a style block. Use CSS custom properties for
+expressions and directives do not apply inside them, so do not put `{expr}`,
+`@if`, `@for`, or declarations in a style block. Use CSS custom properties for
 runtime values.
 
 ## Dynamic Classes
@@ -46,19 +44,24 @@ falsy values are omitted. This behavior is powered by the `clsx` library.
 
 Examples:
 
-```ripple
+```tsrx
 import { track } from 'ripple';
 
-let &[includeBaz] = track(true);
-<div class={{ foo: true, bar: false, baz: includeBaz }} />
-// becomes: class="foo baz"
+function App() @{
+  let &[includeBaz] = track(true);
+  let &[count] = track(3);
 
-<div class={['foo', { baz: false }, 0 && 'bar', [true && 'bat']]} />
-// becomes: class="foo bat"
+  <>
+    <div class={{ foo: true, bar: false, baz: includeBaz }} />
+    // becomes: class="foo baz"
 
-let &[count] = track(3);
-<div class={['foo', { bar: count > 2 }, count > 3 && 'bat']} />
-// becomes: class="foo bar"
+    <div class={['foo', { baz: false }, 0 && 'bar', [true && 'bat']]} />
+    // becomes: class="foo bat"
+
+    <div class={['foo', { bar: count > 2 }, count > 3 && 'bat']} />
+    // becomes: class="foo bar"
+  </>
+}
 ```
 
 ## Dynamic CSS Values
@@ -67,29 +70,28 @@ Styles in `<style>` blocks are static CSS. When a value needs to change at
 runtime, put that value in a CSS custom property on the element and read it with
 `var(...)` from your static CSS:
 
-```ripple
+```tsrx
 import { track } from 'ripple';
 
-function App() {
+function App() @{
   let &[color] = track('red');
 
-  return <>
-  <div class="notice" style={{ '--notice-color': color }}>
-    "Styled text"
-  </div>
-  <button onClick={() => (color = color === 'red' ? 'blue' : 'red')}>
-    "Toggle Color"
-  </button>
+  <>
+    <div class="notice" style={{ '--notice-color': color }}>
+      Styled text
+    </div>
+    <button onClick={() => (color = color === 'red' ? 'blue' : 'red')}>
+      Toggle Color
+    </button>
 
-  <style>
-    .notice {
-      color: var(--notice-color);
-      font-weight: bold;
-      background-color: gray;
-    }
-  </style>
-
-  </>;
+    <style>
+      .notice {
+        color: var(--notice-color);
+        font-weight: bold;
+        background-color: gray;
+      }
+    </style>
+  </>
 }
 ```
 
@@ -100,51 +102,47 @@ styles, use the `:global()` pseudo-class or `:global` block:
 
 <Code>
 
-```ripple
-export function App() {
-  return <>
-  <div class="container">
-    <Child />
-  </div>
+```tsrx
+export function App() @{
+  <>
+    <div class="container">
+      <Child />
+    </div>
 
-  <style>
-    /* Scoped to Parent only */
-    .container {
-      padding: 1rem;
-    }
-
-    /* Global - Not Recommended - applies to any .highlight in any component */
-    :global(.highlight) {
-      color: red;
-      font-weight: bold;
-    }
-
-    /* Global: - Recommended - scoped parent with global child selector */
-    .container :global(.nested) {
-      margin-left: 2rem;
-    }
-
-    /* Global block - everything inside is global */
-    div :global {
-      .header {
-        font-size: 3rem;
+    <style>
+      /* Scoped to Parent only */
+      .container {
+        padding: 1rem;
       }
-    }
-  </style>
 
-  </>;
+      /* Global - Not Recommended - applies to any .highlight in any component */
+      :global(.highlight) {
+        color: red;
+        font-weight: bold;
+      }
+
+      /* Global: - Recommended - scoped parent with global child selector */
+      .container :global(.nested) {
+        margin-left: 2rem;
+      }
+
+      /* Global block - everything inside is global */
+      div :global {
+        .header {
+          font-size: 3rem;
+        }
+      }
+    </style>
+  </>
 }
 
 function Child() {
-  return <>
   // The div should have its font-size at 2rem from parent
-  <div>
-    <h2 class="header">"This is a header with font-size 3rem"</h2>
-    <span class="highlight">"This will be red and bold"</span>
-    <p class="nested">"This will have left margin"</p>
+  return <div>
+    <h2 class="header">This is a header with font-size 3rem</h2>
+    <span class="highlight">This will be red and bold</span>
+    <p class="nested">This will have left margin</p>
   </div>
-
-  </>;
 }
 ```
 
@@ -157,53 +155,51 @@ across components, prefix the animation name with `-global-`:
 
 <Code>
 
-```ripple
-export function App() {
-  return <>
-  <div class="parent">
-    <Child />
-  </div>
+```tsrx
+export function App() @{
+  <>
+    <div class="parent">
+      <Child />
+    </div>
 
-  <style>
-    /* Scoped keyframe - only usable within Parent */
-    @keyframes slideIn {
-      from {
-        transform: translateX(-100%);
+    <style>
+      /* Scoped keyframe - only usable within Parent */
+      @keyframes slideIn {
+        from {
+          transform: translateX(-100%);
+        }
+        to {
+          transform: translateX(0);
+        }
       }
-      to {
-        transform: translateX(0);
-      }
-    }
 
-    /* Global keyframe - usable in any component */
-    @keyframes -global-fadeIn {
-      0% {
-        opacity: 0;
+      /* Global keyframe - usable in any component */
+      @keyframes -global-fadeIn {
+        0% {
+          opacity: 0;
+        }
+        100% {
+          opacity: 1;
+        }
       }
-      100% {
-        opacity: 1;
+
+      .parent {
+        animation: slideIn 1s;
       }
-    }
-
-    .parent {
-      animation: slideIn 1s;
-    }
-  </style>
-
-  </>;
+    </style>
+  </>
 }
 
-function Child() {
-  return <>
-  <div class="child">"Child content"</div>
+function Child() @{
+  <>
+    <div class="child">Child content</div>
 
-  <style>
-    .child {
-      animation: fadeIn 1s; /* Uses global fadeIn from Parent */
-    }
-  </style>
-
-  </>;
+    <style>
+      .child {
+        animation: fadeIn 1s; /* Uses global fadeIn from Parent */
+      }
+    </style>
+  </>
 }
 ```
 
@@ -221,37 +217,33 @@ Each map entry contains both the CSS scope hash and the class name (for example
 
 ### Basic Usage
 
-```ripple
+```tsrx
 function Child({ class: className }: { class: string }) {
-  return <>
-  <div class={className}>"styled child"</div>
-
-  </>;
+  return <div class={className}>styled child</div>
 }
 
-function Parent() {
+function Parent() @{
   const styles = <style>
     .highlight {
       color: red;
     }
   </style>;
 
-  return <Child class={styles.highlight} />;
+  <Child class={styles.highlight} />
 }
 ```
 
 You can pass multiple classes:
 
-```ripple
-function Child({ primary, secondary }: { primary: string; secondary: string }) {
-  return <>
-  <div class={primary}>"primary"</div>
-  <span class={secondary}>"secondary"</span>
-
-  </>;
+```tsrx
+function Child({ primary, secondary }: { primary: string; secondary: string }) @{
+  <>
+    <div class={primary}>primary</div>
+    <span class={secondary}>secondary</span>
+  </>
 }
 
-function Parent() {
+function Parent() @{
   const styles = <style>
     .primary {
       color: blue;
@@ -261,7 +253,7 @@ function Parent() {
     }
   </style>;
 
-  return <Child primary={styles.primary} secondary={styles.secondary} />;
+  <Child primary={styles.primary} secondary={styles.secondary} />
 }
 ```
 
@@ -269,27 +261,22 @@ function Parent() {
 
 Style expression maps also work when rendering dynamic components with `<@Component />`:
 
-```ripple
+```tsrx
 import { track } from 'ripple';
 
 function Child({ cls }: { cls: string }) {
-  return <>
-  <span class={cls}>"text"</span>
-
-  </>;
+  return <span class={cls}>text</span>
 }
 
-function Parent() {
+function Parent() @{
   const styles = <style>
     .text {
       color: red;
     }
   </style>;
 
-  return <>
   let &[Dynamic] = track(() => Child);
   <@Dynamic cls={styles.text} />
-  </>;
 }
 ```
 
@@ -298,28 +285,27 @@ function Parent() {
 A child component can combine classes it receives from a parent with its own
 scoped classes:
 
-```ripple
-function Card({ class: className }: { class?: string }) {
-  return <>
-  <div class={['card-base', className ?? '']}>"card content"</div>
+```tsrx
+function Card({ class: className }: { class?: string }) @{
+  <>
+    <div class={['card-base', className ?? '']}>card content</div>
 
-  <style>
-    .card-base {
-      border: 1px solid black;
-    }
-  </style>
-
-  </>;
+    <style>
+      .card-base {
+        border: 1px solid black;
+      }
+    </style>
+  </>
 }
 
-function App() {
+function App() @{
   const styles = <style>
     .themed {
       background: purple;
     }
   </style>;
 
-  return <Card class={styles.themed} />;
+  <Card class={styles.themed} />
 }
 ```
 
@@ -332,8 +318,8 @@ combinator selectors are not exported on the map.
 If a class appears both standalone and in a descendant selector, it can still be
 used through the style expression map:
 
-```ripple
-function App() {
+```tsrx
+function App() @{
   const styles = <style>
     /* Standalone rule — exposes styles.dual */
     .dual {
@@ -346,26 +332,24 @@ function App() {
     }
   </style>;
 
-  return <>
   <div class="parent">
     <Child cls={styles.dual} />
   </div>
-  </>;
 }
 ```
 
 The following will **not** work because the class has no standalone rule:
 
-```ripple
+```tsrx
 // ❌ .nested only exists in a descendant selector
-function App() {
+function App() @{
   const styles = <style>
     .wrapper .nested {
       color: red;
     }
   </style>;
 
-  return <Child cls={styles.nested} />;
+  <Child cls={styles.nested} />
 }
 ```
 

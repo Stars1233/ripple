@@ -5,17 +5,15 @@ describe('basic client > utilities', () => {
 		let resolve: () => void;
 		const promise = new Promise<void>((res) => (resolve = res));
 
-		function Basic() {
-			return <>
-				let &[value] = track(0);
-				effect(() => {
-					untrack(() => {
-						value++;
-						tick().then(() => resolve());
-					});
+		function Basic() @{
+			let &[value] = track(0);
+			effect(() => {
+				untrack(() => {
+					value++;
+					tick().then(() => resolve());
 				});
-				<p>{value}</p>
-			</>;
+			});
+			<p>{value}</p>
 		}
 		render(Basic);
 

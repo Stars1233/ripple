@@ -1,5 +1,6 @@
-import type { AddEventObject, FragmentProps, RefKey, TSRXElement } from '#public';
+import type { AddEventObject, FragmentProps, RefKey, RefValue, TSRXElement } from '#public';
 import type { Nullable } from '#helpers';
+export type { RefValue } from '#public';
 
 /**
  * Ripple JSX Runtime Type Definitions
@@ -66,13 +67,6 @@ type EventHandlerObject<
 type EventHandlerValue<Target extends globalThis.EventTarget, EventType extends globalThis.Event> =
 	| EventHandler<Target, EventType>
 	| EventHandlerObject<Target, EventType>;
-
-type RefValue<Target extends globalThis.Element> =
-	| ((node: Target) => void | (() => void))
-	| { value: Target | null }
-	| Target
-	| null
-	| undefined;
 
 type RefAttribute<Target extends globalThis.Element> = {
 	[Key in RefKey]?: RefValue<Target>;

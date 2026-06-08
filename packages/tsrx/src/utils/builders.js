@@ -283,7 +283,6 @@ export function export_builder(
  * @param {AST.BlockStatement} body
  * @param {boolean} [async]
  * @param {AST.TSTypeParameterDeclaration} [type_parameters]
- * @param
  * @returns {AST.FunctionDeclaration}
  */
 export function function_declaration(id, params, body, async = false, type_parameters) {
@@ -1125,7 +1124,7 @@ export function jsx_attribute(name, value = null, shorthand = false, loc_info) {
 
 /**
  * Build a fresh `JSXOpeningElement`. For elements derived from an existing
- * Element node, prefer `jsx_element` which spreads from the source.
+ * JSX element node, prefer `jsx_element` which spreads from the source.
  *
  * @param {ESTreeJSX.JSXOpeningElement['name']} name
  * @param {ESTreeJSX.JSXOpeningElement['attributes']} [attributes]
@@ -1200,7 +1199,7 @@ export function jsx_element_fresh(
 }
 
 /**
- * @param {AST.Element} node
+ * @param {ESTreeJSX.JSXElement} node
  * @param {ESTreeJSX.JSXOpeningElement['attributes']} attributes
  * @param {ESTreeJSX.JSXElement['children']} children
  * @returns {ESTreeJSX.JSXElement}

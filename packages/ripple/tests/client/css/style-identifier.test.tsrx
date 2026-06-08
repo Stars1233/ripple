@@ -10,18 +10,18 @@ const external_styles = <style>
 describe('style class maps', () => {
 	describe('basic usage with components', () => {
 		it('passes scoped classes to a child component via a style expression', () => {
-			function Child({ className }: { className: string }) {
-				return <><div class={className}>{'styled child'}</div></>;
+			function Child({ className }: { className: string }) @{
+				<div class={className}>{'styled child'}</div>
 			}
 
-			function Parent() {
+			function Parent() @{
 				const styles = <style>
 					.highlight {
 						color: red;
 					}
 				</style>;
 
-				return <><Child className={styles.highlight} /></>;
+				<Child className={styles.highlight} />
 			}
 
 			render(Parent);
@@ -35,14 +35,14 @@ describe('style class maps', () => {
 		});
 
 		it('passes multiple style expression classes to a child component', () => {
-			function Child({ primary, secondary }: { primary: string; secondary: string }) {
-				return <>
+			function Child({ primary, secondary }: { primary: string; secondary: string }) @{
+				<>
 					<div class={primary}>{'primary'}</div>
 					<span class={secondary}>{'secondary'}</span>
-				</>;
+				</>
 			}
 
-			function Parent() {
+			function Parent() @{
 				const styles = <style>
 					.primary {
 						color: blue;
@@ -52,7 +52,7 @@ describe('style class maps', () => {
 					}
 				</style>;
 
-				return <><Child primary={styles.primary} secondary={styles.secondary} /></>;
+				<Child primary={styles.primary} secondary={styles.secondary} />
 			}
 
 			render(Parent);
@@ -74,42 +74,38 @@ describe('style class maps', () => {
 
 		it('allows style expression classes on child components with children', () => {
 			const source = `
-function Child({ className }) { return <>
+function Child({ className }) @{
 	<div class={className}>"hello world"</div>
-</>; }
-function App() {
+}
+function App() @{
 	const styles = <style>
 		.container {
 			color: red;
 		}
 	</style>;
 
-	return <>
 		<Child className={styles.container}>"hello world"</Child>
-	</>;
 }`;
 
 			expect(() => compile(source, 'test.tsrx')).not.toThrow();
 		});
 
 		it('passes scoped classes to a dynamic child component via a style expression', () => {
-			function Child({ cls }: { cls: string }) {
-				return <><span class={cls}>{'text'}</span></>;
+			function Child({ cls }: { cls: string }) @{
+				<span class={cls}>{'text'}</span>
 			}
 
-			function Parent() {
+			function Parent() @{
 				const styles = <style>
 					.text {
 						color: red;
 					}
 				</style>;
 
-				return <>
-					let dynamic = track(() => Child);
-					<div class="wrapper">
-						<@dynamic cls={styles.text} />
-					</div>
-				</>;
+				let dynamic = track(() => Child);
+				<div class="wrapper">
+					<@dynamic cls={styles.text} />
+				</div>
 			}
 
 			render(Parent);
@@ -122,12 +118,12 @@ function App() {
 		});
 
 		it('passes style expression classes declared outside the component', () => {
-			function Child({ cls }: { cls: string }) {
-				return <><span class={cls}>{'text'}</span></>;
+			function Child({ cls }: { cls: string }) @{
+				<span class={cls}>{'text'}</span>
 			}
 
-			function Parent() {
-				return <Child cls={external_styles.external} />;
+			function Parent() @{
+				<Child cls={external_styles.external} />
 			}
 
 			render(Parent);
@@ -140,25 +136,25 @@ function App() {
 		});
 
 		it('child can combine its own classes with a parent style expression class', () => {
-			function Card({ className }: { className?: string }) {
-				return <>
+			function Card({ className }: { className?: string }) @{
+				<>
 					<div class={['card-base', className ?? '']}>{'card content'}</div>
 					<style>
 						.card-base {
 							border: 1px solid black;
 						}
 					</style>
-				</>;
+				</>
 			}
 
-			function App() {
+			function App() @{
 				const styles = <style>
 					.themed {
 						background: purple;
 					}
 				</style>;
 
-				return <><Card className={styles.themed} /></>;
+				<Card className={styles.themed} />
 			}
 
 			render(App);
@@ -171,11 +167,11 @@ function App() {
 		});
 
 		it('passes a standalone class even when it also appears in descendant context', () => {
-			function Child({ cls }: { cls: string }) {
-				return <><span class={cls}>{'text'}</span></>;
+			function Child({ cls }: { cls: string }) @{
+				<span class={cls}>{'text'}</span>
 			}
 
-			function App() {
+			function App() @{
 				const styles = <style>
 					.dual {
 						color: blue;
@@ -185,11 +181,9 @@ function App() {
 					}
 				</style>;
 
-				return <>
-					<div class="parent">
-						<Child cls={styles.dual} />
-					</div>
-				</>;
+				<div class="parent">
+					<Child cls={styles.dual} />
+				</div>
 			}
 
 			render(App);
@@ -205,30 +199,33 @@ function App() {
 	describe('removed syntax', () => {
 		it('does not parse the old style directive in attributes', () => {
 			const source = `
-function Child({ cls }) { return <>
+function Child({ cls }) @{
 	<div class={cls}>{'text'}</div>
-</>; }
-function App() { return <>
-	<Child cls={style 'highlight'} />
-
-	<style>
-		.highlight {
-			color: red;
-		}
-	</style>
-</>; }`;
+}
+function App() @{
+	<>
+		<Child cls={style 'highlight'} />
+		<style>
+			.highlight {
+				color: red;
+			}
+		</style>
+	</>
+}`;
 			expect(() => compile(source, 'test.tsrx')).toThrow();
 		});
 
 		it('does not parse the old style directive as a child expression', () => {
-			const source = `function App() { return <>
-	<div>{style 'foo'}</div>
-	<style>
-		.foo {
-			color: red;
-		}
-	</style>
-</>; }`;
+			const source = `function App() @{
+	<>
+		<div>{style 'foo'}</div>
+		<style>
+			.foo {
+				color: red;
+			}
+		</style>
+	</>
+			}`;
 			expect(() => compile(source, 'test.tsrx')).toThrow();
 		});
 	});
@@ -236,19 +233,17 @@ function App() { return <>
 	describe('compiler output', () => {
 		it('emits style class maps for client mode', () => {
 			const source = `
-function Child({ cls }) { return <>
+function Child({ cls }) @{
 	<div class={cls}>{'text'}</div>
-</>; }
-export function App() {
+}
+export function App() @{
 	const styles = <style>
 		.highlight {
 			color: red;
 		}
 	</style>;
 
-	return <>
 		<Child cls={styles.highlight} />
-	</>;
 }`;
 			const { code } = compile(source, 'test.tsrx');
 
@@ -258,19 +253,17 @@ export function App() {
 
 		it('emits style class maps for server mode', () => {
 			const source = `
-function Child({ cls }) { return <>
+function Child({ cls }) @{
 	<div class={cls}>{'text'}</div>
-</>; }
-export function App() {
+}
+export function App() @{
 	const styles = <style>
 		.highlight {
 			color: red;
 		}
 	</style>;
 
-	return <>
 		<Child cls={styles.highlight} />
-	</>;
 }`;
 			const { code } = compile(source, 'test.tsrx', { mode: 'server' });
 

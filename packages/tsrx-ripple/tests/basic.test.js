@@ -70,19 +70,226 @@ describe('@tsrx/ripple Volar mappings cover arrow functions', () => {
 	});
 });
 
+describe('@tsrx/ripple Volar mappings style anchors', () => {
+	it('omits stylesheet AST children from template style anchors', () => {
+		const source = `function App() @{
+	const items = ['one'];
+	<>
+		@try {
+			<div className="content">{'hello'}</div>
+		} @pending {
+			<div>Hello</div>
+		} @catch (err) {
+			<p className="error">{'error'}</p>
+		}
+
+		@if (items.length > 0) {
+			const hey = 'yo';
+		} @else {
+		}
+
+		@for (const item of items) {
+			<div>{item}</div>
+		} @empty {
+			<div>Nothing to see</div>
+		}
+
+		<style>
+			.content {
+				color: blue;
+			}
+			.error {
+				color: red;
+			}
+		</style>
+	</>
+}`;
+		const result = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
+		const server = compile(source, 'App.tsrx', { mode: 'server', loose: true });
+		/** @type {string[]} */
+		const source_style_nodes = [];
+		const seen = new WeakSet();
+		/** @param {any} node */
+		const collect_style_nodes = (node) => {
+			if (!node || typeof node !== 'object' || seen.has(node)) return;
+			seen.add(node);
+			if (
+				node.type === 'JSXStyleElement' ||
+				(node.type === 'Element' && node.id?.name === 'style')
+			) {
+				source_style_nodes.push(node.type);
+			}
+			for (const key in node) {
+				if (key === 'parent' || key === 'metadata') continue;
+				const value = node[key];
+				if (Array.isArray(value)) {
+					for (const child of value) collect_style_nodes(child);
+				} else {
+					collect_style_nodes(value);
+				}
+			}
+		};
+		collect_style_nodes(result.sourceAst);
+
+		expect(result.code).toContain('<style></style>');
+		expect(result.code).not.toContain('StyleSheet');
+		expect(
+			result.cssMappings.some((mapping) => mapping.data?.customData?.content?.includes('.content')),
+		).toBe(true);
+		expect(source_style_nodes).toEqual(['JSXStyleElement']);
+		expect(server.code).not.toContain('StyleSheet');
+		expect(server.css).toContain('.content');
+	});
+});
+
+describe('@tsrx/ripple Volar mappings normalize to_ts source locations', () => {
+	it('maps script tokens after multiline template children', () => {
+		const source = `function App() @{
+		const x = 1;
+		<pre>
+			{x}
+		</pre>
+}
+expect(x).toBe(1);`;
+		const result = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
+		const source_expect_offset = source.indexOf('expect');
+		const generated_expect_offset = result.code.indexOf('expect');
+		const mapping = find_exact_mapping(
+			result.mappings,
+			source_expect_offset,
+			generated_expect_offset,
+			'expect'.length,
+		);
+
+		expect(mapping).toBeDefined();
+	});
+
+	it('keeps lazy tracked values mapped to their source condition in @if output', () => {
+		const source = `import { track } from 'ripple';
+function App() @{
+	let &[show] = track(true);
+	<>
+		@if (show) {
+			<Child />
+		}
+		<button onClick={() => (show = !show)}>{'Toggle Child'}</button>
+	</>
+}`;
+		const result = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
+		const generated_if_offset = result.code.indexOf('if (show)');
+		const generated_show_offset = result.code.indexOf('show', generated_if_offset);
+		const source_show_offset = source.indexOf('show) {');
+		const mapping = find_exact_mapping(
+			result.mappings,
+			source_show_offset,
+			generated_show_offset,
+			'show'.length,
+		);
+
+		expect(result.code).toContain('if (show)');
+		expect(result.code).not.toContain("show?.['#v']");
+		expect(mapping).toBeDefined();
+	});
+
+	it('maps preserved TypeScript pragma comments at their source column', () => {
+		const source = `import { RippleObject } from 'ripple';
+import { TRACKED_OBJECT } from '../../src/runtime/internal/client/constants.js';
+function ObjectTest() @{
+	const obj = new RippleObject({ a: 0 });
+	// @ts-expect-error TRACKED_OBJECT is internal
+	expect(TRACKED_OBJECT in obj).toBe(true);
+	<pre>{'done'}</pre>
+}`;
+		const result = compile_to_volar_mappings(source, 'object.test.tsrx', { loose: true });
+		const source_comment_offset = source.indexOf('// @ts-expect-error');
+		const generated_comment_offset = result.code.indexOf('// @ts-expect-error');
+		const comment_length = '// @ts-expect-error TRACKED_OBJECT is internal'.length;
+		const mapping = find_exact_mapping(
+			result.mappings,
+			source_comment_offset,
+			generated_comment_offset,
+			comment_length,
+		);
+
+		expect(source_comment_offset).toBeGreaterThan(
+			source.lastIndexOf('\n', source_comment_offset) + 1,
+		);
+		expect(mapping).toBeDefined();
+	});
+});
+
+describe('@tsrx/ripple Volar TypeScript output', () => {
+	it('keeps expression braces for literal JSX attributes', () => {
+		const { code } = compile_to_volar_mappings(
+			`function App() @{
+		<option value={1} label={'One'} selected={true}>{'One'}</option>
+}`,
+			'App.tsrx',
+			{ loose: true },
+		);
+
+		expect(code).toContain("<option value={1} label={'One'} selected={true}>");
+	});
+
+	it('does not collect statements from nested ordinary function bodies', () => {
+		const { code } = compile_to_volar_mappings(
+			`import { track } from 'ripple';
+function App() @{
+		let value = track('');
+		const value_accessors = [
+			() => value.value,
+			(v: string) => {
+				if (v.includes('c')) {
+					v = v.replace(/c/g, '');
+				}
+				value.value = v;
+			},
+		];
+		<input type="text" ref={bindValue(...value_accessors)} />
+}`,
+			'App.tsrx',
+			{ loose: true },
+		);
+
+		expect(code.match(/if \(v\.includes\('c'\)\)/g)).toHaveLength(1);
+		expect(code).not.toContain("let value = track('');\n\n\t\tif (v.includes('c'))");
+	});
+});
+
 describe('@tsrx/ripple try pending fallbacks', () => {
 	it('allows empty pending blocks as null fallbacks', () => {
 		const { code } = compile(
-			`function App() { return <>
-				try {
-					<div>{'content'}</div>
-				} pending {}
-			</>; }`,
+			`function App() @{
+				@try {
+					<div>content</div>
+				} @pending {}
+			}`,
 			'App.tsrx',
 		);
 
 		expect(code).toContain('_$_.try(');
 		expect(code).toContain('template(`<div>content</div>`');
+	});
+
+	it('prints pending blocks as valid TypeScript in Volar output', () => {
+		const { code } = compile_to_volar_mappings(
+			`function App() @{
+				@try {
+					<p>{'ok'}</p>
+				} @pending {
+					<p>{'loading...'}</p>
+				} @catch (err) {
+					<p>{'caught rejection'}</p>
+				}
+			}`,
+			'App.tsrx',
+			{ loose: true },
+		);
+
+		expect(code).toContain("return <p>{'loading...'}</p>;");
+		expect(code).toContain('try {');
+		expect(code).toContain('catch (err)');
+		expect(code).not.toContain(' pending ');
 	});
 });
 
@@ -159,6 +366,20 @@ describe('@tsrx/ripple named ref props', () => {
 		expect(code).toContain('input_ref: fn');
 	});
 
+	it('normalizes dynamic element syntax for component lowering', () => {
+		const { code } = compile(
+			`function App() @{
+				let &[tag] = track('polygon');
+				<@tag points="0,0 30,0 15,10" />
+			}`,
+			'App.tsrx',
+		);
+
+		expect(code).toContain('_$_.composite(() =>');
+		expect(code).toContain('_$_.lazy_array_get(lazy, 0)');
+		expect(code).not.toContain('<tag');
+	});
+
 	it('prints named ref props in Volar TypeScript output', () => {
 		const { code } = compile_to_volar_mappings(
 			`function App() { return <>
@@ -198,12 +419,14 @@ describe('@tsrx/ripple named ref props', () => {
 	<input />
 </>; }
 
-function App() { return <>
+function App() @{
 	let input: HTMLInputElement | undefined;
 	const state = { input: undefined as HTMLInputElement | undefined };
-	<input type="text" input_ref={input} />
-	<Child inputRef={input} otherRef={state.input} />
-</>; }`;
+	<>
+		<input type="text" input_ref={input} />
+		<Child inputRef={input} otherRef={state.input} />
+	</>
+}`;
 		const result = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
 
 		expect(result.errors).toEqual([]);
@@ -212,39 +435,66 @@ function App() { return <>
 	});
 });
 
-describe('@tsrx/ripple native fragment Volar output', () => {
-	it('prints JSX converted from native fragment expression containers', () => {
-		const source = `function App() { return <>
+describe('@tsrx/ripple JSX fragment Volar output', () => {
+	it('prints JSX converted from fragment expression containers', () => {
+		const source = `function App() @{
 	const content = <section>{<div>{'inside'}</div>}</section>;
-	{content}
-</>; }`;
+	<>{content}</>
+}`;
 		const result = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
 
 		expect(result.code).toContain('<section>');
 		expect(result.code).toContain('<div>');
-		expect(result.code).toContain("'inside';");
+		expect(result.code).toContain("{'inside'}");
 		expect(result.code).not.toContain('<tsx');
 	});
 
-	it('returns children before and after setup statements', () => {
-		const source = `class Foo { bar() { return <><div>"before"</div> const x = 1; <div>{x}</div></>; } }`;
+	it('returns setup statements before a single fragment output', () => {
+		const source = `class Foo { bar() @{ const x = 1; <><div>before</div><div>{x}</div></> } }`;
 		const result = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
-		const match = result.code.match(/const ([A-Za-z_$][\w$]*) = \[\] as Array<any>;/);
-		expect(match).not.toBeNull();
-
-		const children_id = /** @type {RegExpMatchArray} */ (match)[1];
-		const first_push = result.code.indexOf(`${children_id}.push(<div>`);
 		const declaration = result.code.indexOf('const x = 1;');
-		const second_push = result.code.indexOf(`${children_id}.push(<div>`, first_push + 1);
-		const returned_children = result.code.indexOf(`return <>{${children_id}}</>;`);
+		const returned_fragment = result.code.indexOf('return <><div>');
+		const second_child = result.code.indexOf('<div>{x}</div>', returned_fragment + 1);
 
-		expect(first_push).toBeGreaterThan(-1);
 		expect(declaration).toBeGreaterThan(-1);
-		expect(second_push).toBeGreaterThan(-1);
-		expect(returned_children).toBeGreaterThan(-1);
-		expect(first_push).toBeLessThan(declaration);
-		expect(declaration).toBeLessThan(second_push);
-		expect(second_push).toBeLessThan(returned_children);
+		expect(returned_fragment).toBeGreaterThan(-1);
+		expect(second_child).toBeGreaterThan(-1);
+		expect(declaration).toBeLessThan(returned_fragment);
+		expect(returned_fragment).toBeLessThan(second_child);
+	});
+
+	it('returns JSX from root control-flow branches in Volar output', () => {
+		const source = `function Component() @{
+	const tracker = track<HTMLDivElement | null>(null);
+	const show = track(true);
+	captured = tracker;
+	toggle = show;
+
+	@if (show.value) {
+		<div ref={tracker}>{'Hello World'}</div>
+	}
+}`;
+		const result = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
+
+		expect(result.code).toContain('if (show.value) {');
+		expect(result.code).toContain("return <div ref={tracker}>{'Hello World'}</div>;");
+		expect(result.code).not.toContain('return if');
+		expect(result.code).not.toContain('(() =>');
+	});
+
+	it('prints statement-container setup before returning template output', () => {
+		const source = `let logs: string[] = [];
+function Child(&{ a, b, c }: { a: number; b: number; c: number }) @{
+		effect(() => {
+			logs.push(\`Child effect: \${a}, \${b}, \${c}\`);
+		});
+		<div>{a + ' ' + b + ' ' + c}</div>
+}`;
+		const result = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
+
+		expect(result.code).toContain('effect(() => {');
+		expect(result.code).toContain('return <div>');
+		expect(result.code).not.toContain('<>effect(() =>');
 	});
 });
 
@@ -401,11 +651,11 @@ describe('@tsrx/ripple <> expression values', () => {
 		const { code } = compile(
 			`import { track } from 'ripple';
 			function Some(props) { return <></>; }
-			function Test() { return <>
+			function Test() @{
 				let &[count] = track(0);
 				const content = <><Some prop={count} /></>;
-				{content}
-			</>; }`,
+				<>{content}</>
+			}`,
 			'App.tsrx',
 		);
 
@@ -432,11 +682,11 @@ describe('@tsrx/ripple <> expression values', () => {
 		const { code } = compile(
 			`import { track } from 'ripple';
 			function Some(props) { return <></>; }
-			function Test() { return <>
+			function Test() @{
 				let &[count] = track(0);
 				const content = <><Some prop={count} /></>;
-				{content}
-			</>; }`,
+				<>{content}</>
+			}`,
 			'App.tsrx',
 		);
 
@@ -448,11 +698,11 @@ describe('@tsrx/ripple <> expression values', () => {
 		const { code } = compile(
 			`import { track } from 'ripple';
 			function Some(props) { return <></>; }
-			function Test() { return <>
+			function Test() @{
 				let &[count] = track(0);
 				const content = <><Some prop={count % 2 ? 'odd' : 'even'} /></>;
-				{content}
-			</>; }`,
+				<>{content}</>
+			}`,
 			'App.tsrx',
 		);
 
@@ -462,16 +712,14 @@ describe('@tsrx/ripple <> expression values', () => {
 
 	it('lowers tsx values nested in template expressions', () => {
 		const { code } = compile(
-			`function App() { return <>
+			`function App() @{
 				const primary = true;
 				<div>
-					{<>
-						{primary
-							? ['first:', <strong>{'one'}</strong>, ':tail']
-							: ['second:', <strong>{'two'}</strong>, ':done']}
-					</>}
+					{primary
+						? ['first:', <strong>one</strong>, ':tail']
+						: ['second:', <strong>two</strong>, ':done']}
 				</div>
-			</>; }`,
+			}`,
 			'App.tsrx',
 		);
 
@@ -481,14 +729,14 @@ describe('@tsrx/ripple <> expression values', () => {
 	});
 
 	it('lowers native element values outside components', () => {
-		const { code } = compile(`const test = <button>"Hello"</button>;`, 'App.tsrx');
+		const { code } = compile(`const test = <button>Hello</button>;`, 'App.tsrx');
 
 		expect(code).toContain('const test = _$_.tsrx_element');
 		expect(code).toContain('template(`<button>Hello</button>`');
 	});
 
 	it('lowers bare native element expression statements outside components', () => {
-		const { code } = compile(`<button>"Hello"</button>;`, 'App.tsrx');
+		const { code } = compile(`<button>Hello</button>;`, 'App.tsrx');
 
 		expect(code).toContain('_$_.tsrx_element');
 		expect(code).toContain('template(`<button>Hello</button>`');
@@ -496,10 +744,10 @@ describe('@tsrx/ripple <> expression values', () => {
 
 	it('renders native element values assigned inside returned templates on the server', () => {
 		const { code } = compile(
-			`function App() { return <>
-				const test = <button>"Hello"</button>;
-				{test}
-			</>; }`,
+			`function App() @{
+				const test = <button>Hello</button>;
+				<>{test}</>
+			}`,
 			'App.tsrx',
 			{ mode: 'server' },
 		);
@@ -510,7 +758,7 @@ describe('@tsrx/ripple <> expression values', () => {
 	});
 
 	it('keeps direct arrow component returns on the render path', () => {
-		const { code } = compile(`const App = () => <button>"Hello"</button>;`, 'App.tsrx');
+		const { code } = compile(`const App = () => <button>Hello</button>;`, 'App.tsrx');
 
 		expect(code).toContain('template(`<button>Hello</button>`');
 		expect(code).toContain('_$_.append(__anchor, button_1)');
@@ -520,7 +768,7 @@ describe('@tsrx/ripple <> expression values', () => {
 	it('keeps returned elements after comments on the render path', () => {
 		const { code } = compile(
 			`function App() {
-				return /* comment */ <div>"Commented"</div>;
+				return /* comment */ <div>Commented</div>;
 			}`,
 			'App.tsrx',
 		);
@@ -578,14 +826,16 @@ describe('@tsrx/ripple <> expression values', () => {
 
 	it('uses server render_expression for conditional array expression values', () => {
 		const { code } = compile(
-			`function App() { return <>
+			`function App() @{
 				const condition = true;
 				const ternary_items = condition ? ['start:', ['one', 2], ':end'] : ['fallback'];
 				const logical_items = condition && ['start:', ['one', 2], ':end'];
 
-				<div>{ternary_items}</div>
-				<div>{logical_items}</div>
-			</>; }`,
+				<>
+					<div>{ternary_items}</div>
+					<div>{logical_items}</div>
+				</>
+			}`,
 			'App.tsrx',
 			{ mode: 'server' },
 		);
@@ -598,12 +848,12 @@ describe('@tsrx/ripple <> expression values', () => {
 
 	it('uses client expression anchors that can hydrate conditional array markers', () => {
 		const { code } = compile(
-			`function App() { return <>
+			`function App() @{
 				const condition = true;
 				const items = condition ? ['start:', ['one', 2], ':end'] : ['fallback'];
 
 				<div>{items}</div>
-			</>; }`,
+			}`,
 			'App.tsrx',
 		);
 
@@ -622,13 +872,13 @@ describe('@tsrx/ripple nested function fragment returns', () => {
 			export function App() { return <>
 				<Child
 					fragment={() => {
-						return <><div>"fragment"</div></>;
+						return <><div>fragment</div></>;
 					}}
 					tsx={() => {
-						return <><div>"tsx"</div></>;
+						return <><div>tsx</div></>;
 					}}
 					tsrx={() => {
-						return <><div>"tsrx"</div></>;
+						return <><div>tsrx</div></>;
 					}}
 				/>
 			</>; }`,
@@ -648,17 +898,17 @@ describe('@tsrx/ripple nested function fragment returns', () => {
 					params={{
 						menuAlt: (isAdmin) => {
 							if (isAdmin) {
-								return [<>"Delete"</>, <>"Edit"</>];
+								return [<>Delete</>, <>Edit</>];
 							} else {
-								return [<>"View"</>];
+								return [<>View</>];
 							}
 						},
 						bySwitch: (role) => {
 							switch (role) {
 								case 'admin':
-									return [<>"Edit"</>];
+									return [<>Edit</>];
 								default:
-									return [<>"View"</>];
+									return [<>View</>];
 							}
 						},
 					}}
@@ -667,11 +917,13 @@ describe('@tsrx/ripple nested function fragment returns', () => {
 		const { code } = compile(source, 'App.tsrx');
 		const server = compile(source, 'App.tsrx', { mode: 'server' });
 
-		expect(code).toMatch(/menuAlt: \(isAdmin\) => {\s+return _\$_.tsrx_element/);
-		expect(code).toMatch(/bySwitch: \(role\) => {\s+return _\$_.tsrx_element/);
+		expect(code).toMatch(/menuAlt: \(isAdmin\) => \{/);
+		expect(code).toMatch(/bySwitch: \(role\) => \{/);
 		expect(code).toContain("case 'admin':");
-		expect(code).toMatch(/_\$_.expression\(expression.*\(\) => \[/s);
+		expect(code).toContain('_$_.expression');
+		expect(code).toContain('_$_.tsrx_element');
 		expect(server.code).toContain('_$_.render_expression([');
+		expect(server.code).toContain('_$_.tsrx_element');
 	});
 
 	it('allows any returns inside nested component prop functions', () => {
@@ -701,13 +953,13 @@ describe('@tsrx/ripple nested function fragment returns', () => {
 	it('uses one return guard for multiple component return branches', () => {
 		const source = `function Test({ done }) {
 			if (done.value) {
-				return <p>"Done"</p>;
+				return <p>Done</p>;
 			} else if (done.value === 'test') {
-				return <p>"Not done"</p>;
+				return <p>Not done</p>;
 			}
 
 			const loop = () => <>
-				for (const item of items) {
+				@for (const item of items) {
 					<div>{item}</div>
 				}
 			</>;
@@ -737,16 +989,16 @@ describe('@tsrx/ripple nested function fragment returns', () => {
 	it('keeps return guard names local to each compiled function', () => {
 		const source = `function First(flag) {
 			if (flag) {
-				return <p>"first"</p>;
+				return <p>first</p>;
 			}
-			<span>"fallback"</span>
+			<span>fallback</span>
 		}
 
 		function Second(flag) {
 			if (flag) {
-				return <p>"second"</p>;
+				return <p>second</p>;
 			}
-			<span>"fallback"</span>
+			<span>fallback</span>
 		}`;
 		const client = compile(source, 'App.tsrx');
 		const server = compile(source, 'App.tsrx', { mode: 'server' });
@@ -760,7 +1012,7 @@ describe('@tsrx/ripple nested function fragment returns', () => {
 	it('still avoids user return_guard bindings inside a compiled function', () => {
 		const source = `function Test(return_guard) {
 			if (return_guard) {
-				return <p>"done"</p>;
+				return <p>done</p>;
 			}
 			<span>{return_guard}</span>
 		}`;
@@ -823,7 +1075,9 @@ describe('@tsrx/ripple unified function and component compilation', () => {
 		const client = compile(source, 'App.tsrx');
 		const server = compile(source, 'App.tsrx', { mode: 'server' });
 
-		expect(client.code).toContain('if (!return_guard) _$_.with_scope(__block, sideEffect)');
+		expect(client.code).toContain('if (flag) return;');
+		expect(client.code).toContain('_$_.with_scope(__block, sideEffect);');
+		expect(client.code).not.toContain('if (!return_guard) _$_.with_scope(__block, sideEffect)');
 		expect(server.code).toContain('if (!return_guard) sideEffect();');
 	});
 
@@ -849,11 +1103,12 @@ describe('@tsrx/ripple unified function and component compilation', () => {
 		expect(server.code).toContain('_$_.render_component(comp, ...args)');
 	});
 
-	it('does not classify plain or compat-only functions as native TSRX functions', () => {
-		const source = `function App() { return <>
+	it('does not classify plain functions as JSX-producing TSRX functions', () => {
+		const source = `function App() @{
 			function Plain() { return 'plain'; }
 			function Compat() { return <><div /></>; }
-		</>; }`;
+			<></>
+		}`;
 		const client = compile(source, 'App.tsrx');
 		const server = compile(source, 'App.tsrx', { mode: 'server' });
 

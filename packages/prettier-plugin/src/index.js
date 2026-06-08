@@ -129,26 +129,6 @@ export const printers = {
 				};
 			}
 
-			if (node.type === 'ScriptContent' && node.content) {
-				return async (textToDoc) => {
-					try {
-						// Format JS/TS using Prettier's textToDoc
-						const body = await textToDoc(node.content, {
-							parser: 'babel-ts',
-						});
-
-						// Return complete element with tags
-						// return ['<script>', indent([hardline, formattedContent]), hardline, '</script>'];
-						return body;
-					} catch (error) {
-						// If JS/TS has syntax errors, return original unformatted content
-						console.error('Error formatting JS/TS inside <script>:', error);
-						return node.content;
-						// return ['<script>', indent([hardline, node.content]), hardline, '</script>'];
-					}
-				};
-			}
-
 			return null;
 		},
 		/**
@@ -761,16 +741,9 @@ function printRippleNode(node, path, options, print, args) {
 
 	const isInlineContext = args && args.isInlineContext;
 	const suppressLeadingComments = args && args.suppressLeadingComments;
-	const suppressExpressionLeadingComments = args && args.suppressExpressionLeadingComments;
-	const parentNode = /** @type {AST.Node | null} */ (path.getParentNode());
-
-	// For TSRXExpression and Text nodes, don't add leading comments here - they should be handled
-	// as separate children within elements, not as part of the expression.
-	const shouldSkipLeadingComments =
-		parentNode?.type === 'Element' && (node.type === 'TSRXExpression' || node.type === 'Text');
 
 	// Handle leading comments
-	if (node.leadingComments && !shouldSkipLeadingComments && !suppressLeadingComments) {
+	if (node.leadingComments && !suppressLeadingComments) {
 		for (let i = 0; i < node.leadingComments.length; i++) {
 			const comment = node.leadingComments[i];
 			const nextComment = node.leadingComments[i + 1];
@@ -786,7 +759,7 @@ function printRippleNode(node, path, options, print, args) {
 					if (blankLinesBetween > 0) {
 						parts.push(hardline);
 					}
-				} else if (isLastComment) {
+				} else if (isLastComment && node.type !== 'JSXText') {
 					// Preserve a blank line between the last comment and the node if it existed
 					const blankLinesBetween = getBlankLinesBetweenNodes(comment, node);
 					if (blankLinesBetween > 0) {
@@ -902,9 +875,55 @@ function printRippleNode(node, path, options, print, args) {
 		case 'IfStatement':
 			nodeContent = printIfStatement(node, path, options, print);
 			break;
+		case 'JSXIfExpression':
+			nodeContent = [
+				'@',
+				printIfStatement(
+					/** @type {AST.IfStatement} */ (/** @type {unknown} */ (node)),
+					path,
+					options,
+					print,
+					true,
+				),
+			];
+			break;
 
 		case 'ForOfStatement':
 			nodeContent = printForOfStatement(node, path, options, print);
+			break;
+		case 'JSXForExpression':
+			if (node.statementType === 'ForInStatement') {
+				nodeContent = [
+					'@',
+					printForInStatement(
+						/** @type {AST.ForInStatement} */ (/** @type {unknown} */ (node)),
+						path,
+						options,
+						print,
+					),
+				];
+			} else if (node.statementType === 'ForStatement') {
+				nodeContent = [
+					'@',
+					printForStatement(
+						/** @type {AST.ForStatement} */ (/** @type {unknown} */ (node)),
+						path,
+						options,
+						print,
+					),
+				];
+			} else {
+				nodeContent = [
+					'@',
+					printForOfStatement(
+						/** @type {AST.ForOfStatement} */ (/** @type {unknown} */ (node)),
+						path,
+						options,
+						print,
+						true,
+					),
+				];
+			}
 			break;
 
 		case 'ForStatement':
@@ -930,6 +949,18 @@ function printRippleNode(node, path, options, print, args) {
 
 		case 'TryStatement':
 			nodeContent = printTryStatement(node, path, options, print);
+			break;
+		case 'JSXTryExpression':
+			nodeContent = [
+				'@',
+				printTryStatement(
+					/** @type {AST.TryStatement} */ (/** @type {unknown} */ (node)),
+					path,
+					options,
+					print,
+					true,
+				),
+			];
 			break;
 
 		case 'ArrayExpression': {
@@ -1634,6 +1665,14 @@ function printRippleNode(node, path, options, print, args) {
 		case 'SwitchStatement':
 			nodeContent = printSwitchStatement(node, path, options, print);
 			break;
+		case 'JSXSwitchExpression':
+			nodeContent = printJSXSwitchExpression(
+				/** @type {AST.SwitchStatement} */ (/** @type {unknown} */ (node)),
+				path,
+				options,
+				print,
+			);
+			break;
 
 		case 'SwitchCase':
 			nodeContent = printSwitchCase(node, path, options, print);
@@ -1691,13 +1730,6 @@ function printRippleNode(node, path, options, print, args) {
 			}
 			break;
 		}
-		case 'SpreadAttribute': {
-			/** @type {Doc[]} */
-			const parts = ['{...', path.call(print, 'argument'), '}'];
-			nodeContent = parts;
-			break;
-		}
-
 		case 'Identifier': {
 			// Simple case - just return the name directly like Prettier core
 			const trackedPrefix = node.tracked ? '@' : '';
@@ -2255,12 +2287,17 @@ function printRippleNode(node, path, options, print, args) {
 			break;
 		}
 
-		case 'Element':
-			nodeContent = printElement(node, path, options, print);
+		case 'JSXCodeBlock':
+			nodeContent = printJSXCodeBlock(node, path, options, print);
 			break;
 
-		case 'TsrxFragment':
-			nodeContent = printTsrx(node, path, options, print);
+		case 'JSXStyleElement':
+			nodeContent = printJSXElement(
+				/** @type {ESTreeJSX.JSXElement} */ (/** @type {unknown} */ (node)),
+				path,
+				options,
+				print,
+			);
 			break;
 
 		case 'JSXElement':
@@ -2272,7 +2309,7 @@ function printRippleNode(node, path, options, print, args) {
 			break;
 
 		case 'JSXText':
-			nodeContent = node.value;
+			nodeContent = printRawText(node.value);
 			break;
 
 		case 'JSXEmptyExpression':
@@ -2285,28 +2322,12 @@ function printRippleNode(node, path, options, print, args) {
 			}
 			break;
 
-		case 'Attribute':
-			nodeContent = printAttribute(node, path, options, print);
+		case 'JSXAttribute':
+			nodeContent = printJSXAttribute(node, path, options, print);
 			break;
 
-		case 'TSRXExpression': {
-			const expressionDoc = suppressExpressionLeadingComments
-				? path.call((exprPath) => print(exprPath, { suppressLeadingComments: true }), 'expression')
-				: path.call(print, 'expression');
-			nodeContent = ['{', expressionDoc, '}'];
-			break;
-		}
-
-		case 'Text': {
-			if (typeof node.raw === 'string') {
-				nodeContent = printRawText(node.raw);
-				break;
-			}
-
-			const expressionDoc = suppressExpressionLeadingComments
-				? path.call((exprPath) => print(exprPath, { suppressLeadingComments: true }), 'expression')
-				: path.call(print, 'expression');
-			nodeContent = ['{', expressionDoc, '}'];
+		case 'JSXSpreadAttribute': {
+			nodeContent = ['{...', path.call(print, 'argument'), '}'];
 			break;
 		}
 
@@ -2533,7 +2554,10 @@ function printVariableDeclaration(node, path, options, print) {
 	const isForLoopInit =
 		(parentNode && parentNode.type === 'ForStatement' && parentNode.init === node) ||
 		(parentNode && parentNode.type === 'ForOfStatement' && parentNode.left === node) ||
-		(parentNode && parentNode.type === 'ForInStatement' && parentNode.left === node);
+		(parentNode && parentNode.type === 'ForInStatement' && parentNode.left === node) ||
+		(parentNode &&
+			parentNode.type === 'JSXForExpression' &&
+			(parentNode.left === node || parentNode.init === node));
 
 	const declarations = path.map(print, 'declarations');
 	const declarationParts = join(', ', declarations);
@@ -2678,6 +2702,12 @@ function printArrowFunction(node, path, options, print, args) {
 		if (shouldBreakBody) {
 			parts.push(' =>', indent([hardline, bodyContent]));
 		} else {
+			if (isTemplateExpression(node.body)) {
+				return conditionalGroup([
+					group([...parts, ' => ', bodyContent]),
+					group([...parts, ' =>', indent([hardline, bodyContent])]),
+				]);
+			}
 			parts.push(
 				' =>',
 				group(indent(line), { id: groupId }),
@@ -2695,16 +2725,26 @@ function printArrowFunction(node, path, options, print, args) {
  * @returns {boolean}
  */
 function isTemplateExpression(node) {
-	return node.type === 'TsrxFragment' || node.type === 'JSXElement' || node.type === 'JSXFragment';
+	return node.type === 'JSXElement' || node.type === 'JSXFragment';
 }
 
 /**
  * Check whether a braced attribute expression should close on its own line.
  * @param {AST.Node} node - The expression inside the attribute braces
+ * @param {RippleFormatOptions} options
+ * @param {AST.Node} [attributeNode]
  * @returns {boolean}
  */
-function shouldBreakAttributeExpressionClosingBrace(node) {
-	return node.type === 'ArrowFunctionExpression' && node.body && isTemplateExpression(node.body);
+function shouldBreakAttributeExpressionClosingBrace(node, options, attributeNode = node) {
+	return (
+		node.type === 'ArrowFunctionExpression' &&
+		node.body &&
+		isTemplateExpression(node.body) &&
+		sourceSpanExceedsPrintWidth(
+			/** @type {AST.NodeWithLocation} */ (/** @type {unknown} */ (attributeNode ?? node)),
+			options,
+		)
+	);
 }
 
 /**
@@ -2921,9 +2961,6 @@ function sourceSpanExceedsPrintWidth(node, options) {
  * @returns {boolean}
  */
 function shouldBreakArrowExpressionBody(node, options, args) {
-	if (args?.isInAttribute && isTemplateExpression(node)) {
-		return true;
-	}
 	return (
 		(node.type === 'BinaryExpression' || node.type === 'LogicalExpression') &&
 		sourceSpanExceedsPrintWidth(/** @type {AST.NodeWithLocation} */ (node), options)
@@ -3296,9 +3333,10 @@ function extractAndPrintLeadingComments(node) {
  * @param {AstPath<AST.IfStatement>} path - The AST path
  * @param {RippleFormatOptions} options - Prettier options
  * @param {PrintFn} print - Print callback
+ * @param {boolean} [directive]
  * @returns {Doc[]}
  */
-function printIfStatement(node, path, options, print) {
+function printIfStatement(node, path, options, print, directive = false) {
 	// Extract leading comments from test node to print them before 'if' keyword
 	const testNode = node.test;
 
@@ -3342,8 +3380,24 @@ function printIfStatement(node, path, options, print) {
 			parts.push(' ');
 		}
 
-		parts.push('else ');
-		parts.push(path.call(print, 'alternate'));
+		parts.push(directive ? '@else ' : 'else ');
+		if (directive && node.alternate.type === 'IfStatement') {
+			parts.push(
+				path.call(
+					(alternatePath) =>
+						printIfStatement(
+							/** @type {AST.IfStatement} */ (alternatePath.node),
+							/** @type {AstPath<AST.IfStatement>} */ (alternatePath),
+							options,
+							print,
+							true,
+						),
+					'alternate',
+				),
+			);
+		} else {
+			parts.push(path.call(print, 'alternate'));
+		}
 	}
 
 	return parts;
@@ -3377,9 +3431,10 @@ function printForInStatement(node, path, options, print) {
  * @param {AstPath<AST.ForOfStatement>} path - The AST path
  * @param {RippleFormatOptions} options - Prettier options
  * @param {PrintFn} print - Print callback
+ * @param {boolean} [directive]
  * @returns {Doc[]}
  */
-function printForOfStatement(node, path, options, print) {
+function printForOfStatement(node, path, options, print, directive = false) {
 	/** @type {Doc[]} */
 	const parts = [];
 	parts.push('for (');
@@ -3400,6 +3455,10 @@ function printForOfStatement(node, path, options, print) {
 
 	parts.push(') ');
 	parts.push(path.call(print, 'body'));
+	if (node.empty) {
+		parts.push(directive ? ' @empty ' : ' empty ');
+		parts.push(path.call(print, 'empty'));
+	}
 
 	return parts;
 }
@@ -3716,9 +3775,10 @@ function printClassDeclaration(node, path, options, print) {
  * @param {AstPath<AST.TryStatement>} path - The AST path
  * @param {RippleFormatOptions} options - Prettier options
  * @param {PrintFn} print - Print callback
+ * @param {boolean} [directive=false] - Whether this is a JSX @try expression.
  * @returns {Doc[]}
  */
-function printTryStatement(node, path, options, print) {
+function printTryStatement(node, path, options, print, directive = false) {
 	// Extract leading comments from block node to print them before 'try' keyword
 	const blockNode = node.block;
 
@@ -3738,12 +3798,12 @@ function printTryStatement(node, path, options, print) {
 	parts.push(block);
 
 	if (node.pending) {
-		parts.push(' pending ');
+		parts.push(directive ? ' @pending ' : ' pending ');
 		parts.push(path.call(print, 'pending'));
 	}
 
 	if (node.handler) {
-		parts.push(' catch');
+		parts.push(directive ? ' @catch' : ' catch');
 		if (node.handler.param) {
 			parts.push(' (');
 			parts.push(path.call(print, 'handler', 'param'));
@@ -4485,6 +4545,76 @@ function printSwitchStatement(node, path, options, print) {
 }
 
 /**
+ * Print a JSX switch expression. JSX switch cases use explicit template blocks:
+ * `case value: { ... }`, unlike ordinary JavaScript switch cases.
+ * @param {AST.SwitchStatement} node - The switch expression node
+ * @param {AstPath<AST.SwitchStatement>} path - The AST path
+ * @param {RippleFormatOptions} options - Prettier options
+ * @param {PrintFn} print - Print callback
+ * @returns {Doc[]}
+ */
+function printJSXSwitchExpression(node, path, options, print) {
+	const discriminant = path.call(
+		(discriminantPath) => print(discriminantPath, { suppressLeadingComments: true }),
+		'discriminant',
+	);
+
+	/** @type {Doc[]} */
+	const cases = [];
+	for (let i = 0; i < node.cases.length; i++) {
+		const caseDoc = [printJSXSwitchCase(node.cases[i], path, options, print, i)];
+		if (i < node.cases.length - 1 && isNextLineEmpty(node.cases[i], options)) {
+			caseDoc.push(hardline);
+		}
+		cases.push(caseDoc);
+	}
+
+	const bodyDoc =
+		cases.length > 0 ? [indent([hardline, join(hardline, cases)]), hardline] : hardline;
+
+	const discriminantDoc = group(['@switch (', indent([softline, discriminant]), softline, ')']);
+
+	return [
+		...extractAndPrintLeadingComments(node.discriminant),
+		discriminantDoc,
+		' {',
+		bodyDoc,
+		'}',
+	];
+}
+
+/**
+ * @param {AST.SwitchCase} node
+ * @param {AstPath<AST.SwitchStatement>} path
+ * @param {RippleFormatOptions} options
+ * @param {PrintFn} print
+ * @param {number} index
+ * @returns {Doc[]}
+ */
+function printJSXSwitchCase(node, path, options, print, index) {
+	const header = node.test
+		? ['@case ', path.call(print, 'cases', index, 'test'), ':']
+		: '@default:';
+	const consequents = node.consequent || [];
+	const printedConsequents = [];
+
+	for (let i = 0; i < consequents.length; i++) {
+		const child = consequents[i];
+		if (!child || child.type === 'EmptyStatement') {
+			continue;
+		}
+		printedConsequents.push(path.call(print, 'cases', index, 'consequent', i));
+	}
+
+	const bodyDoc =
+		printedConsequents.length > 0
+			? [indent([hardline, join(hardline, printedConsequents)]), hardline]
+			: hardline;
+
+	return [header, ' {', bodyDoc, '}'];
+}
+
+/**
  * Print a switch case
  * @param {AST.SwitchCase} node - The switch case node
  * @param {AstPath<AST.SwitchCase>} path - The AST path
@@ -4649,6 +4779,26 @@ function getBlankLinesBetweenPositions(current_pos, next_pos) {
  * Get number of blank lines between two nodes
  * @param {AST.Node | AST.CSS.StyleSheet | AST.Comment} currentNode - Current node
  * @param {AST.Node | AST.CSS.StyleSheet | AST.Comment} nextNode - Next node
+ * @returns {number}
+ */
+/**
+ * The position to measure a leading blank line against: the first leading
+ * comment if any (so the comment lines aren't miscounted as blank), else the
+ * node itself.
+ * @param {any} node
+ * @returns {any}
+ */
+function leadingAnchor(node) {
+	const lead = node?.leadingComments;
+	if (Array.isArray(lead) && lead.length > 0 && lead[0].loc) {
+		return lead[0];
+	}
+	return node;
+}
+
+/**
+ * @param {any} currentNode
+ * @param {any} nextNode
  * @returns {number}
  */
 function getBlankLinesBetweenNodes(currentNode, nextNode) {
@@ -5021,6 +5171,16 @@ function printVariableDeclarator(node, path, options, print) {
 					indentIfBreak(init, { groupId }),
 				]);
 			}
+		}
+
+		if (isTemplateExpression(node.init)) {
+			const groupId = Symbol('declaration');
+			return group([
+				group(id),
+				' =',
+				group(indent(line), { id: groupId }),
+				indentIfBreak(init, { groupId }),
+			]);
 		}
 
 		// Default: simple inline format with space
@@ -5506,6 +5666,36 @@ function printRawText(raw) {
 }
 
 /**
+ * @param {string} raw
+ * @returns {Doc | Doc[] | string}
+ */
+function printJSXTextChild(raw) {
+	const text = raw.trim();
+	if (!text) {
+		return '';
+	}
+
+	const lines = text
+		.split(/\r\n|\r|\n/u)
+		.map((line) => line.trim())
+		.filter(Boolean);
+	if (lines.length <= 1) {
+		return lines[0] ?? '';
+	}
+
+	return join(hardline, lines);
+}
+
+/**
+ * @param {string} raw
+ * @returns {string}
+ */
+function normalizeInlineJSXText(raw) {
+	const text = raw.replace(/[^\S\r\n]+/gu, ' ');
+	return text.trim() || !/[\r\n]/u.test(text) ? text : '';
+}
+
+/**
  * @param {AST.Node} parentNode
  * @param {AST.Node} firstChild
  * @param {Doc} childDoc
@@ -5516,8 +5706,7 @@ function shouldInlineSingleChild(parentNode, firstChild, childDoc) {
 		return false;
 	}
 
-	// Always inline Text nodes — they are explicit text child forms.
-	if (firstChild.type === 'Text') {
+	if (firstChild.type === 'JSXText') {
 		return true;
 	}
 
@@ -5527,7 +5716,7 @@ function shouldInlineSingleChild(parentNode, firstChild, childDoc) {
 
 	// Inline JSX expressions if they fit, but respect original multi-line formatting
 	// for non-literal expressions (e.g. {children} should stay multi-line if written that way)
-	if (firstChild.type === 'TSRXExpression' || firstChild.type === 'JSXExpressionContainer') {
+	if (firstChild.type === 'JSXExpressionContainer') {
 		if (wasOriginallySingleLine(parentNode)) {
 			return true;
 		}
@@ -5545,11 +5734,9 @@ function shouldInlineSingleChild(parentNode, firstChild, childDoc) {
 		return false;
 	}
 
-	if (firstChild.type === 'Element' && firstChild.selfClosing) {
-		return (
-			!(/** @type {AST.Element} */ (parentNode).attributes) ||
-			/** @type {AST.Element} */ (parentNode).attributes.length === 0
-		);
+	if (firstChild.type === 'JSXElement' && firstChild.openingElement?.selfClosing) {
+		const parent = /** @type {any} */ (parentNode);
+		return !parent.openingElement?.attributes?.length;
 	}
 
 	return false;
@@ -5557,11 +5744,11 @@ function shouldInlineSingleChild(parentNode, firstChild, childDoc) {
 
 /**
  * Check whether a child can participate in compact inline TSRX content.
- * @param {AST.Node} child
+ * @param {any} child
  * @returns {boolean}
  */
 function isInlineableTextOrExpressionChild(child) {
-	if (!child || (child.type !== 'Text' && child.type !== 'TSRXExpression')) {
+	if (!child || (child.type !== 'JSXText' && child.type !== 'JSXExpressionContainer')) {
 		return false;
 	}
 
@@ -5575,7 +5762,7 @@ function isInlineableTextOrExpressionChild(child) {
 }
 
 /**
- * @param {AST.Element} node
+ * @param {any} node
  * @returns {boolean}
  */
 function shouldTryInlineMultipleTextChildren(node) {
@@ -5583,14 +5770,35 @@ function shouldTryInlineMultipleTextChildren(node) {
 		wasOriginallySingleLine(node) &&
 		Array.isArray(node.children) &&
 		node.children.length > 1 &&
-		node.children.some((child) => child.type === 'Text') &&
+		node.children.some((/** @type {any} */ child) => child.type === 'JSXText') &&
 		node.children.every(isInlineableTextOrExpressionChild)
 	);
 }
 
 /**
+ * @param {AST.Node} child
+ * @returns {boolean}
+ */
+function isSimpleJSXExpressionChild(child) {
+	if (child?.type !== 'JSXExpressionContainer') {
+		return false;
+	}
+
+	const expression = child.expression;
+	return (
+		expression?.type === 'Identifier' ||
+		expression?.type === 'Literal' ||
+		expression?.type === 'TemplateLiteral' ||
+		// Stock Prettier keeps a single `{expr}` child inline regardless of the
+		// expression kind (member access, calls, etc.); only multiple children break.
+		expression?.type === 'MemberExpression' ||
+		expression?.type === 'CallExpression'
+	);
+}
+
+/**
  * Get leading comments from element metadata
- * @param {AST.Element} node - The element node
+ * @param {ESTreeJSX.JSXElement} node - The element node
  * @returns {AST.Comment[]}
  */
 function getElementLeadingComments(node) {
@@ -5651,60 +5859,9 @@ function createElementLevelCommentPartsTrimmed(comments) {
 }
 
 /**
- * Print a TsrxFragment node - renders native TSRX template children inside a fragment.
- * @param {AST.TsrxFragment} node - The TsrxFragment node
- * @param {AstPath<AST.TsrxFragment>} path - The AST path
- * @param {RippleFormatOptions} options - Prettier options
- * @param {PrintFn} print - Print callback
- * @returns {Doc}
- */
-function printTsrx(node, path, options, print) {
-	const tagName = '<>';
-	const closingTagName = '</>';
-	const hasChildren = Array.isArray(node.children) && node.children.length > 0;
-
-	if (!hasChildren) {
-		return [tagName, closingTagName];
-	}
-
-	const printedChildren = [];
-
-	for (let i = 0; i < node.children.length; i++) {
-		const child = node.children[i];
-
-		if (child.type === 'JSXText') {
-			const text = child.value.trim();
-			if (!text) continue;
-			printedChildren.push(text);
-		} else {
-			const printedChild = path.call(print, 'children', i);
-			printedChildren.push(printedChild);
-		}
-	}
-
-	if (printedChildren.length === 0) {
-		return [tagName, closingTagName];
-	}
-
-	if (
-		printedChildren.length === 1 &&
-		['Element', 'Text', 'TSRXExpression'].includes(node.children[0]?.type)
-	) {
-		return group([tagName, indent([softline, printedChildren[0]]), softline, closingTagName]);
-	}
-
-	return group([
-		tagName,
-		indent([hardline, join(hardline, printedChildren)]),
-		hardline,
-		closingTagName,
-	]);
-}
-
-/**
  * Print a JSX element
- * @param {ESTreeJSX.JSXElement} node - The JSX element node
- * @param {AstPath<ESTreeJSX.JSXElement>} path - The AST path
+ * @param {AST.TSRXJSXElement} node - The JSX element node
+ * @param {AstPath<any>} path - The AST path
  * @param {RippleFormatOptions} options - Prettier options
  * @param {PrintFn} print - Print callback
  * @returns {Doc | Doc[]}
@@ -5714,20 +5871,7 @@ function printJSXElement(node, path, options, print) {
 	const openingElement = node.openingElement;
 	const closingElement = node.closingElement;
 
-	/** @type {string} */
-	let tagName;
-	if (openingElement.name.type === 'JSXIdentifier') {
-		tagName = openingElement.name.name;
-	} else if (openingElement.name.type === 'JSXMemberExpression') {
-		// Handle Member expressions like React.Fragment
-		tagName = printJSXMemberExpression(openingElement.name);
-	} else if (openingElement.name.type === 'JSXNamespacedName') {
-		const namespace_name = openingElement.name.namespace.name;
-		const local_name = openingElement.name.name.name;
-		tagName = namespace_name + ':' + local_name;
-	} else {
-		tagName = 'Unknown';
-	}
+	const tagName = printJSXElementName(openingElement.name);
 
 	const isSelfClosing = openingElement.selfClosing;
 	const hasAttributes = openingElement.attributes && openingElement.attributes.length > 0;
@@ -5738,6 +5882,12 @@ function printJSXElement(node, path, options, print) {
 	if (openingElement.typeArguments) {
 		typeArgsDoc = path.call(print, 'openingElement', 'typeArguments');
 	}
+
+	// Comments that sit inside the opening tag (before an attribute) are attached
+	// by the parser to a body child; pull them out and key them by the attribute
+	// they precede so they print in the opening tag, not jammed into the body.
+	const openingTagCommentsByAttr = collectOpeningTagComments(node);
+	const hasOpeningTagComments = openingTagCommentsByAttr.size > 0;
 
 	// Format attributes
 	/** @type {Doc} */
@@ -5762,11 +5912,23 @@ function printJSXElement(node, path, options, print) {
 						'attributes',
 						i,
 					);
-				} else if (attr.type === 'JSXSpreadAttribute' || attr.type === 'SpreadAttribute') {
+				} else if (attr.type === 'JSXSpreadAttribute') {
 					attrDoc = ['{...', path.call(print, 'openingElement', 'attributes', i, 'argument'), '}'];
 				}
 				if (!hasBreakingAttribute && attrDoc && willBreak(attrDoc)) {
 					hasBreakingAttribute = true;
+				}
+				const lead = openingTagCommentsByAttr.get(i);
+				if (lead) {
+					/** @type {Doc[]} */
+					const parts = [];
+					for (const comment of lead) {
+						parts.push(
+							comment.type === 'Line' ? '//' + comment.value : '/*' + comment.value + '*/',
+						);
+						parts.push(hardline);
+					}
+					return [...parts, attrDoc];
 				}
 				return attrDoc;
 			},
@@ -5774,7 +5936,7 @@ function printJSXElement(node, path, options, print) {
 		const attrLineBreak = options.singleAttributePerLine ? hardline : line;
 		attributesDoc = indent([attrLineBreak, join(attrLineBreak, attrs)]);
 	}
-	const shouldForceBreak = hasBreakingAttribute;
+	const shouldForceBreak = hasBreakingAttribute || hasOpeningTagComments;
 
 	if (isSelfClosing) {
 		return group(['<', tagName, typeArgsDoc, attributesDoc, hasAttributes ? line : ' ', '/>'], {
@@ -5794,58 +5956,119 @@ function printJSXElement(node, path, options, print) {
 		{ shouldBreak: shouldForceBreak },
 	);
 
+	// Trailing comments after the last child are attached by the parser either to
+	// the closing tag (`closingElement.leadingComments`) or, when the last child is
+	// an `{expr}` container, to `metadata.elementLeadingComments` positioned inside
+	// the body (start >= opening tag end). Emit both before `</tag>`.
+	const openingTagEnd = /** @type {AST.NodeWithLocation} */ (openingElement).end;
+	const bodyMetaComments = (node.metadata?.elementLeadingComments ?? []).filter(
+		(/** @type {AST.Comment} */ comment) =>
+			typeof comment.start === 'number' && comment.start >= openingTagEnd,
+	);
+	const trailingComments = [
+		...(node.closingElement?.leadingComments ?? []),
+		...bodyMetaComments,
+	].sort((a, b) => /** @type {number} */ (a.start) - /** @type {number} */ (b.start));
+	const lastMeaningfulChild = [...(node.children ?? [])]
+		.reverse()
+		.find((child) => child.type !== 'JSXText' || child.value.trim());
+	const closingCommentDocs = printElementBodyLineComments(trailingComments, lastMeaningfulChild);
+	const hasClosingComments = closingCommentDocs.length > 0;
+	// A comment-only element has no children; its comments live in `innerComments`.
+	const innerCommentDocs = printElementBodyLineComments(node.innerComments);
+
 	if (!hasChildren) {
+		const bodyComments = [...innerCommentDocs, ...closingCommentDocs];
+		if (bodyComments.length > 0) {
+			return group([openingTag, indent(bodyComments), hardline, '</', tagName, '>']);
+		}
 		return [openingTag, '</', tagName, '>'];
 	}
 
-	// Format children - filter out empty text nodes and merge adjacent text nodes
+	// A `@{ … }` code block is the whole body and hugs the tags: `<div>@{ … }</div>`.
+	if (node.children.length === 1 && node.children[0].type === 'JSXCodeBlock') {
+		return group([openingTag, path.call(print, 'children', 0), '</', tagName, '>']);
+	}
+
+	// Format children - filter out empty text nodes and merge adjacent text nodes.
+	// childNodes tracks the source node behind each doc (a text run is a single
+	// JSXText) so the join can preserve authored blank lines.
 	const childrenDocs = [];
+	const childNodes = [];
 	let currentText = '';
+	let currentTextNode = null;
 
 	for (let i = 0; i < node.children.length; i++) {
 		const child = node.children[i];
 
 		if (child.type === 'JSXText') {
-			// Accumulate text content, preserving spaces between words
-			const trimmed = child.value.trim();
-			if (trimmed) {
+			if (hasComment(/** @type {AST.Node & AST.NodeWithMaybeComments} */ (child))) {
+				if (currentText) {
+					childrenDocs.push(currentText);
+					childNodes.push(currentTextNode);
+					currentText = '';
+					currentTextNode = null;
+				}
+				const printedChild = path.call(print, 'children', i);
+				if (printedChild !== '') {
+					childrenDocs.push(printedChild);
+					childNodes.push(child);
+				}
+				continue;
+			}
+			// Accumulate text content, preserving meaningful boundary spaces.
+			const text = normalizeInlineJSXText(child.value);
+			if (text) {
 				const nextChild = node.children[i + 1];
 				const afterNextChild = node.children[i + 2];
 				const nextText = afterNextChild?.type === 'JSXText' ? afterNextChild.value.trim() : '';
 				if (
 					tagName === 'tsrx' &&
-					trimmed.endsWith('=') &&
+					text.trimEnd().endsWith('=') &&
 					nextChild?.type === 'JSXElement' &&
 					nextText === ';'
 				) {
 					if (currentText) {
 						childrenDocs.push(currentText);
+						childNodes.push(currentTextNode);
 						currentText = '';
+						currentTextNode = null;
 					}
-					childrenDocs.push([trimmed, ' ', path.call(print, 'children', i + 1), ';']);
+					childrenDocs.push([text.trim(), ' ', path.call(print, 'children', i + 1), ';']);
+					childNodes.push(child);
 					i += 2;
 					continue;
 				}
 
 				if (currentText) {
-					currentText += ' ' + trimmed;
+					currentText += currentText.endsWith(' ') || text.startsWith(' ') ? text : ' ' + text;
 				} else {
-					currentText = trimmed;
+					currentText = text;
+					currentTextNode = child;
 				}
 			}
 		} else {
 			// If we have accumulated text, push it before the non-text node
 			if (currentText) {
 				childrenDocs.push(currentText);
+				childNodes.push(currentTextNode);
 				currentText = '';
+				currentTextNode = null;
 			}
 
 			if (child.type === 'JSXExpressionContainer') {
 				// Handle JSX expression containers
-				childrenDocs.push(['{', path.call(print, 'children', i, 'expression'), '}']);
+				childrenDocs.push([
+					...printTemplateChildLeadingComments(child),
+					'{',
+					path.call(print, 'children', i, 'expression'),
+					'}',
+				]);
+				childNodes.push(child);
 			} else {
 				// Handle nested JSX elements
 				childrenDocs.push(path.call(print, 'children', i));
+				childNodes.push(child);
 			}
 		}
 	}
@@ -5853,37 +6076,71 @@ function printJSXElement(node, path, options, print) {
 	// Don't forget any remaining text
 	if (currentText) {
 		childrenDocs.push(currentText);
+		childNodes.push(currentTextNode);
 	}
 
-	// Check if content can be inlined (single text node or single expression)
-	if (childrenDocs.length === 1 && typeof childrenDocs[0] === 'string') {
-		return group([openingTag, childrenDocs[0], '</', tagName, '>']);
+	// A child with leading comments must break onto its own line, so the comment
+	// reads above the child rather than being jammed onto the opening tag.
+	const hasChildLeadingComments = node.children.some((child) => {
+		const leadingComments = /** @type {AST.NodeWithMaybeComments} */ (child).leadingComments;
+		return Array.isArray(leadingComments) && leadingComments.length > 0;
+	});
+	const forceMultiline = hasClosingComments || hasChildLeadingComments;
+
+	// Check if content can be inlined (single text node or single expression).
+	// Trailing or child-leading comments force the multi-line layout. A single
+	// text child stays inline when it fits and otherwise fills/wraps to printWidth.
+	if (!forceMultiline && childrenDocs.length === 1 && typeof childrenDocs[0] === 'string') {
+		// The open tag breaks for attributes independently; the text+closing get
+		// their own group so the text only drops to its own (filled) lines when it
+		// itself overflows — otherwise it hugs `>text</tag>`.
+		return [
+			openingTag,
+			group([indent([softline, printRawText(childrenDocs[0])]), softline, '</', tagName, '>']),
+		];
 	}
 	const meaningfulChildren = node.children.filter(
-		(child) => child.type !== 'JSXText' || child.value.trim(),
+		(/** @type {any} */ child) => child.type !== 'JSXText' || child.value.trim(),
 	);
 	const singleMeaningfulChild = meaningfulChildren.length === 1 ? meaningfulChildren[0] : null;
 	if (
+		!forceMultiline &&
 		childrenDocs.length === 1 &&
 		singleMeaningfulChild?.type === 'JSXExpressionContainer' &&
-		singleMeaningfulChild.expression.type === 'Identifier'
+		isSimpleJSXExpressionChild(/** @type {AST.Node} */ (singleMeaningfulChild))
 	) {
 		return group([openingTag, childrenDocs[0], '</', tagName, '>']);
 	}
+	if (
+		!forceMultiline &&
+		childrenDocs.length > 1 &&
+		wasOriginallySingleLine(node) &&
+		node.children.some((/** @type {any} */ child) => child.type === 'JSXText') &&
+		node.children.every(
+			(/** @type {any} */ child) =>
+				child.type === 'JSXText' || isSimpleJSXExpressionChild(/** @type {AST.Node} */ (child)),
+		)
+	) {
+		return group([openingTag, ...childrenDocs, '</', tagName, '>']);
+	}
 
-	// Multiple children or complex children - format with line breaks
+	// Multiple children or complex children - format with line breaks. Text runs
+	// fill/wrap to printWidth.
 	const formattedChildren = [];
 	for (let i = 0; i < childrenDocs.length; i++) {
-		formattedChildren.push(childrenDocs[i]);
+		const childDoc = childrenDocs[i];
+		formattedChildren.push(typeof childDoc === 'string' ? printRawText(childDoc) : childDoc);
 		if (i < childrenDocs.length - 1) {
-			formattedChildren.push(hardline);
+			// Preserve a single authored blank line between children (2+ collapse to 1).
+			const blank = getBlankLinesBetweenNodes(childNodes[i], leadingAnchor(childNodes[i + 1])) > 0;
+			formattedChildren.push(blank ? [hardline, hardline] : hardline);
 		}
 	}
 
 	// Build the final element
 	return group([
 		openingTag,
-		indent([hardline, ...formattedChildren]),
+		indent([hardline, ...formattedChildren, ...closingCommentDocs]),
 		hardline,
 		'</',
 		tagName,
@@ -5906,23 +6163,46 @@ function printJSXFragment(node, path, options, print) {
 		return '<></>';
 	}
 
-	// Format children - filter out empty text nodes
+	// A `@{ … }` code block is the whole body and hugs the tags: `<>@{ … }</>`.
+	if (node.children.length === 1 && /** @type {any} */ (node.children[0]).type === 'JSXCodeBlock') {
+		return group(['<>', path.call(print, 'children', 0), '</>']);
+	}
+
+	// Format children - filter out empty text nodes. childNodes tracks the source
+	// node behind each doc so the join can preserve authored blank lines.
 	const childrenDocs = [];
+	const childNodes = [];
 	for (let i = 0; i < node.children.length; i++) {
 		const child = node.children[i];
 
 		if (child.type === 'JSXText') {
+			if (hasComment(/** @type {AST.Node & AST.NodeWithMaybeComments} */ (child))) {
+				const printedChild = path.call(print, 'children', i);
+				if (printedChild !== '') {
+					childrenDocs.push(printedChild);
+					childNodes.push(child);
+				}
+				continue;
+			}
 			// Handle JSX text nodes - trim whitespace and only include if not empty
-			const text = child.value.trim();
+			const text = printJSXTextChild(child.value);
 			if (text) {
 				childrenDocs.push(text);
+				childNodes.push(child);
 			}
 		} else if (child.type === 'JSXExpressionContainer') {
 			// Handle JSX expression containers
-			childrenDocs.push(['{', path.call(print, 'children', i, 'expression'), '}']);
+			childrenDocs.push([
+				...printTemplateChildLeadingComments(child),
+				'{',
+				path.call(print, 'children', i, 'expression'),
+				'}',
+			]);
+			childNodes.push(child);
 		} else {
 			// Handle nested JSX elements and fragments
 			childrenDocs.push(path.call(print, 'children', i));
+			childNodes.push(child);
 		}
 	}
 
@@ -5930,18 +6210,201 @@ function printJSXFragment(node, path, options, print) {
 	if (childrenDocs.length === 1 && typeof childrenDocs[0] === 'string') {
 		return ['<>', childrenDocs[0], '</>'];
 	}
+	const meaningfulChildren = node.children.filter(
+		(child) => child.type !== 'JSXText' || child.value.trim(),
+	);
+	if (
+		childrenDocs.length === 1 &&
+		meaningfulChildren.length === 1 &&
+		meaningfulChildren[0].type === 'JSXElement' &&
+		wasOriginallySingleLine(node) &&
+		!willBreak(childrenDocs[0])
+	) {
+		// Keep the fragment inline when it fits; otherwise expand `<>` onto its own
+		// lines so a breaking single child reads as `<>\n  <Child …/>\n</>` rather than
+		// `<><Child` with only the child's attributes broken.
+		return conditionalGroup([
+			['<>', childrenDocs[0], '</>'],
+			group(['<>', indent([hardline, childrenDocs[0]]), hardline, '</>']),
+		]);
+	}
 
 	// Multiple children or complex children - format with line breaks
 	const formattedChildren = [];
 	for (let i = 0; i < childrenDocs.length; i++) {
 		formattedChildren.push(childrenDocs[i]);
 		if (i < childrenDocs.length - 1) {
-			formattedChildren.push(hardline);
+			// Preserve a single authored blank line between children (2+ collapse to 1).
+			const blank = getBlankLinesBetweenNodes(childNodes[i], leadingAnchor(childNodes[i + 1])) > 0;
+			formattedChildren.push(blank ? [hardline, hardline] : hardline);
 		}
 	}
 
 	// Build the final fragment
 	return group(['<>', indent([hardline, ...formattedChildren]), hardline, '</>']);
+}
+
+/**
+ * Comments written inside an opening tag, before an attribute, are attached by
+ * the parser to the next visited body child (positionally they sort before the
+ * opening tag's end, but the child is visited first). Pull those out of the
+ * children and return a map from attribute index to the comments that precede it,
+ * so the element printer can render them in the opening tag instead of the body.
+ * @param {AST.TSRXJSXElement} node
+ * @returns {Map<number, AST.Comment[]>}
+ */
+function collectOpeningTagComments(node) {
+	/** @type {Map<number, AST.Comment[]>} */
+	const byAttr = new Map();
+	const openingElement = /** @type {AST.NodeWithLocation} */ (node.openingElement);
+	const attributes = /** @type {any[]} */ (node.openingElement?.attributes) ?? [];
+	if (!openingElement || attributes.length === 0 || !Array.isArray(node.children)) {
+		return byAttr;
+	}
+	const openingEnd = openingElement.end;
+	/** @type {AST.Comment[]} */
+	const collected = [];
+	for (const child of node.children) {
+		const lead = /** @type {AST.NodeWithMaybeComments} */ (child).leadingComments;
+		if (!Array.isArray(lead) || lead.length === 0) continue;
+		const keep = [];
+		for (const comment of lead) {
+			if (typeof comment.start === 'number' && comment.start < openingEnd) {
+				collected.push(comment);
+			} else {
+				keep.push(comment);
+			}
+		}
+		if (keep.length !== lead.length) {
+			/** @type {any} */ (child).leadingComments = keep;
+		}
+	}
+	if (collected.length === 0) return byAttr;
+	collected.sort((a, b) => /** @type {number} */ (a.start) - /** @type {number} */ (b.start));
+	let ci = 0;
+	for (let ai = 0; ai < attributes.length; ai++) {
+		const attrStart = /** @type {AST.NodeWithLocation} */ (attributes[ai]).start;
+		/** @type {AST.Comment[]} */
+		const forAttr = [];
+		while (ci < collected.length && /** @type {number} */ (collected[ci].start) < attrStart) {
+			forAttr.push(collected[ci]);
+			ci++;
+		}
+		if (forAttr.length > 0) byAttr.set(ai, forAttr);
+	}
+	return byAttr;
+}
+
+/**
+ * Build doc parts for a template child's leading comments (each on its own line).
+ * Used for `{expr}` children, whose `{ … }` form is printed inline by the JSX
+ * printers and so would otherwise skip the node's attached leading comments.
+ * @param {AST.Node & AST.NodeWithMaybeComments} child
+ * @returns {Doc[]}
+ */
+function printTemplateChildLeadingComments(child) {
+	const comments = child.leadingComments;
+	if (!comments || comments.length === 0) {
+		return [];
+	}
+	/** @type {Doc[]} */
+	const parts = [];
+	for (let i = 0; i < comments.length; i++) {
+		const comment = comments[i];
+		if (comment.type === 'Line') {
+			parts.push('//' + comment.value);
+		} else if (comment.type === 'Block') {
+			parts.push('/*' + comment.value + '*/');
+		}
+		parts.push(hardline);
+		const next = comments[i + 1];
+		if (next && getBlankLinesBetweenNodes(comment, next) > 0) {
+			parts.push(hardline);
+		}
+	}
+	return parts;
+}
+
+/**
+ * Build doc parts for `//` line comments attached to an element body — trailing
+ * comments before `</tag>` (`closingElement.leadingComments`) or the comments of a
+ * comment-only element (`innerComments`). Block comments are intentionally skipped:
+ * they survive in the adjacent JSXText value and are already rendered as text, so
+ * emitting them here would duplicate them. Each comment is emitted on its own line
+ * at the children indent.
+ * @param {AST.Comment[] | null | undefined} commentList
+ * @param {any} [previousNode]
+ * @returns {Doc[]}
+ */
+function printElementBodyLineComments(commentList, previousNode = null) {
+	const comments = (commentList ?? []).filter((comment) => comment.type === 'Line');
+	if (comments.length === 0) {
+		return [];
+	}
+	/** @type {Doc[]} */
+	const parts = [];
+	/** @type {AST.Node | AST.Comment | null | undefined} */
+	let prev = previousNode;
+	for (let i = 0; i < comments.length; i++) {
+		parts.push(hardline);
+		// Preserve a blank line before this comment if one existed in source.
+		if (prev && getBlankLinesBetweenNodes(prev, comments[i]) > 0) {
+			parts.push(hardline);
+		}
+		parts.push('//' + comments[i].value);
+		prev = comments[i];
+	}
+	return parts;
+}
+
+/**
+ * Print a TSRX code block: setup statements then the single render output.
+ * Callers in element/fragment body position hug it to the surrounding tags;
+ * on its own as an arrow body it stands alone.
+ * @param {AST.JSXCodeBlock} node
+ * @param {AstPath<AST.JSXCodeBlock>} path
+ * @param {RippleFormatOptions} options
+ * @param {PrintFn} print
+ * @returns {Doc}
+ */
+function printJSXCodeBlock(node, path, options, print) {
+	/** @type {Doc[]} */
+	const parts = [];
+	for (let i = 0; i < node.body.length; i++) {
+		parts.push(path.call(print, 'body', i));
+		if (i < node.body.length - 1) {
+			parts.push(
+				shouldAddBlankLine(node.body[i], node.body[i + 1]) ? [hardline, hardline] : hardline,
+			);
+		}
+	}
+	if (node.render) {
+		if (node.body.length > 0) {
+			// Preserve a blank line between the last setup statement and the render
+			// output (measured to the render's leading comment, if any).
+			const last = node.body[node.body.length - 1];
+			const renderStart =
+				/** @type {AST.NodeWithMaybeComments} */ (node.render).leadingComments?.[0] ?? node.render;
+			parts.push(
+				getBlankLinesBetweenNodes(last, renderStart) > 0 ? [hardline, hardline] : hardline,
+			);
+		}
+		parts.push(path.call(print, 'render'));
+	}
+	// Trailing comments after the last statement/render inside the block.
+	const innerCommentDocs = printElementBodyLineComments(node.innerComments);
+	if (innerCommentDocs.length > 0) {
+		const lastNode = node.render ?? node.body[node.body.length - 1];
+		const firstComment = (node.innerComments ?? []).find((c) => c.type === 'Line');
+		if (lastNode && firstComment && getBlankLinesBetweenNodes(lastNode, firstComment) > 0) {
+			parts.push(hardline);
+		}
+		parts.push(...innerCommentDocs);
+	}
+	if (parts.length === 0) {
+		return '@{}';
+	}
+	return group(['@{', indent([hardline, ...parts]), hardline, '}']);
 }
 
 /**
@@ -5954,6 +6417,10 @@ function printJSXFragment(node, path, options, print) {
  */
 function printJSXAttribute(attr, path, options, print) {
 	const name = /** @type {ESTreeJSX.JSXIdentifier} */ (attr.name).name;
+
+	if (attr.shorthand) {
+		return ['{', name, '}'];
+	}
 
 	if (!attr.value) {
 		return name;
@@ -5972,12 +6439,16 @@ function printJSXAttribute(attr, path, options, print) {
 
 	if (attr.value.type === 'JSXExpressionContainer') {
 		const expression = attr.value.expression;
+		if (expression.type === 'Literal' && typeof expression.value === 'string') {
+			const quote = options.jsxSingleQuote ? "'" : '"';
+			return [name, '=', quote, /** @type {string} */ (expression.value), quote];
+		}
 		const exprDoc = path.call(
 			(valuePath) => print(valuePath, { isInAttribute: true }),
 			'value',
 			'expression',
 		);
-		if (shouldBreakAttributeExpressionClosingBrace(expression)) {
+		if (shouldBreakAttributeExpressionClosingBrace(expression, options, attr)) {
 			return [name, '={', exprDoc, hardline, '}'];
 		}
 		return [name, '={', exprDoc, '}'];
@@ -5987,18 +6458,31 @@ function printJSXAttribute(attr, path, options, print) {
 }
 
 /**
- * Print a JSX member expression (e.g., React.Fragment)
- * @param {AST.Node} node - The JSX member expression or identifier
+ * Print a JSX element name.
+ * @param {AST.Node} node - The JSX element name node
  * @returns {string}
  */
-function printJSXMemberExpression(node) {
+function printJSXElementName(node) {
 	if (node.type === 'JSXIdentifier') {
-		return node.name;
+		return (isDynamicJSXIdentifier(node) ? '@' : '') + node.name;
 	}
 	if (node.type === 'JSXMemberExpression') {
-		return printJSXMemberExpression(node.object) + '.' + printJSXMemberExpression(node.property);
+		return printJSXElementName(node.object) + '.' + printJSXElementName(node.property);
+	}
+	if (node.type === 'JSXNamespacedName') {
+		const namespace_name = node.namespace.name;
+		const local_name = node.name.name;
+		return namespace_name + ':' + local_name;
 	}
 	return 'Unknown';
+}
+
+/**
+ * @param {ESTreeJSX.JSXIdentifier} node
+ * @returns {boolean}
+ */
+function isDynamicJSXIdentifier(node) {
+	return /** @type {{ dynamic?: boolean }} */ (node).dynamic === true;
 }
 
 /**
@@ -6009,6 +6493,22 @@ function printJSXMemberExpression(node) {
  * @returns {string}
  */
 function printMemberExpressionSimple(node, options, computed = false) {
+	if (node.type === 'JSXIdentifier') {
+		return (isDynamicJSXIdentifier(node) ? '@' : '') + node.name;
+	}
+
+	if (node.type === 'JSXMemberExpression') {
+		return (
+			printMemberExpressionSimple(node.object, options) +
+			'.' +
+			printMemberExpressionSimple(node.property, options, true)
+		);
+	}
+
+	if (node.type === 'JSXNamespacedName') {
+		return node.namespace.name + ':' + node.name.name;
+	}
+
 	if (node.type === 'Identifier') {
 		return (computed ? '' : node.tracked ? '@' : '') + node.name;
 	}
@@ -6056,7 +6556,7 @@ function is_attribute_value_breakable(value, is_nested_in_object = false) {
 }
 
 /**
- * Print a Ripple Element node
+ * Print a JSX element node
  * @param {AST.Element} element - The element node
  * @param {AstPath<AST.Element>} path - The AST path
  * @param {RippleFormatOptions} options - Prettier options
@@ -6064,7 +6564,7 @@ function is_attribute_value_breakable(value, is_nested_in_object = false) {
  * @returns {Doc}
  */
 function printElement(element, path, options, print) {
-	const node = /** @type {AST.Element & AST.NodeWithLocation} */ (element);
+	const node = /** @type {any} */ (element);
 	const tagName = printMemberExpressionSimple(node.id, options);
 	const openingElement = /** @type {any} */ (node.openingElement);
 	/** @type {Doc} */
@@ -6072,7 +6572,7 @@ function printElement(element, path, options, print) {
 	if (openingElement?.typeArguments) {
 		typeArgsDoc = path.call(print, 'openingElement', 'typeArguments');
 	}
-	const elementLeadingComments = getElementLeadingComments(node);
+	const elementLeadingComments = getElementLeadingComments(/** @type {any} */ (node));
 
 	// `metadata.elementLeadingComments` may include comments that actually appear *inside* the element
 	// body (after the opening tag). Those must not be hoisted before the element.
@@ -6107,7 +6607,7 @@ function printElement(element, path, options, print) {
 		const openingEnd = /** @type {AST.NodeWithLocation} */ (node.openingElement).end;
 		for (const child of node.children) {
 			if (
-				(child.type === 'TSRXExpression' || child.type === 'Text') &&
+				(child.type === 'JSXExpressionContainer' || child.type === 'JSXText') &&
 				Array.isArray(child.leadingComments)
 			) {
 				for (const comment of child.leadingComments) {
@@ -6184,11 +6684,14 @@ function printElement(element, path, options, print) {
 				parts.push(attrLineBreak);
 				const attrDoc = print(attrPath);
 				parts.push(attrDoc);
-				const attr_node = /** @type {AST.Attribute | AST.SpreadAttribute} */ (attrPath.node);
+				const attr_node = /** @type {ESTreeJSX.JSXAttribute | ESTreeJSX.JSXSpreadAttribute} */ (
+					/** @type {unknown} */ (attrPath.node)
+				);
 				if (
 					!hasBreakingAttribute &&
 					(willBreak(attrDoc) ||
-						(attr_node.type === 'Attribute' && is_attribute_value_breakable(attr_node.value)))
+						(attr_node.type === 'JSXAttribute' &&
+							is_attribute_value_breakable(/** @type {any} */ (attr_node.value))))
 				) {
 					hasBreakingAttribute = true;
 				}
@@ -6296,15 +6799,17 @@ function printElement(element, path, options, print) {
 			}
 		}
 
-		const isTextLikeChild = currentChild.type === 'TSRXExpression' || currentChild.type === 'Text';
+		const isTextLikeChild =
+			currentChild.type === 'JSXExpressionContainer' || currentChild.type === 'JSXText';
 		const hasTextLeadingComments =
 			shouldLiftTextLevelComments &&
 			isTextLikeChild &&
 			Array.isArray(currentChild.leadingComments) &&
 			currentChild.leadingComments.length > 0;
+		const currentChildAny = /** @type {any} */ (currentChild);
 		const rawExpressionLeadingComments =
-			isTextLikeChild && Array.isArray(currentChild.expression?.leadingComments)
-				? currentChild.expression.leadingComments
+			isTextLikeChild && Array.isArray(currentChildAny.expression?.leadingComments)
+				? currentChildAny.expression.leadingComments
 				: null;
 		const elementBodyLeadingComments =
 			hasTextLeadingComments && node.openingElement
@@ -6410,10 +6915,10 @@ function printElement(element, path, options, print) {
 					: nextChild;
 			const whitespaceLinesCount = getBlankLinesBetweenNodes(currentChild, whitespaceTarget);
 			const isTextOrExpressionChild =
-				currentChild.type === 'TSRXExpression' ||
-				currentChild.type === 'Text' ||
-				nextChild.type === 'TSRXExpression' ||
-				nextChild.type === 'Text';
+				currentChild.type === 'JSXExpressionContainer' ||
+				currentChild.type === 'JSXText' ||
+				nextChild.type === 'JSXExpressionContainer' ||
+				nextChild.type === 'JSXText';
 
 			if (whitespaceLinesCount > 0) {
 				finalChildren.push(hardline);
@@ -6472,7 +6977,7 @@ function printElement(element, path, options, print) {
 
 	if (finalChildren.length === 1) {
 		const child = finalChildren[0];
-		const firstChild = node.children[0];
+		const firstChild = /** @type {any} */ (node.children[0]);
 		const isNonSelfClosingElement =
 			firstChild && firstChild.type === 'Element' && !firstChild.selfClosing;
 		const isElementChild = firstChild && firstChild.type === 'Element';
@@ -6514,58 +7019,4 @@ function printElement(element, path, options, print) {
 	}
 
 	return leadingCommentParts.length > 0 ? [...leadingCommentParts, elementOutput] : elementOutput;
-}
-
-/**
- * Print a Ripple attribute node
- * @param {AST.Attribute} node - The attribute node
- * @param {AstPath<AST.Attribute>} path - The AST path
- * @param {RippleFormatOptions} options - Prettier options
- * @param {PrintFn} print - Print callback
- * @returns {Doc[]}
- */
-function printAttribute(node, path, options, print) {
-	/** @type {Doc[]} */
-	const parts = [];
-
-	// Handle shorthand syntax: {id} instead of id={id}
-	// Check if either node.shorthand is true, OR if the value is an Identifier with the same name
-	const isShorthand =
-		node.shorthand ||
-		(node.value && node.value.type === 'Identifier' && node.value.name === node.name.name);
-
-	if (isShorthand) {
-		parts.push('{');
-		parts.push(node.name.name);
-		parts.push('}');
-		return parts;
-	}
-
-	parts.push(node.name.name);
-
-	if (node.value) {
-		if (node.value.type === 'Literal' && typeof node.value.value === 'string') {
-			// String literals don't need curly braces
-			// Use jsxSingleQuote option if available, otherwise use double quotes
-			parts.push('=');
-			const useJsxSingleQuote = options.jsxSingleQuote === true;
-			parts.push(
-				formatStringLiteral(node.value.value, {
-					...options,
-					singleQuote: useJsxSingleQuote,
-				}),
-			);
-		} else {
-			// All other values need curly braces: numbers, booleans, null, expressions, etc.
-			parts.push('={');
-			// Pass inline context for attribute values (keep objects compact)
-			parts.push(path.call((attrPath) => print(attrPath, { isInAttribute: true }), 'value'));
-			if (shouldBreakAttributeExpressionClosingBrace(node.value)) {
-				parts.push(hardline);
-			}
-			parts.push('}');
-		}
-	}
-
-	return parts;
 }

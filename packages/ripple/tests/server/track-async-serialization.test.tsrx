@@ -5,15 +5,13 @@ const TRACK_ASYNC_PUBLIC_ERROR_MESSAGE = 'An error occurred during async renderi
 
 describe('trackAsync serialization (server)', () => {
 	it('serializes resolved trackAsync data as a script tag in SSR output', async () => {
-		function App() {
-			return <>
-				try {
-					let &[data] = trackAsync(() => Promise.resolve('hello world'));
-					<p class="result">{data}</p>
-				} pending {
-					<p class="loading">{'loading...'}</p>
-				}
-			</>;
+		function App() @{
+			@try {
+				let &[data] = trackAsync(() => Promise.resolve('hello world'));
+				<p class="result">{data}</p>
+			} @pending {
+				<p class="loading">{'loading...'}</p>
+			}
 		}
 
 		const { body } = await render(App);
@@ -24,15 +22,13 @@ describe('trackAsync serialization (server)', () => {
 	});
 
 	it('serializes numeric trackAsync data correctly', async () => {
-		function App() {
-			return <>
-				try {
-					let &[count] = trackAsync(() => Promise.resolve(42));
-					<span class="count">{count}</span>
-				} pending {
-					<span>{'...'}</span>
-				}
-			</>;
+		function App() @{
+			@try {
+				let &[count] = trackAsync(() => Promise.resolve(42));
+				<span class="count">{count}</span>
+			} @pending {
+				<span>{'...'}</span>
+			}
 		}
 
 		const { body } = await render(App);
@@ -41,15 +37,13 @@ describe('trackAsync serialization (server)', () => {
 	});
 
 	it('serializes object trackAsync data correctly', async () => {
-		function App() {
-			return <>
-				try {
-					let &[data] = trackAsync(() => Promise.resolve({ name: 'Alice', age: 30 }));
-					<p>{data.name}</p>
-				} pending {
-					<p>{'...'}</p>
-				}
-			</>;
+		function App() @{
+			@try {
+				let &[data] = trackAsync(() => Promise.resolve({ name: 'Alice', age: 30 }));
+				<p>{data.name}</p>
+			} @pending {
+				<p>{'...'}</p>
+			}
 		}
 
 		const { body } = await render(App);
@@ -58,19 +52,17 @@ describe('trackAsync serialization (server)', () => {
 	});
 
 	it('serializes array trackAsync data correctly', async () => {
-		function App() {
-			return <>
-				try {
-					let &[items] = trackAsync(() => Promise.resolve(['a', 'b', 'c']));
-					<ul>
-						for (let item of items) {
-							<li>{item}</li>
-						}
-					</ul>
-				} pending {
-					<p>{'...'}</p>
-				}
-			</>;
+		function App() @{
+			@try {
+				let &[items] = trackAsync(() => Promise.resolve(['a', 'b', 'c']));
+				<ul>
+					@for (let item of items) {
+						<li>{item}</li>
+					}
+				</ul>
+			} @pending {
+				<p>{'...'}</p>
+			}
 		}
 
 		const { body } = await render(App);
@@ -79,17 +71,15 @@ describe('trackAsync serialization (server)', () => {
 	});
 
 	it('serializes rejected trackAsync as error envelope', async () => {
-		function App() {
-			return <>
-				try {
-					let &[data] = trackAsync(() => Promise.reject(new Error('fetch failed')));
-					<p class="result">{data}</p>
-				} pending {
-					<p class="loading">{'loading...'}</p>
-				} catch (e) {
-					<p class="error">{(e as Error).message}</p>
-				}
-			</>;
+		function App() @{
+			@try {
+				let &[data] = trackAsync(() => Promise.reject(new Error('fetch failed')));
+				<p class="result">{data}</p>
+			} @pending {
+				<p class="loading">{'loading...'}</p>
+			} @catch (e) {
+				<p class="error">{(e as Error).message}</p>
+			}
 		}
 
 		const { body } = await render(App);
@@ -101,25 +91,21 @@ describe('trackAsync serialization (server)', () => {
 	});
 
 	it('serializes error when child component error bubbles to parent catch', async () => {
-		function Child() {
-			return <>
-				try {
-					let &[data] = trackAsync(() => Promise.reject(new Error('child error')));
-					<p class="result">{data}</p>
-				} pending {
-					<p class="pending">{'loading...'}</p>
-				}
-			</>;
+		function Child() @{
+			@try {
+				let &[data] = trackAsync(() => Promise.reject(new Error('child error')));
+				<p class="result">{data}</p>
+			} @pending {
+				<p class="pending">{'loading...'}</p>
+			}
 		}
 
-		function Parent() {
-			return <>
-				try {
-					<Child />
-				} catch (e) {
-					<p class="parent-error">{(e as Error).message}</p>
-				}
-			</>;
+		function Parent() @{
+			@try {
+				<Child />
+			} @catch (e) {
+				<p class="parent-error">{(e as Error).message}</p>
+			}
 		}
 
 		const { body } = await render(Parent);
@@ -131,19 +117,17 @@ describe('trackAsync serialization (server)', () => {
 	});
 
 	it('serializes sync trackAsync throw using original cause message', async () => {
-		function App() {
-			return <>
-				try {
-					let &[data] = trackAsync(() => {
-						throw new Error('sync failure');
-					});
-					<p class="result">{data}</p>
-				} pending {
-					<p class="loading">{'loading...'}</p>
-				} catch (e) {
-					<p class="error">{(e as Error).message}</p>
-				}
-			</>;
+		function App() @{
+			@try {
+				let &[data] = trackAsync(() => {
+					throw new Error('sync failure');
+				});
+				<p class="result">{data}</p>
+			} @pending {
+				<p class="loading">{'loading...'}</p>
+			} @catch (e) {
+				<p class="error">{(e as Error).message}</p>
+			}
 		}
 
 		const { body } = await render(App);
@@ -156,19 +140,17 @@ describe('trackAsync serialization (server)', () => {
 	});
 
 	it('escapes serialized error payload to keep script tag safe', async () => {
-		function App() {
-			return <>
-				try {
-					let &[data] = trackAsync(
-						() => Promise.reject(new Error('</script><div data-injected="1">boom</div>')),
-					);
-					<p class="result">{data}</p>
-				} pending {
-					<p class="loading">{'loading...'}</p>
-				} catch (e) {
-					<p class="error">{(e as Error).message}</p>
-				}
-			</>;
+		function App() @{
+			@try {
+				let &[data] = trackAsync(
+					() => Promise.reject(new Error('</script><div data-injected="1">boom</div>')),
+				);
+				<p class="result">{data}</p>
+			} @pending {
+				<p class="loading">{'loading...'}</p>
+			} @catch (e) {
+				<p class="error">{(e as Error).message}</p>
+			}
 		}
 
 		const { body } = await render(App);
@@ -182,17 +164,17 @@ describe('trackAsync serialization (server)', () => {
 	});
 
 	it('generates unique hashes for multiple trackAsync calls', async () => {
-		function App() {
-			return <>
-				try {
-					let &[a] = trackAsync(() => Promise.resolve('first'));
-					let &[b] = trackAsync(() => Promise.resolve('second'));
+		function App() @{
+			@try {
+				let &[a] = trackAsync(() => Promise.resolve('first'));
+				let &[b] = trackAsync(() => Promise.resolve('second'));
+				<>
 					<p>{a}</p>
 					<p>{b}</p>
-				} pending {
-					<p>{'...'}</p>
-				}
-			</>;
+				</>
+			} @pending {
+				<p>{'...'}</p>
+			}
 		}
 
 		const { body } = await render(App);

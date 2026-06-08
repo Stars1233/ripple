@@ -6,19 +6,19 @@ export const DEFAULT_DEMO_SOURCE = `export function FeatureCard({
   title: string;
   items: string[];
   ready: boolean;
-}) {
-  return <>
+}) @{
+  <>
     <section class="feature-card">
       <h2>{title}</h2>
 
-      if (ready) {
+      @if (ready) {
         <ul>
-          for (const item of items; index index) {
+          @for (const item of items; index index) {
             <li>{item}</li>
           }
         </ul>
-      } else {
-        <p>"Loading output..."</p>
+      } @else {
+        <p>Loading output...</p>
       }
     </section>
 
@@ -39,5 +39,5 @@ export const DEFAULT_DEMO_SOURCE = `export function FeatureCard({
         padding-left: 1.1rem;
       }
     </style>
-  </>;
+  </>
 }`;

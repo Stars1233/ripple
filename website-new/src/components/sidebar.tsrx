@@ -5,7 +5,7 @@ export function Sidebar({ currentPath = '/docs/introduction' }: { currentPath?: 
 		<aside class="Sidebar">
 			<div class="curtain" />
 			<nav class="nav" id="SidebarNav" aria-labelledby="sidebar-aria-label" tabindex="-1">
-				<span class="visually-hidden" id="sidebar-aria-label">{'Sidebar Navigation'}</span>
+				<span class="visually-hidden" id="sidebar-aria-label">Sidebar Navigation</span>
 				<div class="group">
 					<SidebarGroup
 						title="Getting Started"
@@ -33,7 +33,7 @@ export function Sidebar({ currentPath = '/docs/introduction' }: { currentPath?: 
 						/>
 						<SidebarItem
 							href="/docs/guide/syntax"
-							text="Template Syntax"
+							text="Component Syntax"
 							active={currentPath === '/docs/guide/syntax'}
 						/>
 						<SidebarItem
@@ -214,9 +214,10 @@ function SidebarGroup({
 	title: string;
 	children: any;
 	hasActive?: boolean;
-}) {
-	return <>
-		let &[expanded] = track(true);
+}) @{
+	let &[expanded] = track(true);
+
+	<>
 		<section
 			class={`SidebarItem level-0 collapsible ${hasActive ? 'has-active' : ''} ${
 				expanded ? '' : 'collapsed'
@@ -251,7 +252,7 @@ function SidebarGroup({
 					</svg>
 				</div>
 			</div>
-			if (expanded) {
+			@if (expanded) {
 				<div class="items">{children}</div>
 			}
 		</section>
@@ -330,7 +331,7 @@ function SidebarGroup({
 				padding-top: 4px;
 			}
 		</style>
-	</>;
+	</>
 }
 
 function SidebarItem({
@@ -345,19 +346,20 @@ function SidebarItem({
 	external?: boolean;
 	active?: boolean;
 	hasActive?: boolean;
-}) {
-	return <>
-		const classes = `SidebarItem level-1 is-link${active ? ' is-active' : ''}${
-			hasActive ? ' has-active' : ''
-		}`;
+}) @{
+	const classes = `SidebarItem level-1 is-link${active ? ' is-active' : ''}${
+		hasActive ? ' has-active' : ''
+	}`;
+
+	<>
 		<div class={classes}>
 			<div class="item">
 				<div class="indicator" />
-				if (external) {
+				@if (external) {
 					<a {href} target="_blank" rel="noreferrer" class="link link doc-external-link-icon">
 						<p class="text">{label}</p>
 					</a>
-				} else {
+				} @else {
 					<a {href} class="link link">
 						<p class="text">{label}</p>
 					</a>
@@ -432,5 +434,5 @@ function SidebarItem({
 				mask-size: 100% 100%;
 			}
 		</style>
-	</>;
+	</>
 }

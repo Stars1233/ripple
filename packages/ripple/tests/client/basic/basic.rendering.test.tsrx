@@ -3,8 +3,8 @@ import { flushSync, track } from 'ripple';
 
 describe('basic client > rendering & text', () => {
 	it('renders static text', () => {
-		function Basic() {
-			return <><div>{'Hello World'}</div></>;
+		function Basic() @{
+			<div>{'Hello World'}</div>
 		}
 
 		expect(container).toBeDefined();
@@ -14,11 +14,9 @@ describe('basic client > rendering & text', () => {
 	});
 
 	it('renders semi-dynamic text', () => {
-		function Basic() {
-			return <>
-				let message = 'Hello World';
-				<div>{message}</div>
-			</>;
+		function Basic() @{
+			let message = 'Hello World';
+			<div>{message}</div>
 		}
 
 		render(Basic);
@@ -27,11 +25,9 @@ describe('basic client > rendering & text', () => {
 	});
 
 	it('renders string interpolation without creating HTML', () => {
-		function Basic() {
-			return <>
-				let markup = '<span>Not HTML</span>';
-				<div>{markup}</div>
-			</>;
+		function Basic() @{
+			let markup = '<span>Not HTML</span>';
+			<div>{markup}</div>
 		}
 
 		render(Basic);
@@ -42,32 +38,35 @@ describe('basic client > rendering & text', () => {
 		expect(div.querySelector('span')).toBeNull();
 	});
 
-	it('renders direct double-quoted text children as text', () => {
-		function Basic() {
-			return <>
-				<div class="entities">"Rock &amp; &quot;Roll&quot;"</div>
-				<div class="backslash">"line\nbreak"</div>
-				<pre class="multiline">"first
-second"</pre>
-			</>;
+	it('renders direct JSX text children as text', () => {
+		function Basic() @{
+			<>
+				<div class="entities">Rock &amp; &quot;Roll&quot;</div>
+				<div class="backslash">line break</div>
+				<pre class="multiline">
+					first
+second
+				</pre>
+			</>
 		}
 
 		render(Basic);
 
 		expect(container.querySelector('.entities').textContent).toBe('Rock & "Roll"');
-		expect(container.querySelector('.backslash').textContent).toBe('line\\nbreak');
+		expect(container.querySelector('.backslash').textContent).toBe('line break');
 		expect(container.querySelector('.multiline').textContent).toBe('first\nsecond');
 	});
 
-	it('does not render TSRX statements outside returned component templates', () => {
+	it('does not render JavaScript statements outside returned component templates', () => {
 		function Basic() {
 			const ready = true;
 
 			if (ready) {
-				<div class="leaked">"should not render"</div>
+				const leaked = 'should not render';
+				void leaked;
 			}
 
-			return <>"Hello world"</>;
+			return <>Hello world</>;
 		}
 
 		render(Basic);
@@ -77,14 +76,12 @@ second"</pre>
 	});
 
 	it('renders primitive component return branches', () => {
-		function Basic() {
+		function Basic() @{
 			const ready = false;
-
 			if (!ready) {
 				return 'Waiting';
 			}
-
-			return <>"Ready"</>;
+			<>Ready</>
 		}
 
 		render(Basic);
@@ -123,8 +120,8 @@ second"</pre>
 	});
 
 	it('does not stringify adjacent call-containing expression children', () => {
-		function child(label: string) {
-			return <><span>{label}</span></>;
+		function child(label: string) @{
+			<span>{label}</span>
 		}
 
 		function empty() {
@@ -157,8 +154,8 @@ second"</pre>
 
 		let assigned;
 
-		function Basic() {
-			return <>
+		function Basic() @{
+			<>
 				<div>
 					{'call:'}
 					{child('call')}
@@ -216,7 +213,7 @@ second"</pre>
 					{'unary:'}
 					{void empty()}
 				</div>
-			</>;
+			</>
 		}
 
 		render(Basic);
@@ -238,10 +235,11 @@ second"</pre>
 		]);
 	});
 
-	it('does not render elements after an ASI return', () => {
+	it('does not render unreachable statements after an ASI return', () => {
 		function Basic() {
 			return;
-			<div>"should not render"</div>
+			const leaked = 'should not render';
+			void leaked;
 		}
 
 		render(Basic);
@@ -249,14 +247,14 @@ second"</pre>
 		expect(container.textContent).toBe('');
 	});
 
-	it('renders bare double-quoted text in if-else branches', () => {
-		function App() {
-			return <>
-				let condition = false;
-				if (condition) {
-					"Hello Ripple"
-				} else "Hello React"
-			</>;
+	it('renders bare JSX text in if-else branches', () => {
+		function App() @{
+			let condition = false;
+			@if (condition) {
+				<>Hello Ripple</>
+			} @else {
+				<>Hello React</>
+			}
 		}
 
 		render(App);
@@ -265,18 +263,16 @@ second"</pre>
 	});
 
 	it('renders dynamic text', () => {
-		function Basic() {
-			return <>
-				let &[message] = track('Hello World');
+		function Basic() @{
+			let &[message] = track('Hello World');
+			<>
 				<button
 					onClick={() => {
 						message = 'Hello Ripple';
 					}}
-				>
-					{'Change Text'}
-				</button>
+				>{'Change Text'}</button>
 				<div>{message}</div>
-			</>;
+			</>
 		}
 
 		render(Basic);
@@ -290,8 +286,8 @@ second"</pre>
 	});
 
 	it('renders empty string literal', () => {
-		function Basic() {
-			return <><div>{''}</div></>;
+		function Basic() @{
+			<div>{''}</div>
 		}
 
 		render(Basic);
@@ -299,8 +295,8 @@ second"</pre>
 	});
 
 	it('renders empty template literal', () => {
-		function Basic() {
-			return <><div>{``}</div></>;
+		function Basic() @{
+			<div>{``}</div>
 		}
 
 		render(Basic);
@@ -308,22 +304,22 @@ second"</pre>
 	});
 
 	it('renders tick template literal for nested children', () => {
-		function Child({ level, children }: { level: number; children: any }) {
-			return <>
-				if (level == 1) {
+		function Child({ level, children }: { level: number; children: any }) @{
+			<>
+				@if (level == 1) {
 					<h1>{children}</h1>
 				}
-				if (level == 2) {
+				@if (level == 2) {
 					<h2>{children}</h2>
 				}
-				if (level == 3) {
+				@if (level == 3) {
 					<h3>{children}</h3>
 				}
-			</>;
+			</>
 		}
 
-		function App() {
-			return <><Child level={1}>{`Heading 1`}</Child></>;
+		function App() @{
+			<Child level={1}>{`Heading 1`}</Child>
 		}
 
 		render(App);
@@ -331,14 +327,14 @@ second"</pre>
 	});
 
 	it('renders simple JS expression logic correctly', () => {
-		function Example() {
-			return <>
-				let test: Record<number, string> = {};
-				let counter = 0;
-				test[counter++] = 'Test';
+		function Example() @{
+			let test: Record<number, string> = {};
+			let counter = 0;
+			test[counter++] = 'Test';
+			<>
 				<div>{JSON.stringify(test)}</div>
 				<div>{JSON.stringify(counter)}</div>
-			</>;
+			</>
 		}
 		render(Example);
 
@@ -346,31 +342,29 @@ second"</pre>
 	});
 
 	it('renders with mixed static and dynamic content', () => {
-		function Basic() {
-			return <>
-				let &[name] = track('World');
-				let &[count] = track(0);
-				const staticMessage = 'Welcome to Ripple!';
-				<div class="mixed-content">
-					<h1>{staticMessage}</h1>
-					<p class="greeting">{'Hello, ' + name + '!'}</p>
-					<p class="notifications">{'You have ' + count + ' notifications'}</p>
-					<button
-						onClick={() => {
-							count++;
-						}}
-					>
-						{'Add Notification'}
-					</button>
-					<button
-						onClick={() => {
-							name = name === 'World' ? 'User' : 'World';
-						}}
-					>
-						{'Toggle Name'}
-					</button>
-				</div>
-			</>;
+		function Basic() @{
+			let &[name] = track('World');
+			let &[count] = track(0);
+			const staticMessage = 'Welcome to Ripple!';
+			<div class="mixed-content">
+				<h1>{staticMessage}</h1>
+				<p class="greeting">
+					{'Hello, ' + name + '!'}
+				</p>
+				<p class="notifications">
+					{'You have ' + count + ' notifications'}
+				</p>
+				<button
+					onClick={() => {
+						count++;
+					}}
+				>{'Add Notification'}</button>
+				<button
+					onClick={() => {
+						name = name === 'World' ? 'User' : 'World';
+					}}
+				>{'Toggle Name'}</button>
+			</div>
 		}
 
 		render(Basic);
@@ -394,16 +388,16 @@ second"</pre>
 	});
 
 	it('basic operations', () => {
-		function App() {
-			return <>
-				let &[count] = track(0);
-				const a = count++;
-				const b = ++count;
+		function App() @{
+			let &[count] = track(0);
+			const a = count++;
+			const b = ++count;
+			<>
 				<div>{a}</div>
 				<div>{b}</div>
 				<div>{5}</div>
 				<div>{count}</div>
-			</>;
+			</>
 		}
 
 		render(App);
@@ -411,36 +405,32 @@ second"</pre>
 	});
 
 	it('renders with conditional rendering using if statements', () => {
-		function Basic() {
-			return <>
-				let &[showContent] = track(false);
-				let &[userRole] = track('guest');
+		function Basic() @{
+			let &[showContent] = track(false);
+			let &[userRole] = track('guest');
+			<>
 				<button
 					onClick={() => {
 						showContent = !showContent;
 					}}
-				>
-					{'Toggle Content'}
-				</button>
+				>{'Toggle Content'}</button>
 				<button
 					onClick={() => {
 						userRole = userRole === 'guest' ? 'admin' : 'guest';
 					}}
-				>
-					{'Toggle Role'}
-				</button>
+				>{'Toggle Role'}</button>
 				<div class="content">
-					if (showContent) {
-						if (userRole === 'admin') {
+					@if (showContent) {
+						@if (userRole === 'admin') {
 							<div class="admin-content">{'Admin content'}</div>
-						} else {
+						} @else {
 							<div class="user-content">{'User content'}</div>
 						}
-					} else {
+					} @else {
 						<div class="no-content">{'No content'}</div>
 					}
 				</div>
-			</>;
+			</>
 		}
 
 		render(Basic);
@@ -468,14 +458,9 @@ second"</pre>
 	});
 
 	it('should handle lexical scopes correctly', () => {
-		function App() {
-			return <>
-				<section>
-					let sectionData = 'Nested scope variable';
-
-					{sectionData}
-				</section>
-			</>;
+		function App() @{
+			let sectionData = 'Nested scope variable';
+			<section>{sectionData}</section>
 		}
 
 		render(App);
@@ -483,48 +468,48 @@ second"</pre>
 	});
 
 	it('runs nested JavaScript blocks inside component-local callables', () => {
-		function App() {
-			return <>
-				function readFunction() {
-					const label = 'function outer';
+		function App() @{
+			function readFunction() {
+				const label = 'function outer';
+				let result = '';
+
+				{
+					const label = 'function inner';
+					result = label;
+				}
+
+				return `${result} / ${label}`;
+			}
+			const readArrow = () => {
+				const offset = 5;
+				let value = offset;
+
+				{
+					const offset = 17;
+					value += offset;
+				}
+
+				return value;
+			};
+			class Reader {
+				read() {
+					const label = 'method outer';
 					let result = '';
 
 					{
-						const label = 'function inner';
+						const label = 'method inner';
 						result = label;
 					}
 
 					return `${result} / ${label}`;
 				}
-				const readArrow = () => {
-					const offset = 5;
-					let value = offset;
-
-					{
-						const offset = 17;
-						value += offset;
-					}
-
-					return value;
-				};
-				class Reader {
-					read() {
-						const label = 'method outer';
-						let result = '';
-
-						{
-							const label = 'method inner';
-							result = label;
-						}
-
-						return `${result} / ${label}`;
-					}
-				}
-				const reader = new Reader();
+			}
+			const reader = new Reader();
+			<>
 				<div class="block-function">{readFunction()}</div>
 				<div class="block-arrow">{readArrow()}</div>
 				<div class="block-method">{reader.read()}</div>
-			</>;
+			</>
 		}
 
 		render(App);
@@ -539,27 +524,23 @@ second"</pre>
 	});
 
 	it('should handle consecutive text nodes without duplication', () => {
-		function App() {
-			return <>
-				const Something = conditional('a');
-				<Something />
-				function conditional(item: 'a') {
-					let hello = 'Hello';
-					const obj = {
-						a: function A() {
-							return <>
-								<div>
-									{'a'}
-									{' '}
-									{hello}
-								</div>
-							</>;
-						},
-					};
+		function App() @{
+			const Something = conditional('a');
+			function conditional(item: 'a') {
+				let hello = 'Hello';
+				const obj = {
+					a: function A() @{
+						<div>
+							{'a'}
+							{' '}
+							{hello}
+						</div>
+					},
+				};
 
-					return obj[item];
-				}
-			</>;
+				return obj[item];
+			}
+			<Something />
 		}
 
 		render(App);
@@ -568,16 +549,14 @@ second"</pre>
 	});
 
 	it('should handle multiple consecutive text expressions', () => {
-		function App() {
-			return <>
-				let name = 'World';
-				<div>
-					{'Hello'}
-					{' '}
-					{name}
-					{'!'}
-				</div>
-			</>;
+		function App() @{
+			let name = 'World';
+			<div>
+				{'Hello'}
+				{' '}
+				{name}
+				{'!'}
+			</div>
 		}
 
 		render(App);

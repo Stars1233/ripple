@@ -95,6 +95,8 @@ function apply_tsrx_css_scoping(nodes, state) {
 	const style_classes = /** @type {any} */ (component.metadata).styleClasses ?? new Map();
 	const top_scoped_classes = /** @type {any} */ (component.metadata).topScopedClasses ?? new Map();
 
+	const restore_nodes = prepare_legacy_nodes_for_css_pruning(nodes);
+
 	/**
 	 * @param {AST.Node} node
 	 * @returns {void}
@@ -115,9 +117,69 @@ function apply_tsrx_css_scoping(nodes, state) {
 		}
 	}
 
-	for (const node of nodes) {
-		visit_node(node);
+	try {
+		for (const node of nodes) {
+			visit_node(node);
+		}
+	} finally {
+		restore_nodes();
 	}
+}
+
+/**
+ * Ripple still lowers JSX-shaped TSRX into internal Element nodes before its
+ * renderer runs. Keep that compatibility local by presenting those nodes to the
+ * shared CSS pruner as native JSX only during pruning.
+ *
+ * @param {AST.Node[]} nodes
+ * @returns {() => void}
+ */
+function prepare_legacy_nodes_for_css_pruning(nodes) {
+	/** @type {{ node: any, type: string, native_tsrx: unknown, had_native_tsrx: boolean }[]} */
+	const changed = [];
+	const seen = new Set();
+
+	/** @param {any} node */
+	function visit(node) {
+		if (!node || typeof node !== 'object' || seen.has(node)) {
+			return;
+		}
+		seen.add(node);
+
+		if (node.type === 'Element') {
+			node.metadata ??= { path: [] };
+			changed.push({
+				node,
+				type: node.type,
+				native_tsrx: node.metadata.native_tsrx,
+				had_native_tsrx: Object.prototype.hasOwnProperty.call(node.metadata, 'native_tsrx'),
+			});
+			node.type = 'JSXElement';
+			node.metadata.native_tsrx = true;
+		}
+
+		if (Array.isArray(node.children)) {
+			for (const child of node.children) {
+				visit(child);
+			}
+		}
+	}
+
+	for (const node of nodes) {
+		visit(node);
+	}
+
+	return () => {
+		for (let i = changed.length - 1; i >= 0; i--) {
+			const entry = changed[i];
+			entry.node.type = entry.type;
+			if (entry.had_native_tsrx) {
+				entry.node.metadata.native_tsrx = entry.native_tsrx;
+			} else {
+				delete entry.node.metadata.native_tsrx;
+			}
+		}
+	};
 }
 
 /**
@@ -254,7 +316,7 @@ function insert_style_ref_setup_statements(body, setup) {
 }
 
 /**
- * @param {ESTreeJSX.JSXElement | ESTreeJSX.JSXFragment} node
+ * @param {AST.TSRXJSXElement | ESTreeJSX.JSXFragment} node
  * @param {TransformServerContext} context
  * @returns {AST.CallExpression}
  */
@@ -876,6 +938,32 @@ function build_return_guard(flags) {
 }
 
 /**
+ * Builds a positive OR condition from return flag names.
+ * @param {string[]} flags
+ * @returns {AST.Expression}
+ */
+function build_positive_return_guard(flags) {
+	/** @type {AST.Expression} */
+	let condition = b.id(flags[0]);
+	for (let i = 1; i < flags.length; i++) {
+		condition = b.logical('||', condition, b.id(flags[i]));
+	}
+	return condition;
+}
+
+/**
+ * @param {AST.Node} node
+ * @param {Map<AST.ReturnStatement, { name: string, tracked: boolean }>} return_flags
+ * @returns {string | null}
+ */
+function get_returned_child_flag_name(node, return_flags) {
+	const source = /** @type {AST.ReturnStatement | undefined} */ (
+		node.metadata?.returned_tsrx_return
+	);
+	return source ? (return_flags.get(source)?.name ?? null) : null;
+}
+
+/**
  * Collects all unique valid return statements from the direct children of a body.
  * @param {AST.Node[]} children
  * @returns {AST.ReturnStatement[]}
@@ -1107,14 +1195,17 @@ function transform_children(children, context) {
 	let pending_group = [];
 	/** @type {string[]} */
 	let pending_guard_flags = [];
+	let pending_guard_positive = false;
 
 	const flush_pending_group = () => {
 		if (pending_group.length === 0) return;
 
 		const group = pending_group;
 		const guard_flags = pending_guard_flags;
+		const guard_positive = pending_guard_positive;
 		pending_group = [];
 		pending_guard_flags = [];
+		pending_guard_positive = false;
 
 		/** @type {AST.Statement[]} */
 		const wrapped = [];
@@ -1128,7 +1219,9 @@ function transform_children(children, context) {
 		state.init = saved_init;
 		if (wrapped.length === 0) return;
 
-		const guard = build_return_guard(guard_flags);
+		const guard = guard_positive
+			? build_positive_return_guard(guard_flags)
+			: build_return_guard(guard_flags);
 		state.init?.push(
 			...wrap_regular_block([
 				b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_OPEN))),
@@ -1166,8 +1259,20 @@ function transform_children(children, context) {
 		}
 
 		if (accumulated_flags.length > 0 && should_wrap_node_in_regular_block(node)) {
+			const returned_child_flag = get_returned_child_flag_name(node, return_flags);
+			const guard_flags = returned_child_flag ? [returned_child_flag] : accumulated_flags;
+			const guard_positive = returned_child_flag !== null;
+			const guard_key = guard_flags.join(',');
+			const pending_guard_key = pending_guard_flags.join(',');
+			if (
+				pending_group.length > 0 &&
+				(pending_guard_positive !== guard_positive || pending_guard_key !== guard_key)
+			) {
+				flush_pending_group();
+			}
 			if (pending_group.length === 0) {
-				pending_guard_flags = [...accumulated_flags];
+				pending_guard_flags = [...guard_flags];
+				pending_guard_positive = guard_positive;
 			}
 			pending_group.push(node);
 
@@ -1249,6 +1354,9 @@ function get_native_tsrx_return_template_node(node, allow_direct_template = fals
 	}
 	if (node.type === 'ReturnStatement' && is_native_tsrx_template_node(node.argument)) {
 		return /** @type {AST.Element | AST.TsrxFragment} */ (/** @type {unknown} */ (node.argument));
+	}
+	if (node.type === 'JSXCodeBlock' && is_native_tsrx_template_node(node.render)) {
+		return /** @type {AST.Element | AST.TsrxFragment} */ (/** @type {unknown} */ (node.render));
 	}
 	if (
 		node.type === 'FunctionDeclaration' ||
@@ -1500,15 +1608,35 @@ const visitors = {
 		return context.next();
 	},
 
+	JSXCodeBlock(node, context) {
+		// A code-only `@{ … }` block (no render output) is just a lexical block of
+		// setup statements. Component blocks (with a render template) are handled by
+		// `transform_native_tsrx_function`. Everywhere else, lower it to a plain
+		// BlockStatement so the JS printer (which has no JSXCodeBlock visitor) can
+		// emit it.
+		if (node.render != null) {
+			return context.next();
+		}
+		/** @type {AST.Statement[]} */
+		const statements = [];
+		for (const statement of node.body) {
+			push_statement(
+				/** @type {AST.Statement | AST.Statement[]} */ (context.visit(statement)),
+				statements,
+			);
+		}
+		return b.block(statements);
+	},
+
 	JSXElement(node, context) {
-		if (context.state.jsx_to_tsrx_element) {
+		if (context.state.jsx_to_tsrx_element || is_native_tsrx_value_position(context.path)) {
 			return build_jsx_to_tsrx_element(node, context);
 		}
 		return context.next();
 	},
 
 	JSXFragment(node, context) {
-		if (context.state.jsx_to_tsrx_element) {
+		if (context.state.jsx_to_tsrx_element || is_native_tsrx_value_position(context.path)) {
 			return build_jsx_to_tsrx_element(node, context);
 		}
 		return context.next();
@@ -2322,6 +2450,7 @@ const visitors = {
 				);
 				case_body.push(...consequent.body);
 			}
+			case_body.push(b.break);
 
 			cases.push(
 				b.switch_case(
@@ -2351,16 +2480,43 @@ const visitors = {
 		}
 		const body_scope = context.state.scopes.get(node.body);
 
+		if (node.metadata?.script_only && !node.metadata?.has_template) {
+			const body = transform_body(/** @type {AST.BlockStatement} */ (node.body).body, {
+				...context,
+				state: { ...context.state, scope: /** @type {ScopeInterface} */ (body_scope) },
+			});
+
+			if (node.index) {
+				context.state.init?.push(b.var(node.index, b.literal(0)));
+				body.push(b.stmt(b.update('++', node.index)));
+			}
+
+			context.state.init?.push(
+				b.for_of(
+					/** @type {AST.VariableDeclaration} */ (context.visit(node.left)),
+					/** @type {AST.Expression} */
+					(context.visit(node.right)),
+					b.block(body),
+				),
+			);
+			return;
+		}
+
 		context.state.init?.push(b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_OPEN))));
 
 		const body = transform_body(/** @type {AST.BlockStatement} */ (node.body).body, {
 			...context,
 			state: { ...context.state, scope: /** @type {ScopeInterface} */ (body_scope) },
 		});
+		const empty_id = node.empty ? b.id(context.state.scope.generate('for_empty')) : null;
 
 		if (node.index) {
 			context.state.init?.push(b.var(node.index, b.literal(0)));
 			body.push(b.stmt(b.update('++', node.index)));
+		}
+		if (empty_id) {
+			context.state.init?.push(b.var(empty_id, b.true));
+			body.unshift(b.stmt(b.assignment('=', empty_id, b.false)));
 		}
 
 		context.state.init?.push(
@@ -2371,6 +2527,21 @@ const visitors = {
 				b.block(body),
 			),
 		);
+
+		if (empty_id && node.empty) {
+			const empty_scope = context.state.scopes.get(node.empty) || context.state.scope;
+			context.state.init?.push(
+				b.if(
+					empty_id,
+					b.block(
+						transform_body(/** @type {AST.BlockStatement} */ (node.empty).body, {
+							...context,
+							state: { ...context.state, scope: /** @type {ScopeInterface} */ (empty_scope) },
+						}),
+					),
+				),
+			);
+		}
 
 		context.state.init?.push(b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_CLOSE))));
 	},
@@ -2389,7 +2560,11 @@ const visitors = {
 			node.consequent.type === 'BlockStatement' ? node.consequent.body : [node.consequent];
 		const consequent_scope = context.state.scopes.get(node.consequent) || context.state.scope;
 
-		if (node.metadata?.has_continue && !node.metadata?.has_template && !node.alternate) {
+		if (
+			(node.metadata?.script_only || node.metadata?.has_continue) &&
+			!node.metadata?.has_template &&
+			!node.alternate
+		) {
 			context.state.init?.push(
 				b.if(
 					/** @type {AST.Expression} */ (context.visit(node.test)),
@@ -2775,10 +2950,6 @@ const visitors = {
 			const render_fn = b.arrow([], b.block(init));
 			return b.call('_$_.tsrx_element', render_fn);
 		}
-	},
-
-	ScriptContent(node, context) {
-		context.state.init?.push(b.stmt(b.call(b.id('_$_.output_push'), b.literal(node.content))));
 	},
 
 	TSModuleBlock(node, context) {

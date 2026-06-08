@@ -24,8 +24,8 @@ import {
 	identifier_to_jsx_name,
 	is_bare_render_expression,
 	is_component_jsx_name,
-	is_dynamic_element_id,
 	is_jsx_child,
+	jsx_name_to_expression,
 	set_loc,
 	to_text_expression,
 } from './ast-builders.js';
@@ -63,6 +63,17 @@ const HOOK_CALLBACK_OUTER_MUTATION_ERROR =
 	'Hook callbacks inside conditional or repeated TSRX scopes must not mutate bindings declared outside the generated hook component.';
 const TEMPLATE_FRAGMENT_ERROR =
 	'JSX fragment syntax is not needed in TSRX templates. TSRX renders in immediate mode, so everything is already a fragment. Use `<>...</>` only in expression position.';
+const TSRX_FOR_RETURN_ERROR =
+	'Return statements are not allowed inside TSRX template for...of loops. Filter the iterable before rendering or use an @for empty fallback for empty lists.';
+const TSRX_FOR_BREAK_ERROR =
+	'Break statements are not allowed inside TSRX template for...of loops.';
+const TSRX_FOR_CONTINUE_ERROR =
+	'Continue statements are not allowed inside TSRX template for...of loops. Filter the iterable before rendering.';
+const TSRX_IF_RETURN_ERROR =
+	'Return statements are not allowed inside TSRX template @if blocks. Move the return before the template output or render conditionally instead.';
+const TSRX_IF_BREAK_ERROR = 'Break statements are not allowed inside TSRX template @if blocks.';
+const TSRX_IF_CONTINUE_ERROR =
+	'Continue statements are not allowed inside TSRX template @if blocks. Filter before rendering or use conditional output instead.';
 
 /**
  * @param {AST.Node} node
@@ -143,6 +154,76 @@ function is_function_or_class_boundary(node) {
 }
 
 /**
+ * @param {any} node
+ * @param {boolean} [inside_function]
+ * @param {Set<any>} [seen]
+ * @returns {void}
+ */
+function mark_nested_function_return_jsx(node, inside_function = false, seen = new Set()) {
+	if (!node || typeof node !== 'object' || seen.has(node)) return;
+	seen.add(node);
+
+	if (Array.isArray(node)) {
+		for (const item of node) mark_nested_function_return_jsx(item, inside_function, seen);
+		return;
+	}
+
+	const now_inside = inside_function || is_function_or_class_boundary(node);
+
+	if (
+		now_inside &&
+		node.type === 'ReturnStatement' &&
+		(node.argument?.type === 'JSXFragment' ||
+			node.argument?.type === 'JSXElement' ||
+			node.argument?.type === 'JSXStyleElement')
+	) {
+		node.argument.metadata = { ...(node.argument.metadata || {}), native_tsrx: true };
+	}
+
+	for (const key of Object.keys(node)) {
+		if (key === 'loc' || key === 'start' || key === 'end' || key === 'metadata') continue;
+		mark_nested_function_return_jsx(node[key], now_inside, seen);
+	}
+}
+
+/**
+ * Flatten a `@{ … }` code block that appears as an element/fragment child into
+ * the element's children list: its setup statements followed by its single
+ * render output. The render pipeline already handles interleaved setup
+ * statements and JSX children. This is the element-scoped equivalent of
+ * `transform_function`'s body lowering — function and arrow bodies are never
+ * element children, so they are untouched here.
+ * @param {any} node
+ * @param {Set<any>} [seen]
+ * @returns {void}
+ */
+function expand_child_code_blocks(node, seen = new Set()) {
+	if (!node || typeof node !== 'object' || seen.has(node)) return;
+	seen.add(node);
+
+	if (Array.isArray(node)) {
+		for (const item of node) expand_child_code_blocks(item, seen);
+		return;
+	}
+
+	if (
+		Array.isArray(node.children) &&
+		node.children.some((/** @type {any} */ c) => c?.type === 'JSXCodeBlock')
+	) {
+		node.children = node.children.flatMap((/** @type {any} */ child) =>
+			child?.type === 'JSXCodeBlock'
+				? [...child.body, ...(child.render != null ? [child.render] : [])]
+				: [child],
+		);
+	}
+
+	for (const key of Object.keys(node)) {
+		if (key === 'loc' || key === 'start' || key === 'end' || key === 'metadata') continue;
+		expand_child_code_blocks(node[key], seen);
+	}
+}
+
+/**
  * Build a `transform()` function for a specific JSX platform (React, Preact,
  * Solid). Given a `JsxPlatform` descriptor, returns a transform that lowers
  * native TSRX template nodes into a plain TSX module for that platform.
@@ -150,7 +231,7 @@ function is_function_or_class_boundary(node) {
  * Any `<style>` element declared inside a TSRX fragment is collected, rendered
  * via `@tsrx/core`'s stylesheet renderer, and returned alongside the JS output
  * so a downstream plugin can inject it. The compiler also augments every
- * non-style Element in that fragment with the stylesheet's hash class so scoped
+ * non-style JSX element in that fragment with the stylesheet's hash class so scoped
  * selectors match correctly.
  *
  * @param {JsxPlatform} platform
@@ -203,6 +284,8 @@ export function createJsxTransform(platform) {
 			...(platform.hooks?.initialState?.() ?? {}),
 		};
 
+		expand_child_code_blocks(/** @type {any} */ (ast));
+
 		if (!transform_context.typeOnly) {
 			preallocate_lazy_ids(/** @type {any} */ (ast), transform_context);
 		}
@@ -213,7 +296,11 @@ export function createJsxTransform(platform) {
 				return next();
 			},
 
-			TsrxFragment(node, { next, path, state, visit }) {
+			JSXFragment(node, { next, path, state, visit }) {
+				if (!node.metadata?.native_tsrx) {
+					return next() ?? node;
+				}
+
 				const parent = /** @type {AST.ArrowFunctionExpression} */ (path.at(-1));
 				if (parent?.metadata?.native_tsrx && parent.body === node) {
 					return /** @type {any} */ (visit(create_native_tsrx_render_block(node, state), state));
@@ -233,7 +320,15 @@ export function createJsxTransform(platform) {
 				return /** @type {any} */ (wrap_jsx_setup_declarations(expression, in_jsx_child));
 			},
 
-			Element(node, { next, path, state }) {
+			JSXElement(node, { next, path, state }) {
+				if (!node.metadata?.native_tsrx && is_dynamic_jsx_element(node)) {
+					return dynamic_element_to_jsx(node, state, in_jsx_child_context(path));
+				}
+
+				if (!node.metadata?.native_tsrx) {
+					return next() ?? node;
+				}
+
 				if (is_style_element(node) && is_style_expression_position(path)) {
 					const stylesheet = get_style_element_stylesheet(node);
 					if (stylesheet) {
@@ -243,30 +338,57 @@ export function createJsxTransform(platform) {
 					}
 				}
 
-				// Capture raw children BEFORE the walker transforms them so a
-				// platform hook (e.g. Solid's textContent optimization) can
-				// inspect the original Text / TSRXExpression nodes rather than
-				// their walker-lowered JSXExpressionContainer equivalents.
+				// Capture raw children BEFORE the walker transforms them so platform
+				// hooks can inspect the original JSX child shape.
 				const raw_children = /** @type {any} */ (node.children || []).map(
 					(/** @type {any} */ child) => (child && typeof child === 'object' ? { ...child } : child),
 				);
 				const inner = /** @type {any} */ (next() ?? node);
 				const hook = platform.hooks?.transformElement;
 				if (hook) return /** @type {any} */ (hook(inner, state, raw_children));
-				return /** @type {any} */ (to_jsx_element(inner, state, raw_children));
-			},
-
-			Text(node, { next }) {
-				const inner = /** @type {any} */ (next() ?? node);
 				return /** @type {any} */ (
-					to_jsx_expression_container(to_text_expression(inner.expression, inner), inner)
+					to_jsx_element(inner, state, raw_children, in_jsx_child_context(path))
 				);
 			},
 
-			TSRXExpression(node, { next }) {
-				const inner = /** @type {any} */ (next() ?? node);
-				return /** @type {any} */ (to_jsx_expression_container(inner.expression, inner));
+			JSXExpressionContainer(node, { next, state }) {
+				const result = /** @type {any} */ (next() ?? node);
+				const expression = result.expression;
+				// `@if`/`@for`/`@switch`/`@try` used as an expression value (e.g. an
+				// attribute value `content={@if (…) { … }}` or a `{ … }` child) leaks a
+				// JSX*Expression node straight to the printer. Lower it with the same
+				// control-flow machinery used for render children and unwrap the value.
+				if (
+					is_if_control_node(expression) ||
+					is_switch_control_node(expression) ||
+					is_try_control_node(expression) ||
+					expression?.type === 'JSXForExpression'
+				) {
+					const lowered = /** @type {any} */ (to_jsx_child(expression, state));
+					return { ...result, expression: lowered?.expression ?? lowered };
+				}
+				return result;
 			},
+
+			JSXStyleElement(node, { path, state }) {
+				if (is_style_expression_position(path)) {
+					const stylesheet = get_style_element_stylesheet(node);
+					if (stylesheet) {
+						analyze_css(stylesheet);
+						state.stylesheets.push(stylesheet);
+						return /** @type {any} */ (create_style_expression_value(node, stylesheet, state));
+					}
+				}
+				return /** @type {any} */ (
+					b.jsx_element(
+						/** @type {ESTreeJSX.JSXElement} */ ({ ...node, type: 'JSXElement', children: [] }),
+						node.openingElement?.attributes ?? [],
+						[],
+					)
+				);
+			},
+
+			JSXCodeBlock: transform_jsx_code_block,
 
 			BlockStatement: transform_block_statement,
 			ReturnStatement: transform_return_statement,
@@ -319,6 +441,7 @@ export function createJsxTransform(platform) {
 				? expanded
 				: apply_lazy_transforms(/** @type {any} */ (expanded), new Map())
 		);
+		lower_remaining_jsx_code_blocks(final_program, transform_context);
 
 		const result = print(/** @type {any} */ (final_program), tsx_with_ts_locations(), {
 			sourceMapSource: filename,
@@ -397,7 +520,7 @@ function collect_css_prunable_elements(value, elements = []) {
 		return elements;
 	}
 
-	if (value.type === 'Element') {
+	if (value.type === 'JSXElement' && value.metadata?.native_tsrx) {
 		if (!is_style_element(value)) {
 			elements.push(value);
 		}
@@ -429,6 +552,12 @@ function build_component_statements(body_nodes, transform_context) {
  * @returns {any[]}
  */
 function build_render_statements(body_nodes, return_null_when_empty, transform_context) {
+	body_nodes = body_nodes.flatMap((node) =>
+		node?.type === 'JSXCodeBlock'
+			? [...node.body, ...(node.render != null ? [node.render] : [])]
+			: [node],
+	);
+
 	const statements = [];
 	const render_nodes = [];
 	let has_terminal_return = false;
@@ -511,7 +640,7 @@ function build_render_statements(body_nodes, return_null_when_empty, transform_c
 		}
 
 		if (
-			child.type === 'ForOfStatement' &&
+			is_for_of_control_node(child) &&
 			!child.await &&
 			should_extract_hook_helpers(transform_context) &&
 			!transform_context.platform.hooks?.isTopLevelSetupCall &&
@@ -522,7 +651,10 @@ function build_render_statements(body_nodes, return_null_when_empty, transform_c
 				true,
 			)
 		) {
-			const hoisted = build_hoisted_for_of_with_hooks(child, transform_context);
+			const hoisted = build_hoisted_for_of_with_hooks(
+				jsx_control_expression_to_statement(child),
+				transform_context,
+			);
 			if (hoisted) {
 				statements.push(...hoisted.hoist_statements);
 				if (interleaved && is_capturable_jsx_child(hoisted.jsx_child)) {
@@ -549,6 +681,7 @@ function build_render_statements(body_nodes, return_null_when_empty, transform_c
 		} else if (is_bare_render_expression(child)) {
 			render_nodes.push(to_jsx_expression_container(child, child));
 		} else {
+			mark_nested_function_return_jsx(child);
 			statements.push(child);
 			collect_statement_bindings(child, transform_context.available_bindings);
 		}
@@ -656,7 +789,7 @@ function find_hook_split_index(body_nodes, transform_context) {
  * @returns {boolean}
  */
 function is_component_body_conditional_return_statement(node) {
-	if (node?.type !== 'IfStatement') {
+	if (!is_if_control_node(node)) {
 		return false;
 	}
 
@@ -691,20 +824,20 @@ function statement_contains_component_body_return(node) {
 		return (node.body || []).some(statement_contains_component_body_return);
 	}
 
-	if (node.type === 'IfStatement') {
+	if (is_if_control_node(node)) {
 		return (
 			statement_contains_component_body_return(node.consequent) ||
 			statement_contains_component_body_return(node.alternate)
 		);
 	}
 
-	if (node.type === 'SwitchStatement') {
+	if (is_switch_control_node(node)) {
 		return (node.cases || []).some((/** @type {any} */ switch_case) =>
 			statement_contains_component_body_return(switch_case.consequent || []),
 		);
 	}
 
-	if (node.type === 'TryStatement') {
+	if (is_try_control_node(node)) {
 		return (
 			statement_contains_component_body_return(node.block) ||
 			statement_contains_component_body_return(node.handler?.body) ||
@@ -997,11 +1130,39 @@ function transform_block_statement(node, { next, visit, state, path }) {
  * @returns {any}
  */
 function transform_return_statement(node, { next, visit, state, path }) {
-	if (get_active_native_tsrx_function(path) && node.argument?.type === 'TsrxFragment') {
+	if (get_active_native_tsrx_function(path) && is_native_tsrx_node(node.argument)) {
 		return visit(create_native_tsrx_render_block(node.argument, state), state);
 	}
 
 	return next() ?? node;
+}
+
+/**
+ * @param {any} node
+ * @param {{ state: TransformContext, path: AST.Node[] }} context
+ * @returns {any}
+ */
+function transform_jsx_code_block(node, { state, path }) {
+	const body_nodes = get_jsx_code_block_body_nodes(node, state);
+	const parent = /** @type {any} */ (path.at(-1));
+
+	if (parent && parent.body === node && is_function_or_class_boundary(parent)) {
+		const block = b.block(
+			mark_native_pretransformed_jsx(build_render_statements(body_nodes, true, state)),
+			node,
+		);
+		block.metadata = {
+			...(block.metadata || {}),
+			native_return_block: true,
+		};
+		return block;
+	}
+
+	const expression = b.call(
+		b.arrow([], b.block(build_render_statements(body_nodes, true, state), node)),
+	);
+
+	return in_jsx_child_context(path) ? to_jsx_expression_container(expression, node) : expression;
 }
 
 /**
@@ -1024,11 +1185,46 @@ function get_active_native_tsrx_function(path) {
  * @returns {any}
  */
 function transform_function(node, context) {
+	// Lower a `@{ … }` function body (JSXCodeBlock) to an ordinary block: the
+	// setup statements followed by `return <render>` when the block produces a
+	// render output. The parser already marks the render JSX as native_tsrx, so
+	// from here it flows through the existing native-component machinery exactly
+	// like the older fenced `{ return <> … </> }` shape.
+	lower_jsx_code_block_function_body(node);
+
 	if (node.metadata?.native_tsrx_function || function_has_native_tsrx_return(node)) {
 		return transform_native_tsrx_function(node, context);
 	}
 
 	return transform_function_with_hook_helpers(node, context);
+}
+
+/**
+ * @param {any} node
+ * @returns {void}
+ */
+function lower_jsx_code_block_function_body(node) {
+	if (node.body?.type !== 'JSXCodeBlock') return;
+
+	const code_block = node.body;
+	const statements = [...code_block.body];
+	if (code_block.render != null) {
+		let render = code_block.render;
+		if (!is_native_tsrx_node(render)) {
+			// A control-flow output (@if/@for/@switch/@try) isn't itself a native
+			// template node, so `return @if (…) { … }` wouldn't be recognized as a
+			// component render output. Wrap it in a native fragment so it flows
+			// through the same children-rendering path as a `<> … </>` render.
+			const fragment = b.jsx_fragment([render]);
+			fragment.metadata = { ...fragment.metadata, native_tsrx: true };
+			render = fragment;
+		}
+		statements.push(b.return(render, code_block.render));
+	}
+	node.body = b.block(statements, code_block);
+	if (node.type === 'ArrowFunctionExpression') {
+		node.expression = false;
+	}
 }
 
 /**
@@ -1061,7 +1257,7 @@ function transform_native_tsrx_function(node, { next, state }) {
 	if (
 		inner !== node &&
 		node.type === 'ArrowFunctionExpression' &&
-		node.body?.type === 'TsrxFragment' &&
+		is_native_tsrx_node(node.body) &&
 		inner.body?.type === 'BlockStatement'
 	) {
 		inner.expression = false;
@@ -1121,6 +1317,10 @@ function find_native_await(node) {
 		return find_first_top_level_await(node.body, false);
 	}
 
+	if (node.body?.type === 'JSXCodeBlock') {
+		return find_native_await_in_list(get_raw_jsx_code_block_body_nodes(node.body));
+	}
+
 	const body = node.body?.type === 'BlockStatement' ? node.body.body || [] : [];
 	return find_native_await_in_list(body);
 }
@@ -1144,7 +1344,7 @@ function find_native_await_in_list(statements) {
 function find_native_await_in_statement(statement) {
 	if (!statement || typeof statement !== 'object') return null;
 
-	if (statement.type === 'ReturnStatement' && statement.argument?.type === 'TsrxFragment') {
+	if (statement.type === 'ReturnStatement' && is_native_tsrx_node(statement.argument)) {
 		return find_first_top_level_await_in_tsrx_function_body(statement.argument.children || []);
 	}
 
@@ -1163,14 +1363,14 @@ function find_native_await_in_statement(statement) {
 		return find_native_await_in_list(statement.body || []);
 	}
 
-	if (statement.type === 'IfStatement') {
+	if (is_if_control_node(statement)) {
 		return (
 			find_native_await_in_statement(statement.consequent) ||
 			find_native_await_in_statement(statement.alternate)
 		);
 	}
 
-	if (statement.type === 'SwitchStatement') {
+	if (is_switch_control_node(statement)) {
 		for (const switch_case of statement.cases || []) {
 			const found = find_native_await_in_list(switch_case.consequent || []);
 			if (found) return found;
@@ -1178,7 +1378,7 @@ function find_native_await_in_statement(statement) {
 		return null;
 	}
 
-	if (statement.type === 'TryStatement') {
+	if (is_try_control_node(statement)) {
 		return (
 			find_native_await_in_statement(statement.block) ||
 			find_native_await_in_statement(statement.handler?.body) ||
@@ -1186,7 +1386,7 @@ function find_native_await_in_statement(statement) {
 		);
 	}
 
-	return null;
+	return find_first_top_level_await(statement, false);
 }
 
 /**
@@ -1239,7 +1439,7 @@ function transform_function_with_hook_helpers(node, { next, state }) {
  * @returns {string}
  */
 function get_function_helper_base_name(node) {
-	return get_function_like_name(node) || 'TsrxFragment';
+	return get_function_like_name(node) || 'TSRXTemplate';
 }
 
 /**
@@ -1318,7 +1518,7 @@ function collect_function_scope_bindings(node) {
 	const bindings = collect_param_bindings(node.params || []);
 	if (node.body?.type === 'BlockStatement') {
 		for (const statement of node.body.body || []) {
-			if (statement.type === 'ReturnStatement' && statement.argument?.type === 'TsrxFragment') {
+			if (statement.type === 'ReturnStatement' && is_native_tsrx_node(statement.argument)) {
 				for (const child of get_tsrx_render_children(statement.argument)) {
 					collect_statement_bindings(child, bindings);
 				}
@@ -1349,6 +1549,10 @@ function merge_binding_maps(outer, inner) {
  */
 function function_has_native_tsrx_return(node) {
 	if (!node) return false;
+
+	if (node.body?.type === 'JSXCodeBlock') {
+		return true;
+	}
 
 	if (node.type === 'ArrowFunctionExpression' && node.body?.type !== 'BlockStatement') {
 		return node_contains_native_tsrx_template(node.body);
@@ -1385,20 +1589,20 @@ function statement_contains_native_tsrx_return(statement) {
 		return statements_contain_native_tsrx_return(statement.body || []);
 	}
 
-	if (statement.type === 'IfStatement') {
+	if (is_if_control_node(statement)) {
 		return (
 			statement_contains_native_tsrx_return(statement.consequent) ||
 			statement_contains_native_tsrx_return(statement.alternate)
 		);
 	}
 
-	if (statement.type === 'SwitchStatement') {
+	if (is_switch_control_node(statement)) {
 		return (statement.cases || []).some((/** @type {any} */ c) =>
 			statements_contain_native_tsrx_return(c.consequent || []),
 		);
 	}
 
-	if (statement.type === 'TryStatement') {
+	if (is_try_control_node(statement)) {
 		return (
 			statement_contains_native_tsrx_return(statement.block) ||
 			statement_contains_native_tsrx_return(statement.pending) ||
@@ -1428,7 +1632,7 @@ function statement_contains_native_tsrx_return(statement) {
  */
 function node_contains_native_tsrx_template(node) {
 	if (!node || typeof node !== 'object') return false;
-	if (node.type === 'Element' || node.type === 'TsrxFragment') return true;
+	if (is_native_tsrx_node(node)) return true;
 
 	if (is_function_or_class_boundary(node)) {
 		return false;
@@ -1619,11 +1823,11 @@ function collect_style_elements(node, styles) {
 		return;
 	}
 
-	if (is_function_or_class_boundary(node) || node.type === 'TsrxFragment') {
+	if (is_function_or_class_boundary(node)) {
 		return;
 	}
 
-	if (node.type === 'Element') {
+	if ((node.type === 'JSXElement' || node.type === 'JSXFragment') && node.metadata?.native_tsrx) {
 		collect_style_elements(node.children || [], styles);
 		return;
 	}
@@ -1633,20 +1837,20 @@ function collect_style_elements(node, styles) {
 		return;
 	}
 
-	if (node.type === 'IfStatement') {
+	if (is_if_control_node(node)) {
 		collect_style_elements(node.consequent, styles);
 		collect_style_elements(node.alternate, styles);
 		return;
 	}
 
-	if (node.type === 'SwitchStatement') {
+	if (is_switch_control_node(node)) {
 		for (const switch_case of node.cases || []) {
 			collect_style_elements(switch_case.consequent || [], styles);
 		}
 		return;
 	}
 
-	if (node.type === 'TryStatement') {
+	if (is_try_control_node(node)) {
 		collect_style_elements(node.block, styles);
 		collect_style_elements(node.handler?.body, styles);
 		collect_style_elements(node.finalizer, styles);
@@ -1698,7 +1902,7 @@ function strip_style_elements(node) {
 		return node;
 	}
 
-	if (node.type === 'Element') {
+	if ((node.type === 'JSXElement' || node.type === 'JSXFragment') && node.metadata?.native_tsrx) {
 		node.children = strip_style_elements(node.children || []);
 		return node;
 	}
@@ -1708,20 +1912,20 @@ function strip_style_elements(node) {
 		return node;
 	}
 
-	if (node.type === 'IfStatement') {
+	if (is_if_control_node(node)) {
 		node.consequent = strip_style_elements(node.consequent);
 		if (node.alternate) node.alternate = strip_style_elements(node.alternate);
 		return node;
 	}
 
-	if (node.type === 'SwitchStatement') {
+	if (is_switch_control_node(node)) {
 		for (const switch_case of node.cases || []) {
 			switch_case.consequent = strip_style_elements(switch_case.consequent || []);
 		}
 		return node;
 	}
 
-	if (node.type === 'TryStatement') {
+	if (is_try_control_node(node)) {
 		node.block = strip_style_elements(node.block);
 		if (node.handler?.body) node.handler.body = strip_style_elements(node.handler.body);
 		if (node.finalizer) node.finalizer = strip_style_elements(node.finalizer);
@@ -1737,8 +1941,7 @@ function strip_style_elements(node) {
 function is_style_expression_position(path) {
 	const parent = path.at(-1);
 	return !(
-		parent?.type === 'Element' ||
-		parent?.type === 'TsrxFragment' ||
+		is_native_tsrx_node(parent) ||
 		parent?.type === 'BlockStatement' ||
 		parent?.type === 'Program' ||
 		parent?.type === 'SwitchCase'
@@ -1793,9 +1996,11 @@ function create_native_tsrx_statement_list_block(block, transform_context) {
 function create_native_tsrx_render_statements(fragment, transform_context) {
 	return with_tsrx_fragment_styles(fragment, transform_context, (style_context) => {
 		const target = style_context?.fragment ?? fragment;
+		const render_nodes =
+			target.type === 'JSXFragment' ? get_tsrx_render_children(target) : [target];
 		return [
 			...create_tsrx_style_ref_setup_statements(target, style_context, transform_context),
-			...build_render_statements(get_tsrx_render_children(target), true, transform_context),
+			...build_render_statements(render_nodes, true, transform_context),
 		];
 	});
 }
@@ -1825,7 +2030,7 @@ function expand_native_tsrx_return_statement_list(statements, transform_context)
 function expand_native_tsrx_return_statement(statement, transform_context) {
 	if (!statement || typeof statement !== 'object') return [statement];
 
-	if (statement.type === 'ReturnStatement' && statement.argument?.type === 'TsrxFragment') {
+	if (statement.type === 'ReturnStatement' && is_native_tsrx_node(statement.argument)) {
 		return create_native_tsrx_render_statements(statement.argument, transform_context);
 	}
 
@@ -1838,7 +2043,7 @@ function expand_native_tsrx_return_statement(statement, transform_context) {
 		return body === statement.body ? [statement] : [b.block(body, statement)];
 	}
 
-	if (statement.type === 'IfStatement') {
+	if (is_if_control_node(statement)) {
 		const consequent = expand_embedded_native_return_statement(
 			statement.consequent,
 			transform_context,
@@ -1852,7 +2057,7 @@ function expand_native_tsrx_return_statement(statement, transform_context) {
 		return [set_loc(b.if(statement.test, consequent, alternate), statement)];
 	}
 
-	if (statement.type === 'SwitchStatement') {
+	if (is_switch_control_node(statement)) {
 		let changed = false;
 		const cases = (statement.cases || []).map((/** @type {any} */ switch_case) => {
 			const consequent = expand_native_tsrx_return_statement_list(
@@ -1868,7 +2073,7 @@ function expand_native_tsrx_return_statement(statement, transform_context) {
 		return changed ? [set_loc(b.switch(statement.discriminant, cases), statement)] : [statement];
 	}
 
-	if (statement.type === 'TryStatement') {
+	if (is_try_control_node(statement)) {
 		const block = expand_embedded_native_return_statement(statement.block, transform_context);
 		const pending = statement.pending
 			? expand_embedded_native_return_statement(statement.pending, transform_context)
@@ -2029,7 +2234,7 @@ function node_contains_hook_bearing_tsrx(node, transform_context) {
 		return node.some((child) => node_contains_hook_bearing_tsrx(child, transform_context));
 	}
 
-	if (node.type === 'TsrxFragment') {
+	if (is_native_tsrx_node(node)) {
 		return body_contains_top_level_hook_call(node.children || [], transform_context, true);
 	}
 
@@ -2076,7 +2281,7 @@ function should_extract_hook_helpers(transform_context) {
  */
 function create_module_scoped_hook_component_id(helper_id, transform_context) {
 	return create_generated_identifier(
-		`${transform_context.helper_state?.base_name || 'TsrxFragment'}__${helper_id.name}`,
+		`${transform_context.helper_state?.base_name || 'TSRXTemplate'}__${helper_id.name}`,
 	);
 }
 
@@ -2295,6 +2500,48 @@ function expand_component_helpers(program) {
 }
 
 /**
+ * Generated helper metadata can be appended after the main transformer walk.
+ * If one of those helpers contains a statement-container body, lower it before
+ * the printer sees the helper subtree.
+ *
+ * @param {any} node
+ * @param {TransformContext} transform_context
+ * @param {Set<any>} [seen]
+ * @returns {void}
+ */
+function lower_remaining_jsx_code_blocks(node, transform_context, seen = new Set()) {
+	if (!node || typeof node !== 'object' || seen.has(node)) return;
+	seen.add(node);
+
+	if (is_function_or_class_boundary(node)) {
+		lower_jsx_code_block_function_body(node);
+	}
+
+	for (const key of Object.keys(node)) {
+		if (key === 'loc' || key === 'start' || key === 'end' || key === 'metadata') continue;
+		let value = node[key];
+		if (!value || typeof value !== 'object') continue;
+
+		if (Array.isArray(value)) {
+			if (key === 'body') {
+				value = node[key] = value.flatMap((child) => {
+					if (child?.type !== 'JSXCodeBlock') return [child];
+					const body_nodes = get_jsx_code_block_body_nodes(child, transform_context);
+					return mark_native_pretransformed_jsx(
+						build_render_statements(body_nodes, true, transform_context),
+					);
+				});
+			}
+			for (const child of value) {
+				lower_remaining_jsx_code_blocks(child, transform_context, seen);
+			}
+		} else {
+			lower_remaining_jsx_code_blocks(value, transform_context, seen);
+		}
+	}
+}
+
+/**
  * Generated helper/statics metadata can be carried on function declarations,
  * variable declarations, object literal members, or export-safe expressions,
  * so helper expansion reads metadata from that broader set.
@@ -2376,11 +2623,7 @@ function create_component_return_statement(
  * @returns {boolean}
  */
 function is_loop_skip_return_statement(node) {
-	return (
-		node?.type === 'ReturnStatement' &&
-		node.argument == null &&
-		node.metadata?.generated_loop_continue_return === true
-	);
+	return node?.type === 'ReturnStatement' && node.metadata?.generated_loop_continue_return === true;
 }
 
 /**
@@ -2396,7 +2639,7 @@ function is_loop_skip_if_statement(node) {
  * @returns {any[] | null}
  */
 function get_loop_skip_if_consequent_body(node) {
-	if (node?.type !== 'IfStatement' || node.alternate) {
+	if (!is_if_control_node(node) || node.alternate) {
 		return null;
 	}
 
@@ -2417,7 +2660,15 @@ function create_component_loop_skip_if_statement(node, render_nodes, transform_c
 	const branch_statements = build_render_statements(consequent_body, true, transform_context);
 	prepend_render_nodes_to_return_statements(branch_statements, render_nodes);
 
-	return set_loc(b.if(node.test, set_loc(b.block(branch_statements), node.consequent), null), node);
+	const statement = set_loc(
+		b.if(node.test, set_loc(b.block(branch_statements), node.consequent), null),
+		node,
+	);
+	statement.metadata = {
+		...(statement.metadata || {}),
+		generated_loop_skip_if: true,
+	};
+	return statement;
 }
 
 /**
@@ -2796,26 +3047,37 @@ function create_helper_props_type_literal_with_typeof_flags(bindings, aliases, u
 /**
  * @param {any} node
  * @param {TransformContext} transform_context
+ * @param {boolean} [in_jsx_child]
  * @returns {any}
  */
-function to_jsx_element(node, transform_context, raw_children = node.children || []) {
-	if (node.type === 'JSXElement') return node;
-	if (!node.id) {
+function to_jsx_element(
+	node,
+	transform_context,
+	raw_children = node.children || [],
+	in_jsx_child = false,
+) {
+	if (node.type === 'JSXElement' && !node.metadata?.native_tsrx && !is_dynamic_jsx_element(node)) {
+		return node;
+	}
+
+	const source_opening = node.openingElement;
+	const source_name = source_opening?.name;
+	if (!source_name) {
 		report_jsx_fragment_in_tsrx_error(node, transform_context);
 		return set_loc(b.jsx_fragment(), node);
 	}
-	if (is_dynamic_element_id(node.id)) {
-		return dynamic_element_to_jsx_child(node, transform_context);
+	if (is_dynamic_jsx_element(node)) {
+		return dynamic_element_to_jsx(node, transform_context, in_jsx_child);
 	}
 
-	const name = identifier_to_jsx_name(node.id);
+	const name = clone_jsx_name(source_name);
 	const attributes = transform_element_attributes_dispatch(
-		node.attributes || [],
+		source_opening.attributes || [],
 		transform_context,
 		node,
 	);
 	const walked_children = node.children || [];
-	let selfClosing = !!node.selfClosing;
+	let selfClosing = !!source_opening.selfClosing;
 	let children;
 	const child_transform = transform_context.platform.hooks?.transformElementChildren?.(
 		node,
@@ -2841,7 +3103,7 @@ function to_jsx_element(node, transform_context, raw_children = node.children ||
 		name,
 		attributes,
 		selfClosing,
-		node.openingElement?.typeArguments,
+		source_opening.typeArguments,
 	);
 	const openingElement = has_unmappable_attribute
 		? opening_element_node
@@ -3115,7 +3377,13 @@ function collect_block_binding_names_from_statement(statement, names) {
 		return;
 	}
 
-	if (statement.type === 'ForOfStatement' || statement.type === 'ForInStatement') {
+	if (
+		statement.type === 'ForOfStatement' ||
+		statement.type === 'ForInStatement' ||
+		(statement.type === 'JSXForExpression' &&
+			(statement.statementType === 'ForOfStatement' ||
+				statement.statementType === 'ForInStatement'))
+	) {
 		if (statement.left?.type === 'VariableDeclaration' && statement.left.kind === 'var') {
 			for (const declaration of statement.left.declarations || []) {
 				collect_pattern_names(declaration.id, names);
@@ -3276,7 +3544,7 @@ function validate_hook_outer_assignments_in_node(
 		}
 	}
 
-	if (node.type === 'ForOfStatement') {
+	if (is_for_of_control_node(node)) {
 		if (
 			node.left &&
 			node.left.type !== 'VariableDeclaration' &&
@@ -3709,9 +3977,7 @@ function get_hook_callee_name(callee) {
  * @param {any} source_node
  * @param {TransformContext} transform_context
  * @param {AST.Identifier} [preallocated_helper_id] - Optional pre-allocated id.
- *   Used by the switch lift's chained-call build, which allocates ids in
- *   source order in a forward pass and then constructs helpers in reverse so
- *   each fall-through case can reference the next case's component element.
+ *   Used by switch lifting to keep generated helper ids stable in source order.
  * @param {{ transientBindings?: Set<string> }} [options]
  * @returns {{ setup_statements: any[], component_element: ESTreeJSX.JSXElement }}
  */
@@ -3992,37 +4258,174 @@ function get_body_source_node(body_nodes) {
 
 /**
  * @param {any} node
+ * @returns {any}
+ */
+function jsx_control_expression_to_statement(node) {
+	if (!node?.statementType) return node;
+	return { ...node, type: node.statementType };
+}
+
+/**
+ * @param {any} node
+ * @param {TransformContext} transform_context
+ * @returns {any[]}
+ */
+function get_jsx_code_block_body_nodes(node, transform_context) {
+	if (!node.render) {
+		return node.body || [];
+	}
+
+	if (is_native_tsrx_node(node.render)) {
+		const style_context = prepare_tsrx_fragment_styles(node.render, transform_context);
+		const render = style_context?.fragment ?? node.render;
+		return [
+			...(node.body || []),
+			...create_tsrx_style_ref_setup_statements(render, style_context, transform_context),
+			render,
+		];
+	}
+
+	return [...(node.body || []), node.render];
+}
+
+/**
+ * @param {any} node
+ * @returns {any[]}
+ */
+function get_raw_jsx_code_block_body_nodes(node) {
+	return [...(node.body || []), ...(node.render ? [node.render] : [])];
+}
+
+/**
+ * @param {any} node
+ * @returns {boolean}
+ */
+function is_native_tsrx_node(node) {
+	return (
+		node?.type === 'JSXCodeBlock' ||
+		((node?.type === 'JSXElement' ||
+			node?.type === 'JSXFragment' ||
+			node?.type === 'JSXStyleElement') &&
+			node.metadata?.native_tsrx)
+	);
+}
+
+/**
+ * @param {any} node
+ * @returns {boolean}
+ */
+function is_dynamic_jsx_element(node) {
+	return !!(
+		node?.type === 'JSXElement' &&
+		(node.dynamic === true ||
+			node.openingElement?.dynamic === true ||
+			is_dynamic_jsx_name(node.openingElement?.name))
+	);
+}
+
+/**
+ * @param {any} name
+ * @returns {boolean}
+ */
+function is_dynamic_jsx_name(name) {
+	if (!name || typeof name !== 'object') return false;
+	if (name.dynamic === true) return true;
+	return name.type === 'JSXMemberExpression' && is_dynamic_jsx_name(name.object);
+}
+
+/**
+ * @param {any} node
+ * @returns {boolean}
+ */
+function is_if_control_node(node) {
+	return node?.type === 'IfStatement' || node?.type === 'JSXIfExpression';
+}
+
+/**
+ * @param {any} node
+ * @returns {boolean}
+ */
+function is_switch_control_node(node) {
+	return node?.type === 'SwitchStatement' || node?.type === 'JSXSwitchExpression';
+}
+
+/**
+ * @param {any} node
+ * @returns {boolean}
+ */
+function is_try_control_node(node) {
+	return node?.type === 'TryStatement' || node?.type === 'JSXTryExpression';
+}
+
+/**
+ * @param {any} node
+ * @returns {boolean}
+ */
+function is_for_of_control_node(node) {
+	return (
+		node?.type === 'ForOfStatement' ||
+		(node?.type === 'JSXForExpression' && node.statementType === 'ForOfStatement')
+	);
+}
+
+/**
+ * @param {any} node
  * @param {TransformContext} transform_context
  * @returns {any}
  */
 function to_jsx_child(node, transform_context) {
 	if (!node) return node;
 	switch (node.type) {
-		case 'TsrxFragment':
-			return tsrx_node_to_jsx_expression(node, transform_context, true);
-		case 'Element':
-			return to_jsx_element(node, transform_context);
-		case 'Text':
-			return to_jsx_expression_container(to_text_expression(node.expression, node), node);
-		case 'TSRXExpression':
-			return to_jsx_expression_container(node.expression, node);
+		case 'JSXElement':
+			if (is_native_tsrx_node(node)) {
+				return to_jsx_element(node, transform_context, node.children || [], true);
+			}
+			if (is_dynamic_jsx_element(node)) {
+				return dynamic_element_to_jsx(node, transform_context, true);
+			}
+			return node;
+		case 'JSXFragment':
+			if (is_native_tsrx_node(node)) {
+				return tsrx_node_to_jsx_expression(node, transform_context, true);
+			}
+			return node;
+		case 'JSXIfExpression':
 		case 'IfStatement':
+			if (node.metadata?.generated_loop_skip_if) {
+				return node;
+			}
 			return (
 				transform_context.platform.hooks?.controlFlow?.ifStatement ?? if_statement_to_jsx_child
-			)(node, transform_context);
+			)(jsx_control_expression_to_statement(node), transform_context);
+		case 'JSXForExpression':
+			if (node.statementType !== 'ForOfStatement') {
+				error(
+					'TSRX `@for` currently supports `for...of` loops in template output.',
+					transform_context.filename,
+					node,
+					transform_context.errors,
+					transform_context.comments,
+				);
+				return to_jsx_expression_container(create_null_literal(), node);
+			}
+			return (
+				transform_context.platform.hooks?.controlFlow?.forOf ?? for_of_statement_to_jsx_child
+			)(jsx_control_expression_to_statement(node), transform_context);
 		case 'ForOfStatement':
 			return (
 				transform_context.platform.hooks?.controlFlow?.forOf ?? for_of_statement_to_jsx_child
 			)(node, transform_context);
+		case 'JSXSwitchExpression':
 		case 'SwitchStatement':
 			return (
 				transform_context.platform.hooks?.controlFlow?.switchStatement ??
 				switch_statement_to_jsx_child
-			)(node, transform_context);
+			)(jsx_control_expression_to_statement(node), transform_context);
+		case 'JSXTryExpression':
 		case 'TryStatement':
 			return (
 				transform_context.platform.hooks?.controlFlow?.tryStatement ?? try_statement_to_jsx_child
-			)(node, transform_context);
+			)(jsx_control_expression_to_statement(node), transform_context);
 		default:
 			return node;
 	}
@@ -4031,7 +4434,7 @@ function to_jsx_child(node, transform_context) {
 /**
  * Lower a native TSRX fragment body to a JSX expression.
  * Children have already been parsed and transformed through the normal TSRX
- * Element/Text/control-flow visitors.
+ * JSX element/text/control-flow visitors.
  *
  * @param {any} node
  * @param {TransformContext} transform_context
@@ -4114,7 +4517,7 @@ function return_value_statement_to_expression(node, transform_context) {
 		return node.argument;
 	}
 
-	if (node?.type === 'IfStatement') {
+	if (is_if_control_node(node)) {
 		return return_value_if_statement_to_conditional_expression(node, transform_context);
 	}
 
@@ -4208,7 +4611,7 @@ function return_value_block_to_expression(node, transform_context) {
  * @returns {any | null}
  */
 function return_value_if_statement_to_conditional_expression(node, transform_context) {
-	if (!node || node.type !== 'IfStatement') return null;
+	if (!is_if_control_node(node)) return null;
 
 	const consequent = return_value_block_to_expression(node.consequent, transform_context);
 	if (!consequent) return null;
@@ -4248,14 +4651,14 @@ function if_statement_to_jsx_child(node, transform_context) {
  * @returns {any | null}
  */
 function render_if_statement_to_conditional_expression(node) {
-	if (!node || node.type !== 'IfStatement') return null;
+	if (!is_if_control_node(node)) return null;
 
 	const consequent = block_statement_to_return_expression(node.consequent);
 	if (!consequent) return null;
 
 	let alternate = create_null_literal();
 	if (node.alternate) {
-		if (node.alternate.type === 'IfStatement') {
+		if (is_if_control_node(node.alternate)) {
 			alternate = render_if_statement_to_conditional_expression(node.alternate);
 			if (!alternate) return null;
 		} else {
@@ -4292,25 +4695,11 @@ function block_statement_to_return_expression(block) {
 /**
  * Find the first `key` attribute expression in the top-level elements of a body.
  * Used to propagate keys from loop body elements to wrapper components.
- * Works on both pre-transform (Ripple Element) and post-transform (JSXElement) nodes.
- *
  * @param {any[]} body_nodes
  * @returns {any | undefined}
  */
 function find_key_expression_in_body(body_nodes) {
 	for (const node of body_nodes) {
-		// Pre-transform: Ripple Element node
-		if (node.type === 'Element') {
-			for (const attr of node.attributes || []) {
-				if (attr.type === 'Attribute') {
-					const attr_name = typeof attr.name === 'string' ? attr.name : attr.name?.name;
-					if (attr_name === 'key') {
-						return attr.value?.expression ?? attr.value;
-					}
-				}
-			}
-		}
-		// Post-transform: JSXElement node
 		if (node.type === 'JSXElement') {
 			for (const attr of node.openingElement?.attributes || []) {
 				if (
@@ -4335,7 +4724,7 @@ function find_key_expression_in_body(body_nodes) {
  * @returns {any}
  */
 function continue_to_bare_return(source_node) {
-	const node = set_loc(b.return(null), source_node);
+	const node = set_loc(b.return(create_null_literal()), source_node);
 	node.metadata = {
 		...(node.metadata || {}),
 		generated_loop_continue_return: true,
@@ -4345,8 +4734,9 @@ function continue_to_bare_return(source_node) {
 
 /**
  * `continue` in a component `for...of` body means "skip this item". JSX targets
- * lower `for...of` to callbacks, so a raw ContinueStatement would be invalid JS;
- * a bare `return` from the callback preserves the item-skip behavior.
+ * lower `for...of` to callbacks, so a raw ContinueStatement would be invalid JS.
+ * Returning null from the callback preserves the item-skip behavior while still
+ * producing an explicit "render nothing" value for JSX runtimes.
  *
  * @param {any[] | any} node
  * @param {boolean} [is_root]
@@ -4354,7 +4744,9 @@ function continue_to_bare_return(source_node) {
  */
 export function rewrite_loop_continues_to_bare_returns(node, is_root = true) {
 	if (Array.isArray(node)) {
-		return node.map((child) => rewrite_loop_continues_to_bare_returns(child, false));
+		return node.map((child) =>
+			rewrite_loop_continues_to_bare_returns(child, is_root && !is_loop_statement(child)),
+		);
 	}
 
 	if (!node || typeof node !== 'object') {
@@ -4380,14 +4772,156 @@ export function rewrite_loop_continues_to_bare_returns(node, is_root = true) {
 }
 
 /**
+ * @param {any[] | any} node
+ * @param {TransformContext} transform_context
+ * @param {boolean} [is_root]
+ */
+function validate_for_body_control_flow(node, transform_context, is_root = true) {
+	if (Array.isArray(node)) {
+		for (const child of node) {
+			validate_for_body_control_flow(
+				child,
+				transform_context,
+				is_root && !is_loop_statement(child),
+			);
+		}
+		return;
+	}
+
+	if (!node || typeof node !== 'object') {
+		return;
+	}
+
+	if (is_template_if_node(node)) {
+		return;
+	}
+
+	if (node.type === 'ReturnStatement') {
+		error(
+			TSRX_FOR_RETURN_ERROR,
+			transform_context.filename,
+			node,
+			transform_context.errors,
+			transform_context.comments,
+		);
+		return;
+	}
+	if (node.type === 'BreakStatement') {
+		error(
+			TSRX_FOR_BREAK_ERROR,
+			transform_context.filename,
+			node,
+			transform_context.errors,
+			transform_context.comments,
+		);
+		return;
+	}
+	if (node.type === 'ContinueStatement') {
+		error(
+			TSRX_FOR_CONTINUE_ERROR,
+			transform_context.filename,
+			node,
+			transform_context.errors,
+			transform_context.comments,
+		);
+		return;
+	}
+
+	if (is_function_or_class_boundary(node) || (!is_root && is_loop_statement(node))) {
+		return;
+	}
+
+	for (const key of Object.keys(node)) {
+		if (key === 'loc' || key === 'start' || key === 'end' || key === 'metadata') {
+			continue;
+		}
+		validate_for_body_control_flow(node[key], transform_context, false);
+	}
+}
+
+/**
+ * @param {any[] | any} node
+ * @param {TransformContext} transform_context
+ */
+function validate_if_body_control_flow(node, transform_context) {
+	if (Array.isArray(node)) {
+		for (const child of node) {
+			validate_if_body_control_flow(child, transform_context);
+		}
+		return;
+	}
+
+	if (!node || typeof node !== 'object') {
+		return;
+	}
+
+	if (node.type === 'ReturnStatement') {
+		error(
+			TSRX_IF_RETURN_ERROR,
+			transform_context.filename,
+			node,
+			transform_context.errors,
+			transform_context.comments,
+		);
+		return;
+	}
+	if (node.type === 'BreakStatement') {
+		error(
+			TSRX_IF_BREAK_ERROR,
+			transform_context.filename,
+			node,
+			transform_context.errors,
+			transform_context.comments,
+		);
+		return;
+	}
+	if (node.type === 'ContinueStatement') {
+		error(
+			TSRX_IF_CONTINUE_ERROR,
+			transform_context.filename,
+			node,
+			transform_context.errors,
+			transform_context.comments,
+		);
+		return;
+	}
+
+	if (is_function_or_class_boundary(node)) {
+		return;
+	}
+
+	for (const key of Object.keys(node)) {
+		if (key === 'loc' || key === 'start' || key === 'end' || key === 'metadata') {
+			continue;
+		}
+		validate_if_body_control_flow(node[key], transform_context);
+	}
+}
+
+/**
+ * @param {any} node
+ * @returns {boolean}
+ */
+function is_template_if_node(node) {
+	return (
+		node?.type === 'JSXIfExpression' ||
+		node?.metadata?.tsrxDirective === 'if' ||
+		(node?.type === 'IfStatement' && node?.statementType === 'IfStatement')
+	);
+}
+
+/**
  * @param {any} node
  * @returns {boolean}
  */
 function is_loop_statement(node) {
 	return (
 		node?.type === 'ForOfStatement' ||
+		(node?.type === 'JSXForExpression' && node.statementType === 'ForOfStatement') ||
 		node?.type === 'ForStatement' ||
+		(node?.type === 'JSXForExpression' && node.statementType === 'ForStatement') ||
 		node?.type === 'ForInStatement' ||
+		(node?.type === 'JSXForExpression' && node.statementType === 'ForInStatement') ||
 		node?.type === 'WhileStatement' ||
 		node?.type === 'DoWhileStatement'
 	);
@@ -4411,10 +4945,9 @@ function for_of_statement_to_jsx_child(node, transform_context) {
 
 	const loop_params = get_for_of_iteration_params(node.left, node.index);
 	const loop_body = /** @type {any[]} */ (
-		rewrite_loop_continues_to_bare_returns(
-			node.body.type === 'BlockStatement' ? node.body.body : [node.body],
-		)
+		node.body.type === 'BlockStatement' ? node.body.body : [node.body]
 	);
+	validate_for_body_control_flow(loop_body, transform_context);
 	const has_hooks =
 		should_extract_hook_helpers(transform_context) &&
 		body_contains_top_level_hook_call(loop_body, transform_context, true);
@@ -4469,17 +5002,49 @@ function for_of_statement_to_jsx_child(node, transform_context) {
 	transform_context.available_bindings = saved_bindings;
 
 	const iter_callback = b.arrow(loop_params, b.block(body_statements));
+	const empty_fallback = node.empty
+		? b.call(
+				b.arrow(
+					[],
+					b.block(
+						build_render_statements(
+							node.empty.type === 'BlockStatement' ? node.empty.body : [node.empty],
+							true,
+							transform_context,
+						),
+					),
+					false,
+					undefined,
+					node.empty,
+				),
+			)
+		: null;
 
 	if (transform_context.platform.imports.forOfIterableHelper) {
 		transform_context.needs_for_of_iterable = true;
+		const args = [node.right, iter_callback];
+		if (empty_fallback) {
+			args.push(b.literal(null), b.arrow([], empty_fallback));
+		}
+		return to_jsx_expression_container(b.call(b.id(MAP_ITERABLE_INTERNAL_NAME), ...args));
+	}
+
+	const map_call = b.call(b.member(node.right, create_generated_identifier('map')), iter_callback);
+	if (empty_fallback) {
 		return to_jsx_expression_container(
-			b.call(b.id(MAP_ITERABLE_INTERNAL_NAME), node.right, iter_callback),
+			b.conditional(
+				b.binary(
+					'===',
+					b.member(clone_expression_node(node.right), create_generated_identifier('length')),
+					b.literal(0),
+				),
+				empty_fallback,
+				map_call,
+			),
 		);
 	}
 
-	return to_jsx_expression_container(
-		b.call(b.member(node.right, create_generated_identifier('map')), iter_callback),
-	);
+	return to_jsx_expression_container(map_call);
 }
 
 /**
@@ -4489,25 +5054,6 @@ function for_of_statement_to_jsx_child(node, transform_context) {
  */
 function apply_key_to_loop_body(body_nodes, key_expression) {
 	for (const node of body_nodes) {
-		if (node.type === 'Element') {
-			const attributes = node.attributes || (node.attributes = []);
-			const has_key = attributes.some((/** @type {any} */ attr) => {
-				const attr_name = typeof attr.name === 'string' ? attr.name : attr.name?.name;
-				return attr_name === 'key';
-			});
-
-			if (!has_key) {
-				attributes.push({
-					type: 'Attribute',
-					name: b.id('key'),
-					value: clone_expression_node(key_expression),
-					shorthand: false,
-					metadata: { path: [] },
-				});
-			}
-			return;
-		}
-
 		if (node.type === 'JSXElement') {
 			const attributes = node.openingElement?.attributes || [];
 			const has_key = attributes.some(
@@ -4537,7 +5083,7 @@ function apply_key_to_loop_body(body_nodes, key_expression) {
 function should_apply_key_to_loop_body(body_nodes) {
 	let keyable_children = 0;
 	for (const node of body_nodes) {
-		if (node.type === 'Element' || node.type === 'JSXElement') {
+		if (node.type === 'JSXElement') {
 			keyable_children += 1;
 		}
 	}
@@ -4627,11 +5173,11 @@ function switch_statement_to_jsx_child(node, transform_context) {
 }
 
 /**
- * Transform a `try { ... } pending { ... } catch (err, reset) { ... }` block
+ * Transform an `@try { ... } @pending { ... } @catch (err, reset) { ... }` block
  * into React `<TsrxErrorBoundary>` and/or `<Suspense>` JSX elements.
  *
- * - `pending` → `<Suspense fallback={...}>`
- * - `catch` → `<TsrxErrorBoundary fallback={(err, reset) => ...}>`
+ * - `@pending` → `<Suspense fallback={...}>`
+ * - `@catch` → `<TsrxErrorBoundary fallback={(err, reset) => ...}>`
  * - both → ErrorBoundary wraps Suspense
  * - JavaScript `try/finally` is not part of component template control flow
  *
@@ -4673,30 +5219,6 @@ function try_statement_to_jsx_child(node, transform_context) {
 			transform_context.errors,
 			transform_context.comments,
 		);
-	}
-
-	// Validate that try body contains JSX if pending block is present
-	if (pending) {
-		const try_body = node.block.body || [];
-		if (!try_body.some(is_jsx_child)) {
-			error(
-				'TSRX try statements must contain a template in their main body. Move the try statement into a function if it does not render anything.',
-				transform_context.filename,
-				node.block,
-				transform_context.errors,
-				transform_context.comments,
-			);
-		}
-		const pending_body = pending.body || [];
-		if (pending_body.length > 0 && !pending_body.some(is_jsx_child)) {
-			error(
-				'TSRX try statements must contain a template in their "pending" body. Rendering a pending fallback is required to have a template.',
-				transform_context.filename,
-				pending,
-				transform_context.errors,
-				transform_context.comments,
-			);
-		}
 	}
 
 	// Build the try body content as JSX children
@@ -4851,8 +5373,8 @@ function create_jsx_element(tag_name, attributes, children) {
 
 /**
  * Inject runtime-helper import declarations the transform decided it needed
- * during the walk: `Suspense` for `try { ... } pending { ... }`,
- * `TsrxErrorBoundary` for `try { ... } catch (...)`, and `mergeRefs` for
+ * during the walk: `Suspense` for `@try { ... } @pending { ... }`,
+ * `TsrxErrorBoundary` for `@try { ... } @catch (...)`, and `mergeRefs` for
  * elements with multiple `ref` attributes under the `'merge-refs'`
  * strategy. Import sources are platform-specific.
  *
@@ -4966,16 +5488,22 @@ function add_ref_import_specifier(imports, source, specifier) {
 function create_render_if_statement(node, transform_context) {
 	const consequent_body =
 		node.consequent.type === 'BlockStatement' ? node.consequent.body : [node.consequent];
+	if (is_template_if_node(node)) {
+		validate_if_body_control_flow(consequent_body, transform_context);
+	}
 	const consequent_has_hooks =
 		should_extract_hook_helpers(transform_context) &&
 		body_contains_top_level_hook_call(consequent_body, transform_context, true);
 
 	let alternate = null;
 	if (node.alternate) {
-		if (node.alternate.type === 'IfStatement') {
+		if (is_if_control_node(node.alternate)) {
 			alternate = create_render_if_statement(node.alternate, transform_context);
 		} else {
 			const alternate_body = node.alternate.body || [node.alternate];
+			if (is_template_if_node(node)) {
+				validate_if_body_control_flow(alternate_body, transform_context);
+			}
 			const alternate_has_hooks =
 				should_extract_hook_helpers(transform_context) &&
 				body_contains_top_level_hook_call(alternate_body, transform_context, true);
@@ -5012,9 +5540,8 @@ function create_render_if_statement(node, transform_context) {
  * case body needs to be hoisted into its own helper component or can stay
  * inline.
  *
- * `own_body` is everything in the case's `consequent` up to (and including for
- * `return <expr>`, excluding for `break` / bare `return;`) the first
- * terminator. `has_terminator` records whether such a terminator was seen.
+ * `own_body` is the case's isolated consequent. JSX `@switch` cases do not
+ * fall through, so `break` is not part of the template switch model.
  *
  * @param {any[]} consequent
  * @returns {{ own_body: any[], has_terminator: boolean }}
@@ -5023,10 +5550,6 @@ function summarize_switch_case_body(consequent) {
 	const own_body = [];
 	let has_terminator = false;
 	for (const child of consequent) {
-		if (child.type === 'BreakStatement') {
-			has_terminator = true;
-			break;
-		}
 		if (child.type === 'ReturnStatement' && child.argument == null) {
 			has_terminator = true;
 			break;
@@ -5059,11 +5582,10 @@ export function clone_switch_helper_invocation(helper) {
 
 /**
  * Plan the switch lift: decide which case bodies to hoist into their own
- * helper components, build them in reverse so each helper can chain into the
- * next, and return everything callers need to construct a target-specific
- * switch shape (a JS `switch` for React/Preact/Vue or `<Switch>/<Match>` for
- * Solid). Centralizes the lift bookkeeping so both consumers see the same
- * hook-detection rules, duplication analysis, and helper-id numbering.
+ * helper components and return everything callers need to construct a
+ * target-specific switch shape (a JS `switch` for React/Preact/Vue or
+ * `<Switch>/<Match>` for Solid). JSX `@switch` cases are isolated and do not
+ * fall through.
  *
  * Returned helpers — when non-null — are already constructed via
  * `create_hook_safe_helper`, which is the same path hook-bearing case bodies
@@ -5077,7 +5599,6 @@ export function clone_switch_helper_invocation(helper) {
  * @returns {{
  *   case_info: Array<{ own_body: any[], has_terminator: boolean }>,
  *   case_helpers: Array<{ setup_statements: any[], component_element: ESTreeJSX.JSXElement } | null>,
- *   find_next_helper_after: (from_index: number) => { component_element: ESTreeJSX.JSXElement } | null,
  *   setup_statements: any[],
  * }}
  */
@@ -5087,22 +5608,15 @@ export function plan_switch_lift(switch_node, transform_context) {
 		return summarize_switch_case_body(consequent);
 	});
 
-	// A case body needs to be lifted iff (a) it would render in more than one
-	// arm after fall-through expansion, or (b) it contains hooks (which always
-	// went through the lift pipeline before this change). Duplication happens
-	// exactly when the previous case has no terminator — that's the only way
-	// an earlier arm can reach this body via JS fall-through semantics.
+	// A case body needs to be lifted iff it contains hooks. Cases are isolated,
+	// so downstream case bodies are never duplicated into earlier arms.
 	const needs_helper = case_info.map(
-		(/** @type {{ own_body: any[], has_terminator: boolean }} */ info, /** @type {number} */ k) => {
+		(/** @type {{ own_body: any[], has_terminator: boolean }} */ info) => {
 			if (info.own_body.length === 0) return false;
-			if (
+			return (
 				should_extract_hook_helpers(transform_context) &&
 				body_contains_top_level_hook_call(info.own_body, transform_context, true)
-			) {
-				return true;
-			}
-			if (k === 0) return false;
-			return !case_info[k - 1].has_terminator;
+			);
 		},
 	);
 
@@ -5119,37 +5633,12 @@ export function plan_switch_lift(switch_node, transform_context) {
 	/** @type {Array<{ setup_statements: any[], component_element: ESTreeJSX.JSXElement } | null>} */
 	const case_helpers = new Array(switch_node.cases.length).fill(null);
 
-	/**
-	 * Find the next downstream helper this arm chains into when it has no
-	 * terminator: scan forward past any empty cases until we hit either a
-	 * helper-bearing case or a case whose body has a terminator (which stops
-	 * the chain — JS would have `break`/`return`ed out at that point).
-	 *
-	 * @param {number} from_index
-	 * @returns {{ component_element: ESTreeJSX.JSXElement } | null}
-	 */
-	function find_next_helper_after(from_index) {
-		for (let j = from_index + 1; j < switch_node.cases.length; j++) {
-			if (case_helpers[j]) return case_helpers[j];
-			if (case_info[j].has_terminator) return null;
-		}
-		return null;
-	}
-
 	for (let i = switch_node.cases.length - 1; i >= 0; i--) {
 		if (!needs_helper[i]) continue;
-		const { own_body, has_terminator } = case_info[i];
-
-		let helper_body = own_body;
-		if (!has_terminator) {
-			const next_helper = find_next_helper_after(i);
-			if (next_helper) {
-				helper_body = [...own_body, clone_switch_helper_invocation(next_helper)];
-			}
-		}
+		const { own_body } = case_info[i];
 
 		case_helpers[i] = create_hook_safe_helper(
-			helper_body,
+			own_body,
 			undefined,
 			switch_node.cases[i],
 			transform_context,
@@ -5167,40 +5656,17 @@ export function plan_switch_lift(switch_node, transform_context) {
 	return {
 		case_info,
 		case_helpers,
-		find_next_helper_after,
 		setup_statements,
 	};
 }
 
 /**
- * Switch lift for fall-through deduplication. Reuses the same `create_hook_safe_helper`
- * pipeline as hook-bearing case bodies: every case whose body would otherwise
- * appear in 2+ arms (because the previous case had no `break` / `return`) is
- * hoisted into its own helper component, and each upstream arm references the
- * next helper at the end of its own body to materialize JS fall-through at
- * render time. Cases whose bodies live in exactly one arm stay inline so the
- * common (break-terminated) shape compiles to the same simple switch as before
- * the lift was introduced.
- *
- * The chain pattern:
- *   helper_idle  = () => <><Online/><Helper_active/></>
- *   helper_active = () => <><Away/><Helper_offline/></>
- *   helper_offline = () => <Offline/>
- *
- *   case "idle":    return <Helper_idle/>
- *   case "active":  return <Helper_active/>
- *   case "offline": return <Helper_offline/>
- *
- * Each case body appears exactly once in the generated module — matching how
- * we already handle hook-bearing case bodies — which keeps the bundle from
- * growing quadratically in case count and means editor mappings are 1:1.
- *
  * @param {any} switch_node
  * @param {TransformContext} transform_context
  * @returns {{ setup_statements: any[], switch_statement: any }}
  */
 function build_switch_with_lift(switch_node, transform_context) {
-	const { case_info, case_helpers, find_next_helper_after, setup_statements } = plan_switch_lift(
+	const { case_info, case_helpers, setup_statements } = plan_switch_lift(
 		switch_node,
 		transform_context,
 	);
@@ -5220,10 +5686,10 @@ function build_switch_with_lift(switch_node, transform_context) {
 			const { own_body, has_terminator } = case_info[i];
 
 			if (own_body.length === 0 && !has_terminator) {
-				// Alias-pattern empty case (`case 'a': case 'b': ...`) — keep
-				// the arm body empty so JS falls through to the next case at
-				// runtime, where the helper invocation actually lives.
-				return set_loc(b.switch_case(original_case.test, []), original_case);
+				return set_loc(
+					b.switch_case(original_case.test, [create_null_return_statement()]),
+					original_case,
+				);
 			}
 
 			const case_body = [];
@@ -5250,27 +5716,13 @@ function build_switch_with_lift(switch_node, transform_context) {
 				}
 			}
 
-			if (!has_terminal && !has_terminator) {
-				const next_helper = find_next_helper_after(i);
-				if (next_helper) {
-					render_nodes.push(clone_switch_helper_invocation(next_helper));
-				}
-			}
-
 			if (!has_terminal) {
 				if (render_nodes.length > 0) {
 					case_body.push(create_component_return_statement(render_nodes, original_case));
-				} else if (has_terminator) {
-					// Empty body with explicit `break;` / bare `return;` — keep
-					// a `break` so JS doesn't fall through into the next case
-					// (which may now hold the lifted helper invocation).
-					case_body.push(b.break);
 				} else if (case_body.length > 0) {
-					// Statements-only inline case without terminator. We've
-					// already inlined the downstream chain via the helper
-					// reference above, so emit a `break` to stop the runtime
-					// from re-running downstream statements via JS fall-through.
-					case_body.push(b.break);
+					case_body.push(create_null_return_statement());
+				} else if (has_terminator) {
+					case_body.push(create_null_return_statement());
 				}
 			}
 
@@ -5347,12 +5799,12 @@ function transform_element_attributes_dispatch(attrs, transform_context, element
  * @returns {boolean}
  */
 export function is_component_like_element(element) {
-	const id = element?.id;
-	if (!id) return false;
-	if (id.type === 'Identifier') return /^[A-Z]/.test(id.name);
-	if (id.type === 'JSXIdentifier') return /^[A-Z]/.test(id.name);
-	if (id.type === 'MemberExpression') return true;
-	if (id.type === 'JSXMemberExpression') return true;
+	const name = element?.openingElement?.name;
+	if (!name) return false;
+	if (name.type === 'Identifier') return /^[A-Z]/.test(name.name);
+	if (name.type === 'JSXIdentifier') return /^[A-Z]/.test(name.name);
+	if (name.type === 'MemberExpression') return true;
+	if (name.type === 'JSXMemberExpression') return true;
 	return false;
 }
 
@@ -5516,14 +5968,10 @@ export function validate_at_most_one_ref_attribute(raw_attrs, transform_context)
 	for (const attr of raw_attrs) {
 		if (!attr) continue;
 		const is_ref_attr =
-			(attr.type === 'Attribute' &&
-				attr.name &&
-				attr.name.type === 'Identifier' &&
-				attr.name.name === 'ref') ||
-			(attr.type === 'JSXAttribute' &&
-				attr.name &&
-				attr.name.type === 'JSXIdentifier' &&
-				attr.name.name === 'ref');
+			attr.type === 'JSXAttribute' &&
+			attr.name &&
+			attr.name.type === 'JSXIdentifier' &&
+			attr.name.name === 'ref';
 		if (!is_ref_attr) continue;
 		refs.push(attr.name);
 	}
@@ -5735,8 +6183,6 @@ function infer_ref_namespace(tag_name) {
  * @returns {string | null}
  */
 function get_element_ref_tag_name(element) {
-	const id = element?.id;
-	if (id?.type === 'Identifier') return id.name;
 	const name = element?.name;
 	if (name?.type === 'JSXIdentifier') return name.name;
 	if (element?.openingElement?.name?.type === 'JSXIdentifier') {
@@ -5771,15 +6217,6 @@ export function to_jsx_attribute(attr, transform_context) {
 	}
 	if (attr.type === 'JSXSpreadAttribute') {
 		return attr;
-	}
-	if (attr.type === 'SpreadAttribute') {
-		return set_loc(
-			/** @type {any} */ ({
-				type: 'JSXSpreadAttribute',
-				argument: attr.argument,
-			}),
-			attr,
-		);
 	}
 	// Keep this legacy hook for targets that need React-style DOM attrs. The
 	// current first-party targets preserve authored `class`.
@@ -5832,25 +6269,29 @@ function value_has_unmappable_jsx_loc(value) {
 /**
  * @param {any} node
  * @param {TransformContext} transform_context
- * @returns {ESTreeJSX.JSXExpressionContainer}
+ * @param {boolean} in_jsx_child
+ * @returns {any}
  */
-function dynamic_element_to_jsx_child(node, transform_context) {
-	const dynamic_id = set_loc(create_generated_identifier('DynamicElement'), node.id);
-	const alias_declaration = set_loc(b.const(dynamic_id, clone_expression_node(node.id)), node);
+function dynamic_element_to_jsx(node, transform_context, in_jsx_child) {
+	const source_name = node.openingElement?.name;
+	const dynamic_id = set_loc(create_generated_identifier('DynamicElement'), source_name || node);
+	const alias_declaration = set_loc(
+		b.const(dynamic_id, jsx_name_to_expression(source_name)),
+		source_name || node,
+	);
 	const jsx_element = create_dynamic_jsx_element(dynamic_id, node, transform_context);
 
-	return to_jsx_expression_container(
-		b.call(
-			b.arrow(
-				[],
-				b.block([
-					alias_declaration,
-					b.return(b.conditional(clone_identifier(dynamic_id), jsx_element, create_null_literal())),
-				]),
-			),
+	const expression = b.call(
+		b.arrow(
+			[],
+			b.block([
+				alias_declaration,
+				b.return(b.conditional(clone_identifier(dynamic_id), jsx_element, create_null_literal())),
+			]),
 		),
-		node,
 	);
+
+	return in_jsx_child ? to_jsx_expression_container(expression, node) : set_loc(expression, node);
 }
 
 /**
@@ -5861,11 +6302,11 @@ function dynamic_element_to_jsx_child(node, transform_context) {
  */
 function create_dynamic_jsx_element(dynamic_id, node, transform_context) {
 	const attributes = transform_element_attributes_dispatch(
-		node.attributes || [],
+		node.openingElement?.attributes || [],
 		transform_context,
 		node,
 	);
-	const selfClosing = !!node.selfClosing;
+	const selfClosing = !!node.openingElement?.selfClosing;
 	const children = create_element_children(node.children || [], transform_context);
 	const name = identifier_to_jsx_name(clone_identifier(dynamic_id));
 
@@ -5886,6 +6327,10 @@ function build_return_expression(render_nodes) {
 		const only = render_nodes[0];
 		if (only.type === 'JSXExpressionContainer') {
 			return only.expression;
+		}
+		if (only.type === 'JSXText') {
+			const value = (only.value ?? '').trim();
+			return b.literal(value, JSON.stringify(value), only);
 		}
 		return only;
 	}
