@@ -229,6 +229,9 @@ function to_jsx_child(node, transform_context) {
 				transform_context,
 			);
 		case 'IfStatement':
+			if (!is_solid_render_control(node)) {
+				return node;
+			}
 			return if_statement_to_jsx_child(node, transform_context);
 		case 'JSXForExpression':
 			if (node.statementType !== 'ForOfStatement') {
@@ -246,6 +249,9 @@ function to_jsx_child(node, transform_context) {
 				transform_context,
 			);
 		case 'ForOfStatement':
+			if (!is_solid_render_control(node)) {
+				return node;
+			}
 			return for_of_statement_to_jsx_child(node, transform_context);
 		case 'JSXSwitchExpression':
 			return switch_statement_to_jsx_child(
@@ -253,6 +259,9 @@ function to_jsx_child(node, transform_context) {
 				transform_context,
 			);
 		case 'SwitchStatement':
+			if (!is_solid_render_control(node)) {
+				return node;
+			}
 			return switch_statement_to_jsx_child(node, transform_context);
 		case 'JSXTryExpression':
 			return try_statement_to_jsx_child(
@@ -260,6 +269,9 @@ function to_jsx_child(node, transform_context) {
 				transform_context,
 			);
 		case 'TryStatement':
+			if (!is_solid_render_control(node)) {
+				return node;
+			}
 			return try_statement_to_jsx_child(node, transform_context);
 		default:
 			return node;
@@ -369,7 +381,7 @@ function body_to_jsx_child(body_nodes, transform_context) {
 			continue;
 		}
 
-		if (is_jsx_child(child)) {
+		if (is_solid_render_child(child)) {
 			const jsx = to_jsx_child(child, transform_context);
 			statements.push(...extract_jsx_setup_declarations(jsx));
 			if (interleaved && is_capturable_jsx_child(jsx)) {
@@ -471,6 +483,87 @@ function is_template_if_node(node) {
 		node?.metadata?.tsrxDirective === 'if' ||
 		(node?.type === 'IfStatement' && node?.statementType === 'IfStatement')
 	);
+}
+
+/**
+ * @param {any} node
+ * @returns {boolean}
+ */
+function is_template_for_of_node(node) {
+	return (
+		node?.type === 'JSXForExpression' ||
+		node?.metadata?.tsrxDirective === 'for' ||
+		(node?.type === 'ForOfStatement' && node?.statementType === 'ForOfStatement')
+	);
+}
+
+/**
+ * @param {any} node
+ * @returns {boolean}
+ */
+function is_template_switch_node(node) {
+	return (
+		node?.type === 'JSXSwitchExpression' ||
+		node?.metadata?.tsrxDirective === 'switch' ||
+		(node?.type === 'SwitchStatement' && node?.statementType === 'SwitchStatement')
+	);
+}
+
+/**
+ * @param {any} node
+ * @returns {boolean}
+ */
+function is_template_try_node(node) {
+	return (
+		node?.type === 'JSXTryExpression' ||
+		node?.metadata?.tsrxDirective === 'try' ||
+		(node?.type === 'TryStatement' && node?.statementType === 'TryStatement')
+	);
+}
+
+/**
+ * @param {any} node
+ * @returns {boolean}
+ */
+function is_solid_render_control(node) {
+	return (
+		!!node?.metadata?.solid_render_control ||
+		is_template_if_node(node) ||
+		is_template_for_of_node(node) ||
+		is_template_switch_node(node) ||
+		is_template_try_node(node)
+	);
+}
+
+/**
+ * @param {any} node
+ * @returns {boolean}
+ */
+function is_solid_render_child(node) {
+	if (!is_jsx_child(node)) {
+		return false;
+	}
+
+	switch (node.type) {
+		case 'IfStatement':
+		case 'ForOfStatement':
+		case 'SwitchStatement':
+		case 'TryStatement':
+			return is_solid_render_control(node);
+		default:
+			return true;
+	}
+}
+
+/**
+ * @template T
+ * @param {T} node
+ * @returns {T}
+ */
+function mark_solid_render_control(node) {
+	const next = /** @type {any} */ (node);
+	next.metadata = { ...(next.metadata || {}), solid_render_control: true };
+	return node;
 }
 
 /**
@@ -612,7 +705,7 @@ function loop_body_to_callback_statements(body_nodes, transform_context) {
 			continue;
 		}
 
-		if (is_jsx_child(child)) {
+		if (is_solid_render_child(child)) {
 			const jsx = to_jsx_child(child, transform_context);
 			statements.push(...extract_jsx_setup_declarations(jsx));
 			children.push(jsx);
@@ -724,13 +817,13 @@ function is_null_literal(node) {
 
 /**
  * Solid-specific binding of the core `isInterleavedBody` helper with this
- * target's `is_jsx_child` predicate.
+ * target's render-child predicate.
  *
  * @param {any[]} body_nodes
  * @returns {boolean}
  */
 function is_interleaved_body(body_nodes) {
-	return is_interleaved_body_core(body_nodes, is_jsx_child);
+	return is_interleaved_body_core(body_nodes, is_solid_render_child);
 }
 
 /**
@@ -1398,7 +1491,7 @@ function rewrite_early_return_guard_body(body, transform_context) {
 				continue;
 			}
 
-			if (is_jsx_child(child)) {
+			if (is_solid_render_child(child)) {
 				if (get_component_returning_if_info(child) !== null) {
 					jsx_bucket.push(child);
 					continue;
@@ -1497,6 +1590,10 @@ function lower_solid_component_statement_list(statements) {
 			return { nodes: [...nodes, ...return_nodes], terminal: true, changed: true };
 		}
 
+		if (statement?.type === 'ThrowStatement') {
+			return { nodes: [...nodes, statement], terminal: true, changed: true };
+		}
+
 		const rest = statements.slice(index + 1);
 		const lowered = lower_solid_component_control_statement(statement, rest);
 		if (lowered) {
@@ -1556,7 +1653,7 @@ function lower_solid_component_control_statement(statement, rest) {
 		next_for.index = statement.index;
 		next_for.key = statement.key;
 		return {
-			node: set_loc(next_for, statement),
+			node: mark_solid_render_control(set_loc(next_for, statement)),
 			terminal: false,
 		};
 	}
@@ -1583,13 +1680,15 @@ function lower_solid_component_if_statement(node, rest) {
 
 	if (consequent.terminal && alternate?.terminal) {
 		return {
-			node: set_loc(
-				b.if(
-					node.test,
-					b.block(consequent.nodes, node.consequent),
-					b.block(alternate.nodes, node.alternate),
+			node: mark_solid_render_control(
+				set_loc(
+					b.if(
+						node.test,
+						b.block(consequent.nodes, node.consequent),
+						b.block(alternate.nodes, node.alternate),
+					),
+					node,
 				),
-				node,
 			),
 			terminal: true,
 			consumesRest: true,
@@ -1598,13 +1697,15 @@ function lower_solid_component_if_statement(node, rest) {
 
 	if (consequent.terminal) {
 		return {
-			node: set_loc(
-				b.if(
-					node.test,
-					b.block(consequent.nodes, node.consequent),
-					b.block([...(alternate?.nodes || []), ...rest_result.nodes], node.alternate || node),
+			node: mark_solid_render_control(
+				set_loc(
+					b.if(
+						node.test,
+						b.block(consequent.nodes, node.consequent),
+						b.block([...(alternate?.nodes || []), ...rest_result.nodes], node.alternate || node),
+					),
+					node,
 				),
-				node,
 			),
 			terminal: rest_result.terminal || rest.length === 0,
 			consumesRest: true,
@@ -1613,13 +1714,15 @@ function lower_solid_component_if_statement(node, rest) {
 
 	if (alternate?.terminal) {
 		return {
-			node: set_loc(
-				b.if(
-					node.test,
-					b.block([...consequent.nodes, ...rest_result.nodes], node.consequent),
-					b.block(alternate.nodes, node.alternate),
+			node: mark_solid_render_control(
+				set_loc(
+					b.if(
+						node.test,
+						b.block([...consequent.nodes, ...rest_result.nodes], node.consequent),
+						b.block(alternate.nodes, node.alternate),
+					),
+					node,
 				),
-				node,
 			),
 			terminal: rest_result.terminal || rest.length === 0,
 			consumesRest: true,
@@ -1627,13 +1730,15 @@ function lower_solid_component_if_statement(node, rest) {
 	}
 
 	return {
-		node: set_loc(
-			b.if(
-				node.test,
-				b.block(consequent.nodes, node.consequent),
-				node.alternate ? b.block(alternate?.nodes || [], node.alternate) : null,
+		node: mark_solid_render_control(
+			set_loc(
+				b.if(
+					node.test,
+					b.block(consequent.nodes, node.consequent),
+					node.alternate ? b.block(alternate?.nodes || [], node.alternate) : null,
+				),
+				node,
 			),
-			node,
 		),
 		terminal: false,
 	};
@@ -1699,7 +1804,7 @@ function lower_solid_component_switch_statement(node, rest) {
 	}
 
 	return {
-		node: set_loc(b.switch(node.discriminant, cases), node),
+		node: mark_solid_render_control(set_loc(b.switch(node.discriminant, cases), node)),
 		terminal: all_cases_terminal && has_default,
 		consumesRest: consumes_rest,
 	};
@@ -1774,7 +1879,9 @@ function lower_solid_component_try_statement(node, rest) {
 	const finalizer = node.finalizer;
 
 	return {
-		node: set_loc(b.try(b.block(try_body.nodes, node.block), handler, finalizer, pending), node),
+		node: mark_solid_render_control(
+			set_loc(b.try(b.block(try_body.nodes, node.block), handler, finalizer, pending), node),
+		),
 		terminal: try_body.terminal && (!handler || !!catch_body?.terminal),
 	};
 }
@@ -1797,7 +1904,7 @@ function solid_component_body_nodes_to_function_statements(body_nodes, transform
 			continue;
 		}
 
-		if (is_jsx_child(child)) {
+		if (is_solid_render_child(child)) {
 			const jsx = to_jsx_child(child, transform_context);
 			statements.push(...extract_jsx_setup_declarations(jsx));
 			if (interleaved && is_capturable_jsx_child(jsx)) {
@@ -2116,7 +2223,7 @@ function create_element_children(children, transform_context) {
 	// their locals scope to the block, matching the authored intent of
 	// mid-template locals.
 	const has_non_jsx_child = visible_children.some(
-		(/** @type {any} */ child) => child && !is_jsx_child(child),
+		(/** @type {any} */ child) => child && !is_solid_render_child(child),
 	);
 	if (has_non_jsx_child) {
 		const body_jsx = body_to_jsx_child(visible_children, transform_context);

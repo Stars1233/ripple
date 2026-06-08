@@ -126,7 +126,14 @@ export function get_tsrx_component_function_name(node, context) {
  * @returns {boolean}
  */
 export function is_tsrx_component_function(node, context) {
-	return is_native_tsrx_function_node(node) || node?.body?.type === 'JSXCodeBlock';
+	return (
+		is_native_tsrx_function_node(node) ||
+		(!!node &&
+			(node.type === 'FunctionDeclaration' ||
+				node.type === 'FunctionExpression' ||
+				node.type === 'ArrowFunctionExpression') &&
+			node.body?.type === 'JSXCodeBlock')
+	);
 }
 
 /**

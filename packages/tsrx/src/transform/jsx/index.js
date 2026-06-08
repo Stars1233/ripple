@@ -666,7 +666,7 @@ function build_render_statements(body_nodes, return_null_when_empty, transform_c
 					(node) =>
 						!is_loop_skip_return_statement(node) &&
 						!is_loop_skip_if_statement(node) &&
-						!is_jsx_child(node),
+						!is_render_child_node(node),
 				);
 
 				if (!continuation_has_setup_statements) {
@@ -708,7 +708,7 @@ function build_render_statements(body_nodes, return_null_when_empty, transform_c
 		}
 
 		if (
-			is_for_of_control_node(child) &&
+			is_template_for_of_node(child) &&
 			!child.await &&
 			should_extract_hook_helpers(transform_context) &&
 			!transform_context.platform.hooks?.isTopLevelSetupCall &&
@@ -736,7 +736,7 @@ function build_render_statements(body_nodes, return_null_when_empty, transform_c
 			}
 		}
 
-		if (is_jsx_child(child)) {
+		if (is_render_child_node(child)) {
 			const jsx = to_jsx_child(child, transform_context);
 			statements.push(...extract_jsx_setup_declarations(jsx));
 			if (interleaved && is_capturable_jsx_child(jsx)) {
@@ -773,7 +773,7 @@ function build_render_statements(body_nodes, return_null_when_empty, transform_c
  * @returns {boolean}
  */
 function is_interleaved_body(body_nodes) {
-	return is_interleaved_body_core(body_nodes, is_jsx_child);
+	return is_interleaved_body_core(body_nodes, is_render_child_node);
 }
 
 /**
@@ -3287,7 +3287,7 @@ function child_contains_return_semantics(node) {
  * @returns {boolean}
  */
 function is_inline_element_child(node) {
-	return node && is_jsx_child(node);
+	return node && is_render_child_node(node);
 }
 
 /**
@@ -4427,6 +4427,36 @@ function is_if_control_node(node) {
  * @param {any} node
  * @returns {boolean}
  */
+function is_render_child_node(node) {
+	if (!node) return false;
+
+	switch (node.type) {
+		case 'JSXElement':
+		case 'JSXFragment':
+		case 'JSXExpressionContainer':
+		case 'JSXText':
+		case 'JSXIfExpression':
+		case 'JSXForExpression':
+		case 'JSXSwitchExpression':
+		case 'JSXTryExpression':
+			return true;
+		case 'IfStatement':
+			return is_template_if_node(node);
+		case 'ForOfStatement':
+			return is_template_for_of_node(node);
+		case 'SwitchStatement':
+			return is_template_switch_node(node);
+		case 'TryStatement':
+			return is_template_try_node(node);
+		default:
+			return false;
+	}
+}
+
+/**
+ * @param {any} node
+ * @returns {boolean}
+ */
 function is_switch_control_node(node) {
 	return node?.type === 'SwitchStatement' || node?.type === 'JSXSwitchExpression';
 }
@@ -4473,6 +4503,9 @@ function to_jsx_child(node, transform_context) {
 			return node;
 		case 'JSXIfExpression':
 		case 'IfStatement':
+			if (node.type === 'IfStatement' && !is_template_if_node(node)) {
+				return node;
+			}
 			if (node.metadata?.generated_loop_skip_if) {
 				return node;
 			}
@@ -4494,17 +4527,26 @@ function to_jsx_child(node, transform_context) {
 				transform_context.platform.hooks?.controlFlow?.forOf ?? for_of_statement_to_jsx_child
 			)(jsx_control_expression_to_statement(node), transform_context);
 		case 'ForOfStatement':
+			if (!is_template_for_of_node(node)) {
+				return node;
+			}
 			return (
 				transform_context.platform.hooks?.controlFlow?.forOf ?? for_of_statement_to_jsx_child
 			)(node, transform_context);
 		case 'JSXSwitchExpression':
 		case 'SwitchStatement':
+			if (node.type === 'SwitchStatement' && !is_template_switch_node(node)) {
+				return node;
+			}
 			return (
 				transform_context.platform.hooks?.controlFlow?.switchStatement ??
 				switch_statement_to_jsx_child
 			)(jsx_control_expression_to_statement(node), transform_context);
 		case 'JSXTryExpression':
 		case 'TryStatement':
+			if (node.type === 'TryStatement' && !is_template_try_node(node)) {
+				return node;
+			}
 			return (
 				transform_context.platform.hooks?.controlFlow?.tryStatement ?? try_statement_to_jsx_child
 			)(jsx_control_expression_to_statement(node), transform_context);
@@ -4989,6 +5031,42 @@ function is_template_if_node(node) {
 		node?.type === 'JSXIfExpression' ||
 		node?.metadata?.tsrxDirective === 'if' ||
 		(node?.type === 'IfStatement' && node?.statementType === 'IfStatement')
+	);
+}
+
+/**
+ * @param {any} node
+ * @returns {boolean}
+ */
+function is_template_for_of_node(node) {
+	return (
+		node?.type === 'JSXForExpression' ||
+		node?.metadata?.tsrxDirective === 'for' ||
+		(node?.type === 'ForOfStatement' && node?.statementType === 'ForOfStatement')
+	);
+}
+
+/**
+ * @param {any} node
+ * @returns {boolean}
+ */
+function is_template_switch_node(node) {
+	return (
+		node?.type === 'JSXSwitchExpression' ||
+		node?.metadata?.tsrxDirective === 'switch' ||
+		(node?.type === 'SwitchStatement' && node?.statementType === 'SwitchStatement')
+	);
+}
+
+/**
+ * @param {any} node
+ * @returns {boolean}
+ */
+function is_template_try_node(node) {
+	return (
+		node?.type === 'JSXTryExpression' ||
+		node?.metadata?.tsrxDirective === 'try' ||
+		(node?.type === 'TryStatement' && node?.statementType === 'TryStatement')
 	);
 }
 
@@ -5789,7 +5867,7 @@ function build_switch_with_lift(switch_node, transform_context) {
 					has_terminal = true;
 					break;
 				}
-				if (is_jsx_child(child)) {
+				if (is_render_child_node(child)) {
 					render_nodes.push(to_jsx_child(child, transform_context));
 				} else if (is_bare_render_expression(child)) {
 					render_nodes.push(to_jsx_expression_container(child, child));

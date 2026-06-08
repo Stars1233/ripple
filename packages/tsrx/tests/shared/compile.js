@@ -1668,8 +1668,8 @@ export function runSharedCompileTests({
 		it('accepts JSX text in if-else branches', () => {
 			const { code } = compile(
 				`export function App() @{
-					@if (false) {
-						<>Hello Ripple</>
+						@if (false) {
+							<>Hello Ripple</>
 					} @else {
 						<>Hello React</>
 					}
@@ -1682,10 +1682,49 @@ export function runSharedCompileTests({
 			expect(code).not.toContain('return null;');
 		});
 
+		it('keeps plain if blocks in component bodies as setup control flow', () => {
+			const { code } = compile(
+				`export function App(disabled: boolean) @{
+						if (disabled) {
+							<span>disabled</span>
+						}
+
+						<span>enabled</span>
+					}`,
+				'App.tsrx',
+			);
+
+			expect(code).toContain('if (disabled)');
+			expect(code).toContain('<span>disabled</span>');
+			expect(code).toContain('enabled');
+			expect(code).not.toContain('<Show');
+		});
+
+		it('keeps nested plain if blocks in @if bodies as setup control flow', () => {
+			const { code } = compile(
+				`function StatusBadge(status: string, more: boolean) {
+						let a = @if (status === 'active') {
+							if (more) {
+								<b>111</b>
+							} else {
+								<b>222</b>
+							}
+						};
+					}`,
+				'App.tsrx',
+			);
+
+			expect(code).toContain('if (more)');
+			expect(code).toContain('<b>111</b>');
+			expect(code).toContain('<b>222</b>');
+			expect(code).toContain('return null;');
+			expect(code).not.toContain('more ?');
+		});
+
 		it('preserves entities in JSX text children for JSX runtime decoding', () => {
 			const { code } = compile(
 				`export function App() @{
-					<p>a&amp;b&quot;c</p>
+						<p>a&amp;b&quot;c</p>
 				}`,
 				'App.tsrx',
 			);
