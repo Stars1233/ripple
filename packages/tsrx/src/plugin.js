@@ -853,14 +853,22 @@ export function TSRXPlugin(config) {
 				return this.finishNodeAt(node, 'JSXText', index, endLoc);
 			}
 
-			#shouldReadTemplateRawTextToken() {
+			/**
+			 * @param {boolean} [allow_inside_expression_container] When set, do not bail
+			 *   purely because we are inside a `{ … }` expression container. A JSX
+			 *   element nested in a container (e.g. `{<div>   a</div>}`) is still a
+			 *   template-mode element whose text children are raw JSX text; the rest of
+			 *   the directive/comment/boundary checks below still apply, so a directive
+			 *   body (`{<@tag>@if(x){…}</@tag>}`) is correctly excluded.
+			 */
+			#shouldReadTemplateRawTextToken(allow_inside_expression_container = false) {
 				if (
 					this.#closingNativeTemplateNode ||
 					this.#readingJSXControlFlowDirectiveKeyword ||
 					this.#readingJSXControlFlowHeader ||
 					this.#parsingJSXSwitchCaseScriptStatementDepth > 0 ||
 					this.#templateScriptParsingDepth > 0 ||
-					this.#jsxExpressionContainerDepth > 0
+					(!allow_inside_expression_container && this.#jsxExpressionContainerDepth > 0)
 				) {
 					return false;
 				}
@@ -3906,7 +3914,18 @@ export function TSRXPlugin(config) {
 							} else if (ch === CharCode.space || ch === CharCode.tab) {
 								++this.pos;
 							} else {
-								if (this.#shouldReadTemplateRawTextToken()) {
+								// A JSX element nested inside a `{ … }` expression container is
+								// still a template-mode element whose text children are raw JSX
+								// text (e.g. `{<div>   a</div>}`). The default raw-text check bails
+								// for everything inside an expression container, so without the
+								// `allow_inside_expression_container` form the first non-space char
+								// would re-anchor the token start and drop the leading whitespace
+								// this loop already skipped. Keep scanning so the full run —
+								// leading indentation included — is captured, matching the
+								// bare-template path. Directive bodies (`@if`/`@for`/…) inside the
+								// element still fall through to JS tokenization via the other
+								// checks in `#shouldReadTemplateRawTextToken`.
+								if (this.#shouldReadTemplateRawTextToken(true)) {
 									++this.pos;
 									break;
 								}

@@ -172,6 +172,106 @@ describe('TSRX parser', () => {
 		expect(returned.children[1].value).toBe(' ');
 	});
 
+	// Regression: JSX text inside a `{ … }` expression container used to lose its
+	// leading whitespace. A JSX element is parsed two different ways depending on
+	// position — as native template raw text when it is a bare template child, and
+	// through the JSX-expression reader when it is wrapped in `{ … }`. The latter
+	// skipped leading whitespace before anchoring the JSXText token, so
+	// `{<textarea>   a</textarea>}` came back as `a` while the bare
+	// `<textarea>   a</textarea>` kept `   a`. Both paths must capture text identically.
+
+	it('preserves leading whitespace in element text inside an expression container', () => {
+		const returned = getReturned(
+			`function App() {
+				return <>{<textarea>   a</textarea>}</>;
+			}`,
+		);
+
+		const textarea = returned.children[0].expression;
+		expect(textarea.type).toBe('JSXElement');
+		expect(textarea.children.map((child) => child.type)).toEqual(['JSXText']);
+		expect(textarea.children[0].value).toBe('   a');
+	});
+
+	it('captures element text identically for bare and expression-container elements', () => {
+		const bare = findElement(`function App() { <textarea>   a</textarea> }`, 'textarea');
+		const wrapped = findElement(
+			`function App() { return <>{<textarea>   a</textarea>}</>; }`,
+			'textarea',
+		);
+
+		expect(bare.children[0].value).toBe('   a');
+		expect(wrapped.children[0].value).toBe(bare.children[0].value);
+	});
+
+	it('preserves leading newline-indented element text inside an expression container', () => {
+		const textarea = findElement(
+			`function App() {
+				return <>{<textarea>
+    C
+abc
+</textarea>}</>;
+			}`,
+			'textarea',
+		);
+
+		expect(textarea.children.map((child) => child.type)).toEqual(['JSXText']);
+		expect(textarea.children[0].value).toBe('\n    C\nabc\n');
+	});
+
+	it('preserves trailing and interior whitespace in expression-container element text', () => {
+		const div = findElement(`function App() { return <>{<div>a   b   </div>}</>; }`, 'div');
+
+		expect(div.children.map((child) => child.type)).toEqual(['JSXText']);
+		expect(div.children[0].value).toBe('a   b   ');
+	});
+
+	// The same preservation must hold for elements authored with TSRX template
+	// syntax (`function … @{ … }`), both as bare native-template children and when
+	// nested inside a `{ … }` expression container within the template body.
+
+	it('preserves bare element text whitespace inside a TSRX template body', () => {
+		const div = findElement(`function App() @{ <div>   a</div> }`, 'div');
+
+		expect(div.children.map((child) => child.type)).toEqual(['JSXText']);
+		expect(div.children[0].value).toBe('   a');
+	});
+
+	it('preserves expression-container element text whitespace inside a TSRX template body', () => {
+		const span = findElement(`function App() @{ <div>{<span>   x</span>}</div> }`, 'span');
+
+		expect(span.children.map((child) => child.type)).toEqual(['JSXText']);
+		expect(span.children[0].value).toBe('   x');
+	});
+
+	it('preserves element text whitespace inside a TSRX @if block', () => {
+		const textarea = findElement(
+			`function App() @{
+				@if (ok) {
+					<textarea>   a</textarea>
+				}
+			}`,
+			'textarea',
+		);
+
+		expect(textarea.children.map((child) => child.type)).toEqual(['JSXText']);
+		expect(textarea.children[0].value).toBe('   a');
+	});
+
+	it('preserves leading element text whitespace inside a TSRX @for block', () => {
+		const li = findElement(
+			`function App() @{
+				@for (const item of items) {
+					<li>   {item}</li>
+				}
+			}`,
+			'li',
+		);
+
+		expect(li.children.map((child) => child.type)).toEqual(['JSXText', 'JSXExpressionContainer']);
+		expect(li.children[0].value).toBe('   ');
+	});
+
 	it('keeps line comments out of plain JSX fragment output', () => {
 		const ast = parseModule(
 			`export const FeatureCard = () => <>
