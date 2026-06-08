@@ -27,6 +27,21 @@ const FUNCTION_STATEMENT_CONTAINER_BODY_HTML = highlight_tsrx(
 }`,
 );
 
+const TOP_LEVEL_EARLY_RETURN_HTML = highlight_tsrx(
+	`export function AccountPanel({ user }: AccountPanelProps): JSX.Element @{
+  if (!user) {
+    return <a href="/login">Sign in</a>;
+  }
+
+  const displayName = user.name.trim();
+
+  <section>
+    <h2>{displayName}</h2>
+    <p>{user.plan}</p>
+  </section>
+}`,
+);
+
 const CONDITIONAL_HOOKS_HTML = highlight_tsrx(
 	`const DetailsPanel = ({ open }: DetailsPanelProps): JSX.Element => @{
   const [selected, setSelected] = useState('summary');
@@ -334,6 +349,16 @@ export function BlogRethinkingTsrxPage() @{
 						</p>
 						<pre class="code-block">
 							<code innerHTML={FUNCTION_STATEMENT_CONTAINER_BODY_HTML} />
+						</pre>
+						<p>
+							Top-level early returns are permitted when
+							<code>{'@{...}'}</code>
+							is the body of the component function. They behave like ordinary component guard
+							returns: leave early when you need to, otherwise finish the statement container with
+							one final template output.
+						</p>
+						<pre class="code-block">
+							<code innerHTML={TOP_LEVEL_EARLY_RETURN_HTML} />
 						</pre>
 						<h2>JSX control flow</h2>
 						<p>

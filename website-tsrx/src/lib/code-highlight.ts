@@ -59,6 +59,10 @@ type TemplateBlockState = {
 	statement_container?: boolean;
 };
 
+type CommentState = {
+	in_block_comment: boolean;
+};
+
 function escape_html(value: string): string {
 	return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -291,6 +295,7 @@ function highlight_code_line(
 	line: string,
 	initial_jsx_text_depth = 0,
 	template_block_stack: TemplateBlockState[] = [],
+	comment_state: CommentState = { in_block_comment: false },
 ): { html: string; jsx_text_depth: number } {
 	let index = 0;
 	let html = '';
@@ -303,9 +308,35 @@ function highlight_code_line(
 		const next = line[index + 1];
 		const in_jsx_text = jsx_expression_depth === 0 && jsx_text_depth > 0;
 
+		if (comment_state.in_block_comment) {
+			const comment_end = line.indexOf('*/', index);
+			if (comment_end === -1) {
+				html += span('cmt', line.slice(index));
+				break;
+			}
+
+			html += span('cmt', line.slice(index, comment_end + 2));
+			index = comment_end + 2;
+			comment_state.in_block_comment = false;
+			continue;
+		}
+
 		if (char === '/' && next === '/') {
 			html += span('cmt', line.slice(index));
 			break;
+		}
+
+		if (char === '/' && next === '*') {
+			const comment_end = line.indexOf('*/', index + 2);
+			if (comment_end === -1) {
+				html += span('cmt', line.slice(index));
+				comment_state.in_block_comment = true;
+				break;
+			}
+
+			html += span('cmt', line.slice(index, comment_end + 2));
+			index = comment_end + 2;
+			continue;
 		}
 
 		if (in_jsx_text) {
@@ -531,6 +562,7 @@ export function highlight_tsrx(source: string): string {
 	let in_style = false;
 	let jsx_text_depth = 0;
 	const template_block_stack: TemplateBlockState[] = [];
+	const comment_state: CommentState = { in_block_comment: false };
 	const lines = source.split('\n');
 	const width = String(lines.length).length;
 
@@ -543,7 +575,12 @@ export function highlight_tsrx(source: string): string {
 			if (in_style || entering_style) {
 				html = highlight_css_line(line);
 			} else {
-				const highlighted = highlight_code_line(line, jsx_text_depth, template_block_stack);
+				const highlighted = highlight_code_line(
+					line,
+					jsx_text_depth,
+					template_block_stack,
+					comment_state,
+				);
 				html = highlighted.html;
 				jsx_text_depth = highlighted.jsx_text_depth;
 			}
