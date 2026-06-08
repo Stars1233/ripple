@@ -782,10 +782,12 @@ function is_interleaved_body(body_nodes) {
  * @returns {boolean}
  */
 function needs_hook_split(node, transform_context) {
+	const body = node.body?.body || [];
 	return (
 		transform_context.platform.hooks?.componentBodyHookHelpers === true &&
 		node.body?.type === 'BlockStatement' &&
-		find_hook_split_index(node.body.body || [], transform_context) !== -1
+		(find_hook_split_index(body, transform_context) !== -1 ||
+			body_contains_component_body_branch_hook_return(body, transform_context))
 	);
 }
 
@@ -803,34 +805,262 @@ function create_hook_split_block(node, transform_context) {
 		return null;
 	}
 
-	const body = node.body.body || [];
+	const source_body = node.body.body || [];
+	const branch_rewrite = rewrite_component_body_branch_hook_returns(source_body, transform_context);
+	const body = branch_rewrite.body;
 	const split_index = find_hook_split_index(body, transform_context);
-	if (split_index === -1) {
+	if (split_index === -1 && !branch_rewrite.changed) {
 		return null;
 	}
 
-	const split_statement = body[split_index];
-	const continuation_body = body.slice(split_index + 1);
-	const helper = create_hook_safe_helper(
-		expand_native_tsrx_return_statement_list(continuation_body, transform_context),
-		undefined,
-		get_body_source_node(continuation_body) || split_statement,
-		transform_context,
-	);
+	let block_body;
+	if (split_index === -1) {
+		block_body = expand_native_tsrx_return_statement_list(body, transform_context);
+	} else {
+		const split_statement = body[split_index];
+		const continuation_body = body.slice(split_index + 1);
+		const helper = create_hook_safe_helper(
+			expand_native_tsrx_return_statement_list(continuation_body, transform_context),
+			undefined,
+			get_body_source_node(continuation_body) || split_statement,
+			transform_context,
+		);
 
-	const block = b.block(
-		[
+		block_body = [
 			...body.slice(0, split_index + 1),
 			...helper.setup_statements,
 			set_loc(b.return(helper.component_element), split_statement),
-		],
-		node.body,
-	);
+		];
+	}
+
+	const block = b.block(block_body, node.body);
 	block.metadata = {
 		...(block.metadata || {}),
 		hook_split_block: true,
 	};
 	return block;
+}
+
+/**
+ * @param {any[]} body_nodes
+ * @param {TransformContext} transform_context
+ * @returns {boolean}
+ */
+function body_contains_component_body_branch_hook_return(body_nodes, transform_context) {
+	return body_nodes.some((node) =>
+		statement_contains_component_body_branch_hook_return(node, transform_context),
+	);
+}
+
+/**
+ * @param {any} node
+ * @param {TransformContext} transform_context
+ * @returns {boolean}
+ */
+function statement_contains_component_body_branch_hook_return(node, transform_context) {
+	if (!node || typeof node !== 'object') {
+		return false;
+	}
+
+	if (Array.isArray(node)) {
+		return body_contains_component_body_branch_hook_return(node, transform_context);
+	}
+
+	if (is_function_or_class_boundary(node)) {
+		return false;
+	}
+
+	if (is_plain_if_statement(node)) {
+		return (
+			branch_needs_component_body_hook_helper(node.consequent, transform_context) ||
+			statement_contains_component_body_branch_hook_return(node.consequent, transform_context) ||
+			branch_needs_component_body_hook_helper(node.alternate, transform_context) ||
+			statement_contains_component_body_branch_hook_return(node.alternate, transform_context)
+		);
+	}
+
+	if (node.type === 'BlockStatement') {
+		return body_contains_component_body_branch_hook_return(node.body || [], transform_context);
+	}
+
+	return false;
+}
+
+/**
+ * @param {any[]} body_nodes
+ * @param {TransformContext} transform_context
+ * @returns {{ body: any[], changed: boolean }}
+ */
+function rewrite_component_body_branch_hook_returns(body_nodes, transform_context) {
+	let changed = false;
+	const body = body_nodes.map((node) => {
+		const next_node = rewrite_component_body_branch_hook_return_statement(node, transform_context);
+		if (next_node !== node) {
+			changed = true;
+		}
+		return next_node;
+	});
+	return changed ? { body, changed } : { body: body_nodes, changed: false };
+}
+
+/**
+ * @param {any} node
+ * @param {TransformContext} transform_context
+ * @returns {any}
+ */
+function rewrite_component_body_branch_hook_return_statement(node, transform_context) {
+	if (!node || typeof node !== 'object' || is_function_or_class_boundary(node)) {
+		return node;
+	}
+
+	if (is_plain_if_statement(node)) {
+		const consequent = rewrite_component_body_hook_return_branch(
+			node.consequent,
+			transform_context,
+		);
+		const alternate = node.alternate
+			? rewrite_component_body_hook_return_branch(node.alternate, transform_context)
+			: { node: node.alternate, changed: false };
+
+		if (!consequent.changed && !alternate.changed) {
+			return node;
+		}
+		return set_loc(b.if(node.test, consequent.node, alternate.node), node);
+	}
+
+	if (node.type === 'BlockStatement') {
+		const rewritten = rewrite_component_body_branch_hook_returns(
+			node.body || [],
+			transform_context,
+		);
+		return rewritten.changed ? set_loc(b.block(rewritten.body, node), node) : node;
+	}
+
+	return node;
+}
+
+/**
+ * @param {any} branch
+ * @param {TransformContext} transform_context
+ * @returns {{ node: any, changed: boolean }}
+ */
+function rewrite_component_body_hook_return_branch(branch, transform_context) {
+	if (!branch || typeof branch !== 'object') {
+		return { node: branch, changed: false };
+	}
+
+	if (is_plain_if_statement(branch)) {
+		const next_node = rewrite_component_body_branch_hook_return_statement(
+			branch,
+			transform_context,
+		);
+		return { node: next_node, changed: next_node !== branch };
+	}
+
+	const branch_body = branch.type === 'BlockStatement' ? branch.body || [] : [branch];
+	const rewritten = rewrite_component_body_branch_hook_returns(branch_body, transform_context);
+	const body = rewritten.body;
+	const needs_helper = branch_needs_component_body_hook_helper_body(body, transform_context);
+
+	if (!needs_helper) {
+		if (!rewritten.changed) {
+			return { node: branch, changed: false };
+		}
+		const node =
+			branch.type === 'BlockStatement'
+				? set_loc(b.block(body, branch), branch)
+				: (body[0] ?? branch);
+		return { node, changed: true };
+	}
+
+	const helper_body = expand_native_tsrx_return_statement_list(body, transform_context);
+	const helper = create_hook_safe_helper(
+		helper_body,
+		undefined,
+		get_body_source_node(body) || branch,
+		transform_context,
+	);
+	const node = set_loc(
+		b.block([...helper.setup_statements, set_loc(b.return(helper.component_element), branch)]),
+		branch,
+	);
+	return { node, changed: true };
+}
+
+/**
+ * @param {any} branch
+ * @param {TransformContext} transform_context
+ * @returns {boolean}
+ */
+function branch_needs_component_body_hook_helper(branch, transform_context) {
+	if (!branch || typeof branch !== 'object' || is_plain_if_statement(branch)) {
+		return false;
+	}
+	const body = branch.type === 'BlockStatement' ? branch.body || [] : [branch];
+	return branch_needs_component_body_hook_helper_body(body, transform_context);
+}
+
+/**
+ * @param {any[]} body
+ * @param {TransformContext} transform_context
+ * @returns {boolean}
+ */
+function branch_needs_component_body_hook_helper_body(body, transform_context) {
+	return (
+		body_has_top_level_component_body_return(body) &&
+		body_contains_direct_top_level_hook_call(body, transform_context, true)
+	);
+}
+
+/**
+ * @param {any[]} body
+ * @returns {boolean}
+ */
+function body_has_top_level_component_body_return(body) {
+	return body.some((node) => node?.type === 'ReturnStatement');
+}
+
+/**
+ * @param {any[]} body
+ * @param {TransformContext} transform_context
+ * @param {boolean} include_platform_setup
+ * @returns {boolean}
+ */
+function body_contains_direct_top_level_hook_call(body, transform_context, include_platform_setup) {
+	return body.some((node) =>
+		statement_contains_direct_top_level_hook_call(node, transform_context, include_platform_setup),
+	);
+}
+
+/**
+ * @param {any} node
+ * @param {TransformContext} transform_context
+ * @param {boolean} include_platform_setup
+ * @returns {boolean}
+ */
+function statement_contains_direct_top_level_hook_call(
+	node,
+	transform_context,
+	include_platform_setup,
+) {
+	if (!node || typeof node !== 'object') {
+		return false;
+	}
+
+	if (is_function_or_class_boundary(node)) {
+		return false;
+	}
+
+	if (
+		is_plain_if_statement(node) ||
+		is_switch_control_node(node) ||
+		is_try_control_node(node) ||
+		is_for_of_control_node(node)
+	) {
+		return false;
+	}
+
+	return statement_contains_top_level_hook_call(node, transform_context, include_platform_setup);
 }
 
 /**
@@ -4421,6 +4651,14 @@ function is_dynamic_jsx_name(name) {
  */
 function is_if_control_node(node) {
 	return node?.type === 'IfStatement' || node?.type === 'JSXIfExpression';
+}
+
+/**
+ * @param {any} node
+ * @returns {boolean}
+ */
+function is_plain_if_statement(node) {
+	return node?.type === 'IfStatement' && !is_template_if_node(node);
 }
 
 /**

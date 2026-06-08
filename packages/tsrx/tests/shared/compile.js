@@ -3328,10 +3328,79 @@ export function optionalFn(bar: string, baz?: string) {
 	});
 
 	describe.runIf(['react', 'preact'].includes(name))(`[${name}] hook isolation constraints`, () => {
+		it('extracts hooks from plain component-body if return branches', () => {
+			const { code } = compile(
+				`import { useEffect } from '${name === 'preact' ? 'preact/hooks' : 'react'}';
+								function StatusBadge(props: { disabled: boolean }) @{
+									if (props.disabled) {
+										useEffect(() => {});
+
+										return <span>{'disabled'}</span>;
+									}
+
+									<span>{'enabled'}</span>
+								}`,
+				'StatusBadge.tsrx',
+			);
+
+			expect(code).toContain('function StatusBadge__StatementBodyHook1()');
+			expect(code).toContain('useEffect(() => {});');
+			expect(code).toContain('return <StatusBadge__StatementBodyHook1 />;');
+			expect(code).toContain("{'enabled'}");
+			expect(code.indexOf('useEffect(() => {});')).toBeLessThan(
+				code.indexOf('function StatusBadge(props'),
+			);
+		});
+
+		it('passes parent bindings into plain if return branch hook helpers', () => {
+			const { code } = compile(
+				`import { useEffect } from '${name === 'preact' ? 'preact/hooks' : 'react'}';
+								function StatusBadge(props: { disabled: boolean; label: string }) @{
+									const label = props.label.trim();
+									if (props.disabled) {
+										useEffect(() => {
+											console.log(label);
+										}, [label]);
+
+										return <span>{label}</span>;
+									}
+
+									<span>{'enabled'}</span>
+								}`,
+				'StatusBadge.tsrx',
+			);
+
+			expect(code).toContain('function StatusBadge__StatementBodyHook1({ label })');
+			expect(code).toContain('<StatusBadge__StatementBodyHook1 label={label} />');
+			expect(code).toContain('console.log(label);');
+			expect(code).not.toContain(': any');
+		});
+
+		it('does not extract hooks from ordinary function if return branches', () => {
+			const { code } = compile(
+				`import { useEffect } from '${name === 'preact' ? 'preact/hooks' : 'react'}';
+								function StatusBadge(props: { disabled: boolean }) {
+									if (props.disabled) {
+										useEffect(() => {});
+
+										return <span>{'disabled'}</span>;
+									}
+
+									return <span>{'enabled'}</span>;
+								}`,
+				'StatusBadge.tsrx',
+			);
+
+			expect(code).toContain('function StatusBadge(props: { disabled: boolean }) {');
+			expect(code).toContain('useEffect(() => {});');
+			expect(code).not.toContain('StatementBodyHook');
+			expect(code).not.toContain('return <StatusBadge__StatementBodyHook');
+		});
+
 		it('extracts hooks in expression-position JSX fragments into stable helper components', () => {
 			const { code } = compile(
 				`import { useEffect } from '${name === 'preact' ? 'preact/hooks' : 'react'}';
-							function App({ active }: { active: boolean }) @{
+								function App({ active }: { active: boolean }) @{
 								if (!active) return null;
 
 								useEffect(() => {
