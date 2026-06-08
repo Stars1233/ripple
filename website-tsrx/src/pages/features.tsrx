@@ -801,12 +801,6 @@ export const FeaturesPage = () => @{
 								generated component boundary is a compiler error. Move that state into an explicit
 								child component when values need to cross the boundary.
 							</p>
-							<p class="section-body">
-								Both targets also support template-body
-								<code class="inline-code">await</code>
-								and TSRX will emit an async component function when it appears in the returned
-								template.
-							</p>
 							<pre class="code-block">
 								<code innerHTML={REACT_HOOKS_HTML} />
 							</pre>
