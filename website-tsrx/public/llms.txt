@@ -315,6 +315,7 @@ const icon = <svg aria-hidden="true" />;
 - Use `export function Name(...) @{ ... }` when setup statements and rendered output share a template scope.
 - Use `export function Name(...) @{ <>...</> }` when public components render multiple siblings.
 - Put setup first inside `@{...}` and finish the container with one JSX element, JSX fragment, or JSX control-flow expression.
+- If you see setup statements followed by bare JSX in a normal function `{ ... }`, add the missing `@` before the opening brace.
 - Use module-scope `<style>` expressions for reusable class maps.
 - Treat `<style>` contents as static CSS, and use CSS custom properties for
   runtime style values.
@@ -479,7 +480,7 @@ const TodoList = ({ items }: { items: Todo[] }) =>
 
 Regular `for`, `for...in`, `while`, and `do...while` are not template
 rendering constructs. Use `for...of` for rendered lists, filter the iterable
-before rendering when some items should be skipped, and use ` { ... }` for
+before rendering when some items should be skipped, and use `@empty { ... }` for
 the no-items fallback. Direct `continue`, `break`, and `return` statements are
 not allowed in `@for` template loop bodies. Move imperative loops into a nested
 function.

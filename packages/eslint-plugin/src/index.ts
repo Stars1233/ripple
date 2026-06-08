@@ -5,6 +5,7 @@ import noReturnInComponent from './rules/no-return-in-component.js';
 import controlFlowJsx from './rules/control-flow-jsx.js';
 import noLazyDestructuringInModules from './rules/no-lazy-destructuring-in-modules.js';
 import validForOfKey from './rules/valid-for-of-key.js';
+import requireStatementContainerBody from './rules/require-statement-container-body.js';
 
 const plugin = {
 	meta: {
@@ -18,6 +19,7 @@ const plugin = {
 		'control-flow-jsx': controlFlowJsx,
 		'no-lazy-destructuring-in-modules': noLazyDestructuringInModules,
 		'valid-for-of-key': validForOfKey,
+		'require-statement-container-body': requireStatementContainerBody,
 	},
 	configs: {} as any,
 };
@@ -43,20 +45,26 @@ try {
 }
 
 // Helper to create config objects
-function createConfig(name: string, files: string[], parser: any) {
+function createConfig(name: string, files: string[], parser: any, isTsrx: boolean) {
+	const rules: Record<string, string> = {
+		'ripple/no-module-scope-track': 'error',
+		'ripple/prefer-oninput': 'warn',
+		'ripple/control-flow-jsx': 'error',
+		'ripple/no-lazy-destructuring-in-modules': 'error',
+		'ripple/valid-for-of-key': 'error',
+	};
+
+	if (isTsrx) {
+		rules['ripple/require-statement-container-body'] = 'error';
+	}
+
 	const config: any = {
 		name,
 		files,
 		plugins: {
 			ripple: plugin,
 		},
-		rules: {
-			'ripple/no-module-scope-track': 'error',
-			'ripple/prefer-oninput': 'warn',
-			'ripple/control-flow-jsx': 'error',
-			'ripple/no-lazy-destructuring-in-modules': 'error',
-			'ripple/valid-for-of-key': 'error',
-		},
+		rules,
 	};
 
 	// Only add parser if it's available
@@ -75,8 +83,8 @@ function createConfig(name: string, files: string[], parser: any) {
 
 // Recommended configuration (flat config format)
 plugin.configs.recommended = [
-	createConfig('ripple/recommended-ripple-files', ['**/*.tsrx'], rippleParser),
-	createConfig('ripple/recommended-typescript-files', ['**/*.ts', '**/*.tsx'], tsParser),
+	createConfig('ripple/recommended-ripple-files', ['**/*.tsrx'], rippleParser, true),
+	createConfig('ripple/recommended-typescript-files', ['**/*.ts', '**/*.tsx'], tsParser, false),
 	{
 		name: 'ripple/ignores',
 		ignores: ['**/*.d.ts', '**/node_modules/**', '**/dist/**', '**/build/**'],
@@ -85,8 +93,8 @@ plugin.configs.recommended = [
 
 // Strict configuration (flat config format)
 plugin.configs.strict = [
-	createConfig('ripple/strict-ripple-files', ['**/*.tsrx'], rippleParser),
-	createConfig('ripple/strict-typescript-files', ['**/*.ts', '**/*.tsx'], tsParser),
+	createConfig('ripple/strict-ripple-files', ['**/*.tsrx'], rippleParser, true),
+	createConfig('ripple/strict-typescript-files', ['**/*.ts', '**/*.tsx'], tsParser, false),
 	{
 		name: 'ripple/ignores',
 		ignores: ['**/*.d.ts', '**/node_modules/**', '**/dist/**', '**/build/**'],

@@ -320,8 +320,8 @@ export function BlogRethinkingTsrxPage() @{
 							<code>{'@{...}'}</code>
 							. It is still an expression, so it can appear anywhere JSX can appear: as a component
 							body, as an assigned value, as a returned value, or as a child inside another element.
-							The only difference is that it can run a few local statements before producing one
-							template value.
+							The only difference is that it can now also contain JavaScript statements and yield
+							JSX template when placed at the end.
 						</p>
 						<pre class="code-block">
 							<code innerHTML={JSX_STATEMENT_CONTAINER_HTML} />
@@ -339,6 +339,18 @@ export function BlogRethinkingTsrxPage() @{
 							<code>@if</code>
 							. Multiple elements need a fragment, and plain JSX text needs one too. Once that
 							output appears, the container is done: no JavaScript logic can come after it.
+						</p>
+						<p>
+							The
+							<code>@</code>
+							is the important boundary. If you write setup statements followed by a bare JSX
+							element in a normal
+							<code>{'{}'}</code>
+							function body, the compiler will tell you to add the missing
+							<code>@</code>
+							so the body becomes
+							<code>{'@{...}'}</code>
+							.
 						</p>
 						<pre class="code-block">
 							<code innerHTML={JSX_STATEMENT_CONTAINER_RULES_HTML} />
