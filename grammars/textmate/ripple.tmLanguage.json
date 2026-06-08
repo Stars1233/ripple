@@ -489,7 +489,7 @@
     },
     "tsrx-template-branch-directive": {
       "name": "meta.directive.branch.tsrx",
-      "begin": "(?:(@)(else|empty|pending|catch)|(finally))(?![_$[:alnum:]])(?=\\s*(?:\\(|\\{|[^\\n{}]+\\{))",
+      "begin": "(?:(@)(else)(?:\\s+(if)(?![_$[:alnum:]]))?|(@)(empty|pending|catch)|(finally))(?![_$[:alnum:]])(?=\\s*(?:\\(|\\{|[^\\n{}]+\\{))",
       "beginCaptures": {
         "1": {
           "name": "keyword.control.directive.tsrx"
@@ -498,6 +498,15 @@
           "name": "keyword.control.directive.tsrx"
         },
         "3": {
+          "name": "keyword.control.directive.tsrx"
+        },
+        "4": {
+          "name": "keyword.control.directive.tsrx"
+        },
+        "5": {
+          "name": "keyword.control.directive.tsrx"
+        },
+        "6": {
           "name": "keyword.control.directive.tsrx"
         }
       },
@@ -612,6 +621,9 @@
     },
     "expressionWithoutIdentifiers": {
       "patterns": [
+        {
+          "include": "#tsrx-template-child-directive"
+        },
         {
           "include": "#tsrx-template-block-directive"
         },
@@ -6791,6 +6803,9 @@
     },
     "non-jsx-expression": {
       "patterns": [
+        {
+          "include": "#tsrx-template-child-directive"
+        },
         {
           "include": "#tsrx-template-block-directive"
         },

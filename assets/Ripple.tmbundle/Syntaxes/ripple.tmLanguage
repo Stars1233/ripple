@@ -3146,6 +3146,10 @@
 			<array>
 				<dict>
 					<key>include</key>
+					<string>#tsrx-template-child-directive</string>
+				</dict>
+				<dict>
+					<key>include</key>
 					<string>#tsrx-template-block-directive</string>
 				</dict>
 				<dict>
@@ -6145,6 +6149,10 @@
 			<array>
 				<dict>
 					<key>include</key>
+					<string>#tsrx-template-child-directive</string>
+				</dict>
+				<dict>
+					<key>include</key>
 					<string>#tsrx-template-block-directive</string>
 				</dict>
 				<dict>
@@ -8988,7 +8996,7 @@
 		<key>tsrx-template-branch-directive</key>
 		<dict>
 			<key>begin</key>
-			<string>(?:(@)(else|empty|pending|catch)|(finally))(?![_$[:alnum:]])(?=\s*(?:\(|\{|[^\n{}]+\{))</string>
+			<string>(?:(@)(else)(?:\s+(if)(?![_$[:alnum:]]))?|(@)(empty|pending|catch)|(finally))(?![_$[:alnum:]])(?=\s*(?:\(|\{|[^\n{}]+\{))</string>
 			<key>beginCaptures</key>
 			<dict>
 				<key>1</key>
@@ -9002,6 +9010,21 @@
 					<string>keyword.control.directive.tsrx</string>
 				</dict>
 				<key>3</key>
+				<dict>
+					<key>name</key>
+					<string>keyword.control.directive.tsrx</string>
+				</dict>
+				<key>4</key>
+				<dict>
+					<key>name</key>
+					<string>keyword.control.directive.tsrx</string>
+				</dict>
+				<key>5</key>
+				<dict>
+					<key>name</key>
+					<string>keyword.control.directive.tsrx</string>
+				</dict>
+				<key>6</key>
 				<dict>
 					<key>name</key>
 					<string>keyword.control.directive.tsrx</string>
