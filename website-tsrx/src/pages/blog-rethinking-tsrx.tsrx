@@ -75,6 +75,20 @@ const JSX_CONTROL_FLOW_SCOPE_HTML = highlight_tsrx(
 };`,
 );
 
+const OLD_CONTROL_FLOW_LOOP_HTML = highlight_tsrx(
+	`const ProductList = ({ products }: ProductListProps): JSX.Element => @{
+  <ul>
+    for (const product of products) {
+      if (!product.available) {
+        continue;
+      }
+
+      <li>{product.name}</li>
+    }
+  </ul>
+};`,
+);
+
 const JSX_CONTROL_FLOW_LOOP_HTML = highlight_tsrx(
 	`const ProductList = ({ products }: ProductListProps): JSX.Element => @{
   const visibleProducts = products.filter((product) => product.available);
@@ -270,9 +284,8 @@ export function BlogRethinkingTsrxPage() @{
 							was annoying and unintuitive. JSX text is one of JSX's most useful affordances, and
 							TSRX should preserve backwards compatibility with JSX instead of asking people to
 							relearn something that already works. The same applies to composition: teams want to
-							return a single element, a fragment with multiple elements, a JSX control flow value,
-							an array of elements, a scalar value, or the result of a component function call
-							without each case feeling like a separate language feature.
+							return a single element, a fragment with multiple elements, or a JSX control flow
+							value without each case feeling like a separate language feature.
 						</p>
 						<p>
 							That is the spirit behind this update. TSRX keeps the parts that make templates
@@ -426,9 +439,19 @@ export function BlogRethinkingTsrxPage() @{
 							<code innerHTML={JSX_CONTROL_FLOW_SCOPE_HTML} />
 						</pre>
 						<p>
-							Loops use the same shape: setup can happen at the top of each iteration, then the loop
-							body produces one output node. If some items should not render, filter the iterable
-							before the loop. If the list is empty, use the loop's
+							Here is what that looked like — the same list written with a bare loop, where reaching
+							for a JavaScript-style
+							<code>continue</code>
+							to skip an item seems perfectly natural:
+						</p>
+						<pre class="code-block">
+							<code innerHTML={OLD_CONTROL_FLOW_LOOP_HTML} />
+						</pre>
+						<p>
+							The prefixed loop removes that ambiguity and uses the same shape: setup can happen at
+							the top of each iteration, then the loop body produces one output node. If some items
+							should not render, filter the iterable before the loop. If the list is empty, use the
+							loop's
 							<code>@empty</code>
 							branch instead of smuggling a
 							<code>continue</code>
