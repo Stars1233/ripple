@@ -51,12 +51,12 @@ const JSX_CONTROL_FLOW_LOOP_HTML = highlight_tsrx(
 
   <ul>
     @for (const product of visibleProducts; key product.id) {
-    const price = formatCurrency(product.price);
+      const price = formatCurrency(product.price);
 
-    <li>
-      <span>{product.name}</span>
-      <strong>{price}</strong>
-    </li>
+      <li>
+        <span>{product.name}</span>
+        <strong>{price}</strong>
+      </li>
     } @empty {
       <li>No products available</li>
     }
