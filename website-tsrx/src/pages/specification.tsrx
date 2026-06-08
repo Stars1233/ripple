@@ -548,13 +548,13 @@ export function SpecificationPage() @{
 								<code class="inline-code">{'{}'}</code>
 								template block after the directive header.
 							</p>
-								<p class="section-body">
-									Each
-									<code class="inline-code">@switch</code>
-									<code class="inline-code">@case</code>
-									and
-									<code class="inline-code">@default</code>
-									must use a
+							<p class="section-body">
+								Each
+								<code class="inline-code">@switch</code>
+								<code class="inline-code">@case</code>
+								and
+								<code class="inline-code">@default</code>
+								must use a
 								<code class="inline-code">{'{}'}</code>
 								template block. Cases are isolated: they do not fall through to later cases, and
 								<code class="inline-code">break</code>
