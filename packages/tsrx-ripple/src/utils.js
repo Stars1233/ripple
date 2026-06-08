@@ -36,7 +36,7 @@ export function is_native_tsrx_function_node(node) {
 		(node.type === 'FunctionDeclaration' ||
 			node.type === 'FunctionExpression' ||
 			node.type === 'ArrowFunctionExpression') &&
-		/** @type {any} */ (node).metadata?.native_tsrx_function
+		node.metadata?.native_tsrx_function
 	);
 }
 
@@ -122,11 +122,13 @@ export function get_tsrx_component_function_name(node, context) {
 
 /**
  * @param {AST.Node | null | undefined} node
- * @param {CommonContext} context
  * @returns {boolean}
  */
-export function is_tsrx_component_function(node, context) {
-	return is_native_tsrx_function_node(node) || node?.body?.type === 'JSXCodeBlock';
+export function is_tsrx_component_function(node) {
+	return (
+		is_native_tsrx_function_node(node) ||
+		/** @type {AST.Function} */ (node)?.body?.type === 'JSXCodeBlock'
+	);
 }
 
 /**
