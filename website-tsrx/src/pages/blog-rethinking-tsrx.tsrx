@@ -323,6 +323,9 @@ export function BlogRethinkingTsrxPage() @{
 							isolate it without making the parent component's hook order conditional.
 						</p>
 						<pre class="code-block">
+							<code innerHTML={CONDITIONAL_HOOKS_HTML} />
+						</pre>
+						<pre class="code-block">
 							<code innerHTML={STATEMENT_CONTAINER_COMPONENT_BODY_HTML} />
 						</pre>
 						<p>
