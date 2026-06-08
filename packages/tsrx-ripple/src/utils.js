@@ -165,6 +165,34 @@ export function normalize_jsx_tsrx_templates(node) {
 }
 
 /**
+ * Wrap a `@{ … }` code block in an immediately-invoked arrow
+ * (`(() => @{ … })()`). Ripple only lowers a code block when it is a function body
+ * @param {AST.JSXCodeBlock} code_block
+ * @returns {AST.CallExpression}
+ */
+export function wrap_code_block_in_iife(code_block) {
+	const arrow = b.arrow([], code_block);
+	// Match the parser's `() => @{ … }` shape: a code-block body is treated as a
+	// block, not a concise expression body.
+	arrow.expression = false;
+	return b.call(arrow);
+}
+
+/**
+ * @param {AST.JSXCodeBlock} node
+ * @param {AST.Node | undefined} parent
+ * @returns {boolean}
+ */
+export function is_code_block_function_body(node, parent) {
+	return (
+		(parent?.type === 'ArrowFunctionExpression' ||
+			parent?.type === 'FunctionDeclaration' ||
+			parent?.type === 'FunctionExpression') &&
+		/** @type {any} */ (parent).body === node
+	);
+}
+
+/**
  * @param {AST.Node | null | undefined} node
  * @returns {boolean}
  */

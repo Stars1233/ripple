@@ -95,11 +95,13 @@ import {
 	is_native_tsrx_function_node,
 	is_static_native_tsrx_function_call,
 	is_native_tsrx_template_node,
+	is_code_block_function_body,
 	is_tsrx_component_function,
 	is_style_element,
 	rewrite_lazy_member_base,
 	should_guard_regular_js_statement,
 	strip_tsrx_style_elements,
+	wrap_code_block_in_iife,
 } from '../../utils.js';
 import is_reference from 'is-reference';
 
@@ -2033,6 +2035,20 @@ const visitors = {
 	},
 
 	JSXCodeBlock(node, context) {
+		// A `@{ … }` block that produces render output but sits in a value
+		// position (assigned to a variable, returned, …) is wrapped in an
+		// immediately-invoked arrow so it flows through the function-body path
+		// (`transform_native_tsrx_function`) rather than reaching the printer as a
+		// raw `JSXCodeBlock`. Applies to runtime and `to_ts` output alike. The
+		// function-body guard keeps `transform_native_tsrx_function`'s own visit of
+		// the body (in `to_ts`) from re-wrapping it endlessly.
+		if (
+			node.render != null &&
+			!is_code_block_function_body(node, context.path.at(-1)) &&
+			is_native_tsrx_value_position(context.path)
+		) {
+			return context.visit(wrap_code_block_in_iife(node), context.state);
+		}
 		// A code-only `@{ … }` block (no render output) is just a lexical block of
 		// setup statements. Component blocks (with a render template) are handled by
 		// `transform_native_tsrx_function`, and `to_ts` mode keeps the node for the
