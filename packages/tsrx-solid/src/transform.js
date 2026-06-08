@@ -1310,7 +1310,7 @@ function rewrite_solid_native_component_control_flow(program, transform_context)
  * @returns {void}
  */
 function rewrite_solid_native_component_function(fn, parent, transform_context) {
-	if (!fn?.metadata?.native_tsrx_function || fn.body?.type !== 'BlockStatement') {
+	if (!fn?.metadata?.native_tsrx_body || fn.body?.type !== 'BlockStatement') {
 		return;
 	}
 

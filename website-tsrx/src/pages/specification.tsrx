@@ -94,7 +94,8 @@ const TEMPLATE_EXPRESSION_GRAMMAR = [
 	'',
 	'JSXIfExpression :',
 	'  @if ( Expression ) TemplateBlock',
-	'  @if ( Expression ) TemplateBlock else TemplateBlock',
+	'  @if ( Expression ) TemplateBlock @else TemplateBlock',
+	'  @if ( Expression ) TemplateBlock @else JSXIfExpression',
 	'',
 	'JSXForExpression :',
 	'  @for ( ForHeader TemplateForOptionsopt ) TemplateBlock',
@@ -104,13 +105,12 @@ const TEMPLATE_EXPRESSION_GRAMMAR = [
 	'  @switch ( Expression ) { JSXSwitchCaseListopt }',
 	'',
 	'JSXSwitchCase :',
-	'  case Expression : TemplateBlock',
-	'  default : TemplateBlock',
+	'  @case Expression : TemplateBlock',
+	'  @default : TemplateBlock',
 	'',
 	'JSXTryExpression :',
-	'  @try TemplateBlock pending TemplateBlock',
-	'  @try TemplateBlock catch ( CatchParameteropt ) TemplateBlock',
-	'  @try TemplateBlock finally TemplateBlock',
+	'  @try TemplateBlock @pending TemplateBlock',
+	'  @try TemplateBlock @catch ( CatchParameteropt ) TemplateBlock',
 ].join('\n');
 
 const LAZY_GRAMMAR = [

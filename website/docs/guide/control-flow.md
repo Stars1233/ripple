@@ -243,7 +243,7 @@ or components. Otherwise, the loop can be run inside an `effect` or function.
 ## Try statements
 
 `@try` blocks build the foundation for **error boundaries**. The `try`,
-`pending`, `catch`, and `finally` arms must be `{...}` template blocks. When the runtime
+`pending`, and `catch` arms must be `{...}` template blocks. When the runtime
 encounters an error in the `try` block, you can easily render a fallback in the
 `catch` block.
 

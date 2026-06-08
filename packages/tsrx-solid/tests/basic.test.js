@@ -419,6 +419,28 @@ describe('@tsrx/solid basic', () => {
 			expect(code).not.toContain('if (cond)');
 		});
 
+		it('preserves ordinary control flow for plain functions returning templates', () => {
+			const { code } = compile(
+				`function Dashboard({ user }: { user: string | null }) {
+					if (!user) {
+						return <p>No user found</p>;
+					}
+
+					return <>
+						<h1>Welcome,{user}</h1>
+						<p>Here is your dashboard.</p>
+					</>;
+				}`,
+				'App.tsrx',
+			);
+
+			expect(code).toContain('if (!user)');
+			expect(code).toContain('return Dashboard__static1;');
+			expect(code).toContain('return <><h1>Welcome,{user}</h1>{Dashboard__static2}</>;');
+			expect(code).not.toContain('<Show');
+			expect(code).not.toContain("import { Show } from 'solid-js'");
+		});
+
 		it('component-body guard preserves switch trailing render fallback', () => {
 			const { code } = compile(
 				`function App({ hidden, kind }: { hidden: boolean; kind: string }) @{
@@ -594,50 +616,6 @@ describe('@tsrx/solid basic', () => {
 						} @catch (err) {
 							recover(err);
 						}
-				}`,
-				'App.tsrx',
-			);
-
-			expect(code).toContain('<Errored');
-			expect(code).toContain('<Loading fallback=');
-			expect(code).toContain('setup();');
-			expect(code).toContain('recover(err);');
-			expect(code).toMatch(/import \{[^}]*Errored[^}]*Loading[^}]*\} from 'solid-js'/);
-			expect(code).not.toContain('try {');
-		});
-
-		it('component-body try/pending/catch direct returns lower to reactive boundaries', () => {
-			const { code } = compile(
-				`function App() {
-					return @try {
-						<div>{'ready'}</div>
-					} @pending {
-						<div>{'loading'}</div>
-					} @catch (err) {
-						<div>{'error'}</div>
-					};
-				}`,
-				'App.tsrx',
-			);
-
-			expect(code).toContain('<Errored');
-			expect(code).toContain('<Loading fallback=');
-			expect(code).toMatch(/import \{[^}]*Errored[^}]*Loading[^}]*\} from 'solid-js'/);
-			expect(code).not.toContain('try {');
-		});
-
-		it('component-body try lowers when only pending direct returns render output', () => {
-			const { code } = compile(
-				`function App(
-					{ setup, recover }: { setup: () => void; recover: (err: unknown) => void }
-				) {
-					return @try {
-						setup();
-					} @pending {
-						<div>{'loading'}</div>
-					} @catch (err) {
-						recover(err);
-					};
 				}`,
 				'App.tsrx',
 			);

@@ -501,8 +501,9 @@ const StatusMessage = ({ status }: { status: string }) => @switch (status) {
 };
 ```
 
-Each `` and `` body is a `{...}` template block. Cases are isolated,
-do not fall through, and `break`/`return` are invalid inside an `@switch` case body.
+Each `@case` and `@default` body is a `{...}` template block. Cases are
+isolated, do not fall through, and `break`/`return` are invalid inside an
+`@switch` case body.
 
 ### `try` / `catch` / `pending`
 

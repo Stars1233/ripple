@@ -100,6 +100,29 @@ describe('TSRX parser', () => {
 		expect(statement.argument.type).toBe('JSXFragment');
 	});
 
+	it('parses a return after a fragment initializer with style children without an explicit semicolon', () => {
+		const ast = parseModule(
+			`function MyComponent() {
+  const mySpan = <>
+    <span />
+    <style>
+      span { color: black; }
+    </style>
+  </>
+
+  return <>{mySpan}</>
+}`,
+			'App.tsrx',
+		);
+
+		const [declaration, statement] = ast.body[0].body.body;
+		const fragment = declaration.declarations[0].init;
+		expect(fragment.type).toBe('JSXFragment');
+		expect(fragment.children.some((child) => child.type === 'JSXStyleElement')).toBe(true);
+		expect(statement.type).toBe('ReturnStatement');
+		expect(statement.argument.type).toBe('JSXFragment');
+	});
+
 	it('honors ASI for returned tags after a newline', () => {
 		const ast = parseModule(
 			`function MyApp() {
