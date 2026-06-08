@@ -51,7 +51,7 @@ const CONDITIONAL_HOOKS_HTML = highlight_tsrx(
 
     <Editor value={draft} onInput={setDraft} />
   } @else {
-    <button onClick={() => setSelected('summary')}>Show details</button>
+    <button onClick={() => setSelected('details')}>Showing {selected}</button>
   }
 };`,
 );
@@ -227,6 +227,10 @@ export function BlogRethinkingTsrxPage() @{
 						<header class="article-header">
 							<p class="eyebrow">June 8, 2026</p>
 							<h1>Rethinking TSRX</h1>
+							<p class="lead">
+								TSRX is leaning back into JSX, and making its specialized syntax look special
+								instead of masquerading as ordinary JavaScript.
+							</p>
 						</header>
 						<p>
 							Ripple started with an idea we still believe in: let UI templates keep the power of
@@ -273,9 +277,8 @@ export function BlogRethinkingTsrxPage() @{
 						<p>
 							That is the spirit behind this update. TSRX keeps the parts that make templates
 							expressive, but it becomes more honest about where template syntax begins, where
-							JavaScript begins, and how values flow through the system. Crucially though, TSRX is
-							now expression based like JSX, not statement based, like it originally started life
-							as.
+							JavaScript begins, and how values flow through the system. Crucially, TSRX is now
+							expression-based like JSX, rather than statement-based as it originally started.
 						</p>
 						<h2>It is JSX again</h2>
 						<p>
@@ -403,7 +406,7 @@ export function BlogRethinkingTsrxPage() @{
 							when the control flow itself should produce template output. Each branch or block
 							follows the same structural boundary as
 							<code>{'@{...}'}</code>
-							: TypeScript first (although optional), then an optional rendered template output.
+							: optional TypeScript setup first, then a single rendered template output.
 						</p>
 						<p>
 							The
@@ -445,7 +448,7 @@ export function BlogRethinkingTsrxPage() @{
 						</pre>
 						<p>
 							Because JSX control flow is explicitly template syntax, it can also be assigned
-							directly to variables. You no longer need to wrap an
+							directly to variables. You no longer need to wrap a
 							<code>switch</code>
 							branch in a helper just to store it.
 						</p>
