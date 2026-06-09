@@ -1,5 +1,7 @@
 import type { MockInstance } from 'vitest';
+import type { JSX } from '@solidjs/web';
 import { createSignal, lazy } from 'solid-js';
+import { Dynamic } from '@tsrx/solid/dynamic';
 import {
 	runSwitchFallthroughRuntimeTests,
 } from '@tsrx/core/test-harness/runtime/switch-fallthrough';
@@ -51,6 +53,31 @@ function NestedApp() @{
 	<div>
 		<Child text="nested" />
 	</div>
+}
+
+function DynamicElementApp() @{
+	const tag = 'section';
+	<Dynamic is={tag} class="dynamic-host">{'dynamic element'}</Dynamic>
+}
+
+function DynamicChild(props: { label: string }) @{
+	<span class="dynamic-child">{props.label}</span>
+}
+
+function DynamicComponentApp() @{
+	const component = DynamicChild;
+	<Dynamic is={component} label="dynamic component" />
+}
+
+function DynamicSwitchApp() @{
+	const [tag, setTag] = createSignal<'section' | 'article'>('section');
+	<>
+		<Dynamic is={tag()} class="dynamic-switch">{tag()}</Dynamic>
+		<button
+			class="dynamic-switch-toggle"
+			onClick={() => setTag(tag() === 'section' ? 'article' : 'section')}
+		>{'toggle'}</button>
+	</>
 }
 
 function ExplicitTextApp() @{
@@ -445,7 +472,7 @@ function ForFilteredApp() @{
 	const items = ['a', '', 'c'];
 	const visibleItems = items.filter(Boolean);
 	@for (const item of visibleItems) {
-		const item_value = (item as unknown as () => string)();
+		const item_value = item;
 		<li class="continue-item">{item_value}</li>
 	}
 }
@@ -453,7 +480,7 @@ function ForFilteredApp() @{
 function ForContinueAfterPriorJsxApp() @{
 	const items = ['a', '', 'c'];
 	@for (const item of items) {
-		const item_value = (item as unknown as () => string)();
+		const item_value = item;
 		<>
 			<span class="continue-before">{`before-${item_value || 'empty'}`}</span>
 			@if (item_value) {
@@ -536,7 +563,7 @@ function StyledApp() @{
 
 // ── Try/catch: synchronous error boundary ──
 
-function ThrowingChild() @{
+function ThrowingChild(): JSX.Element @{
 	throw new Error('sync boom');
 	<p>{'unreachable'}</p>
 }
@@ -545,7 +572,7 @@ function ErrorBoundaryApp() @{
 	@try {
 		<ThrowingChild />
 	} @catch (err) {
-		<p class="caught">{(err as Error).message}</p>
+		<p class="caught">{(err() as Error).message}</p>
 	}
 }
 
@@ -565,7 +592,7 @@ function ErrorToggleApp() @{
 			<MaybeThrow shouldThrow={fail()} />
 		} @catch (err, reset) {
 			<>
-				<p class="caught">{(err as Error).message}</p>
+				<p class="caught">{(err() as Error).message}</p>
 				<button
 					class="reset"
 					onClick={() => {
@@ -612,13 +639,13 @@ function SuspenseErrorApp(props: { loader: () => Promise<{ default: typeof Resol
 	} @pending {
 		<p class="pending">{'loading...'}</p>
 	} @catch (err) {
-		<p class="caught">{(err as Error).message}</p>
+		<p class="caught">{(err() as Error).message}</p>
 	}
 }
 
 // ── Nested try: inner catch handles inner error ──
 
-function InnerThrow() @{
+function InnerThrow(): JSX.Element @{
 	throw new Error('inner error');
 	<p>{'unreachable'}</p>
 }
@@ -629,11 +656,11 @@ function NestedTryApp() @{
 			@try {
 				<InnerThrow />
 			} @catch (err) {
-				<p class="inner-caught">{(err as Error).message}</p>
+				<p class="inner-caught">{(err() as Error).message}</p>
 			}
 		</div>
 	} @catch (err) {
-		<p class="outer-caught">{(err as Error).message}</p>
+		<p class="outer-caught">{(err() as Error).message}</p>
 	}
 }
 
@@ -736,9 +763,8 @@ function SignalClosingOverScopeApp() @{
 }
 
 // ── Signal inside for-of loop body ──
-// NOTE: Solid's <For> passes each item as an accessor (`() => T`) rather than
-// a plain value, so branch-local uses of `item` outside JSX reactive positions
-// must call `item()` explicitly. This differs from the React runtime tests.
+// NOTE: Solid's <For keyed={false}> passes each item as an accessor (`() => T`)
+// and the index as a raw number. This differs from the React runtime tests.
 
 function SignalInForApp() @{
 	const [items, setItems] = createSignal(['a', 'b']);
@@ -959,6 +985,30 @@ describe('tsrx-solid runtime', () => {
 	it('renders nested components', async () => {
 		await render(NestedApp);
 		expect(text('.child')).toBe('nested');
+	});
+
+	it('renders dynamic host elements', async () => {
+		await render(DynamicElementApp);
+		const element = container.querySelector('.dynamic-host');
+		expect(element?.tagName).toBe('SECTION');
+		expect(element?.textContent).toBe('dynamic element');
+	});
+
+	it('renders dynamic components', async () => {
+		await render(DynamicComponentApp);
+		expect(text('.dynamic-child')).toBe('dynamic component');
+	});
+
+	it('updates when the dynamic is prop changes', async () => {
+		await render(DynamicSwitchApp);
+		let element = container.querySelector('.dynamic-switch');
+		expect(element?.tagName).toBe('SECTION');
+		expect(element?.textContent).toBe('section');
+
+		await click('.dynamic-switch-toggle');
+		element = container.querySelector('.dynamic-switch');
+		expect(element?.tagName).toBe('ARTICLE');
+		expect(element?.textContent).toBe('article');
 	});
 
 	it('renders explicit text interpolation as text', async () => {

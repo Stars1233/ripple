@@ -1,5 +1,6 @@
 /** @import { Block } from '#client' */
 
+import { exclude_prop_from_object } from '@tsrx/core/runtime/language-helpers';
 import { branch, destroy_block, render, render_spread } from './blocks.js';
 import { COMPOSITE_BLOCK, DEFAULT_NAMESPACE, NAMESPACE_URI } from './constants.js';
 import { hydrate_next, hydrating } from './hydration.js';
@@ -9,13 +10,14 @@ import { is_tsrx_element } from '../../element.js';
 import { render_component } from './component.js';
 
 /**
- * @typedef {((anchor: Node, props: Record<string, any>, block: Block | null) => void)} ComponentFunction
- * @param {() => ComponentFunction | keyof HTMLElementTagNameMap | keyof SVGElementTagNameMap | keyof MathMLElementTagNameMap} get_component
+ * @typedef {Function | string | null | undefined | false} CompositeTarget
+ * @param {() => CompositeTarget} get_component
  * @param {Node} node
  * @param {Record<string, any>} props
+ * @param {string} [exclude_prop]
  * @returns {void}
  */
-export function composite(get_component, node, props) {
+export function composite(get_component, node, props, exclude_prop) {
 	if (hydrating) {
 		// During hydration, `node` may already point at the first real SSR node
 		// (e.g. layout children). Only skip forward when we are on an empty
@@ -42,7 +44,10 @@ export function composite(get_component, node, props) {
 			if (typeof component === 'function') {
 				// Handle as regular component
 				b = branch(() => {
-					render_component(component, anchor, props);
+					const component_props = exclude_prop
+						? exclude_prop_from_object(props, exclude_prop)
+						: props;
+					render_component(component, anchor, component_props);
 				});
 			} else if (is_tsrx_element(component)) {
 				throw new TypeError('Invalid component type: received a TSRXElement value.');
@@ -69,7 +74,7 @@ export function composite(get_component, node, props) {
 						};
 					}
 
-					render_spread(element, () => props || {});
+					render_spread(element, () => props || {}, 0, exclude_prop);
 
 					if (is_tsrx_element(props?.children)) {
 						var child_anchor = document.createComment('');
@@ -84,7 +89,7 @@ export function composite(get_component, node, props) {
 				};
 
 				if (ns !== active_namespace) {
-					// support top-level dynamic element svg/math <@tag />
+					// support top-level dynamic element svg/math tags
 					b = branch(() => with_ns(ns, run));
 				} else {
 					b = branch(run);

@@ -16,8 +16,6 @@ import { regex_newline_characters } from './utils/patterns.js';
 import { error } from './errors.js';
 import { DIAGNOSTIC_CODES } from './diagnostics.js';
 import { TSRX_RETURN_STATEMENT_ERROR } from './analyze/validation.js';
-const DYNAMIC_ATTRIBUTE_NAME_ERROR =
-	'Dynamic component / element syntax (`@`) is only supported on native TSRX element names, not attribute names.';
 const FORGOTTEN_STATEMENT_CONTAINER_ERROR =
 	"This function body contains TSRX template output, but it is a normal JavaScript block. Add '@' before the opening brace to use a TSRX statement container.";
 
@@ -461,16 +459,6 @@ export function TSRXPlugin(config) {
 				);
 			}
 
-			/**
-			 * @param {any} name
-			 * @returns {boolean}
-			 */
-			#isDynamicJSXElementName(name) {
-				if (!name || typeof name !== 'object') return false;
-				if (name.dynamic === true) return true;
-				return name.type === 'JSXMemberExpression' && this.#isDynamicJSXElementName(name.object);
-			}
-
 			#isInsideNativeTemplateScriptSection() {
 				const node = this.#currentNativeTemplateNode();
 				return !!node && node.metadata?.templateMode !== 'template';
@@ -865,7 +853,7 @@ export function TSRXPlugin(config) {
 			 *   element nested in a container (e.g. `{<div>   a</div>}`) is still a
 			 *   template-mode element whose text children are raw JSX text; the rest of
 			 *   the directive/comment/boundary checks below still apply, so a directive
-			 *   body (`{<@tag>@if(x){…}</@tag>}`) is correctly excluded.
+			 *   body inside an expression container is correctly excluded.
 			 */
 			#shouldReadTemplateRawTextToken(allow_inside_expression_container = false) {
 				if (
@@ -1989,7 +1977,6 @@ export function TSRXPlugin(config) {
 						)
 					);
 					name.name = 'style';
-					name.tracked = false;
 					this.finishNodeAt(
 						name,
 						'JSXIdentifier',
@@ -3314,7 +3301,6 @@ export function TSRXPlugin(config) {
 								this.startNodeAt(name_start, name_start_loc)
 							);
 							id.name = name_value;
-							id.tracked = false;
 							this.finishNodeAt(id, 'JSXIdentifier', name_end, name_end_loc);
 							const name = /** @type {AST.Identifier} */ (
 								this.startNodeAt(name_start, name_start_loc)
@@ -3391,7 +3377,6 @@ export function TSRXPlugin(config) {
 							this.startNodeAt(name_start, name_start_loc)
 						);
 						id.name = name_value;
-						id.tracked = false;
 						this.finishNodeAt(id, 'JSXIdentifier', name_end, name_end_loc);
 						const name = /** @type {AST.Identifier} */ (
 							this.startNodeAt(name_start, name_start_loc)
@@ -3419,16 +3404,6 @@ export function TSRXPlugin(config) {
 					}
 				}
 				/** @type {ESTreeJSX.JSXAttribute} */ (node).name = this.jsx_parseNamespacedName();
-				if (this.#isDynamicJSXElementName(/** @type {ESTreeJSX.JSXAttribute} */ (node).name)) {
-					this.#report_recoverable_error_range(
-						/** @type {AST.NodeWithLocation} */ (node).start,
-						/** @type {AST.NodeWithLocation} */ (/** @type {ESTreeJSX.JSXAttribute} */ (node).name)
-							.end ??
-							node.end ??
-							node.start,
-						DYNAMIC_ATTRIBUTE_NAME_ERROR,
-					);
-				}
 				const value = /** @type {ESTreeJSX.JSXAttribute['value'] | null} */ (
 					this.eat(tt.eq) ? this.jsx_parseAttributeValue() : null
 				);
@@ -3459,18 +3434,7 @@ export function TSRXPlugin(config) {
 			jsx_parseIdentifier() {
 				const node = /** @type {ESTreeJSX.JSXIdentifier} */ (this.startNode());
 
-				if (this.type.label === '@') {
-					this.next(); // consume @
-
-					if (this.type === tt.name || this.type === tstt.jsxName) {
-						node.name = /** @type {string} */ (this.value);
-						/** @type {any} */ (node).dynamic = true;
-						this.next();
-					} else {
-						// Unexpected token after @
-						this.unexpected();
-					}
-				} else if (this.type === tt.name || this.type.keyword || this.type === tstt.jsxName) {
+				if (this.type === tt.name || this.type.keyword || this.type === tstt.jsxName) {
 					node.name = /** @type {string} */ (this.value);
 					this.next();
 				} else {
@@ -4011,32 +3975,6 @@ export function TSRXPlugin(config) {
 			}
 
 			/**
-			 * @type {Parse.Parser['jsx_parseElementAt']}
-			 */
-			jsx_parseElementAt(startPos, startLoc) {
-				if (this.input.charCodeAt(startPos + 1) === CharCode.at) {
-					const previous_script_jsx_element_depth = this.#scriptJSXElementDepth;
-					this.#scriptJSXElementDepth = 0;
-					try {
-						const parsed = /** @type {ESTreeJSX.JSXElement} */ (
-							/** @type {unknown} */ (this.parseElement())
-						);
-						// A dynamic `<@tag>` parsed here goes straight through `parseElement`,
-						// bypassing `jsx_parseElement`'s context cleanup. In expression
-						// position (e.g. a render-prop arrow body inside object params) its
-						// markup contexts must be unwound, or the following JS token (a `,`/`}`)
-						// is mis-tokenized as JSX raw text.
-						this.#popTokenContextsAfterTemplateExpressionElement(parsed);
-						return parsed;
-					} finally {
-						this.#scriptJSXElementDepth = previous_script_jsx_element_depth;
-					}
-				}
-
-				return super.jsx_parseElementAt(startPos, startLoc);
-			}
-
-			/**
 			 * @type {Parse.Parser['jsx_parseOpeningElementAt']}
 			 */
 			jsx_parseOpeningElementAt(startPos, startLoc) {
@@ -4046,9 +3984,6 @@ export function TSRXPlugin(config) {
 				node.attributes = [];
 				const nodeName = this.jsx_parseElementName();
 				if (nodeName) node.name = nodeName;
-				if (this.#isDynamicJSXElementName(nodeName)) {
-					/** @type {any} */ (node).dynamic = true;
-				}
 				if (this.match(tt.relational) || this.match(tt.bitShift)) {
 					const typeArguments = /** @type {any} */ (this).tsTryParseAndCatch(() =>
 						/** @type {any} */ (this).tsParseTypeArgumentsInExpression(),
@@ -4174,9 +4109,6 @@ export function TSRXPlugin(config) {
 						/** @type {ESTreeJSX.JSXElement} */ (node).type = 'JSXElement';
 						/** @type {ESTreeJSX.JSXElement} */ (node).openingElement = open;
 						/** @type {ESTreeJSX.JSXElement} */ (node).closingElement = null;
-						if (/** @type {any} */ (open).dynamic) {
-							/** @type {any} */ (node).dynamic = true;
-						}
 					}
 				}
 

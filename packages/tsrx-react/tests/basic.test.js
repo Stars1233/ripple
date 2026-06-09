@@ -286,6 +286,77 @@ describe('@tsrx/react basic', () => {
 		expect(code).not.toContain(`className="content ${cssHash}"`);
 	});
 
+	it('applies scoped css hashes to runtime Dynamic imports and aliases', () => {
+		const { code, cssHash } = compile(
+			`import { Dynamic } from '@tsrx/react/dynamic';
+			const RuntimeDynamic = Dynamic;
+
+			export function App() @{
+				<>
+					<RuntimeDynamic is="div" className="host">{'hello'}</RuntimeDynamic>
+
+					<style>
+						.host {
+							color: red;
+						}
+					</style>
+				</>
+			}`,
+			'App.tsrx',
+		);
+
+		expect(code).toContain(`className="host ${cssHash}"`);
+	});
+
+	it('applies scoped css hashes to runtime Dynamic import aliases', () => {
+		const { code, cssHash } = compile(
+			`import { Dynamic as RuntimeDynamic } from '@tsrx/react/dynamic';
+
+			export function App() @{
+				<>
+					<RuntimeDynamic is="div" className="host">{'hello'}</RuntimeDynamic>
+
+					<style>
+						.host {
+							color: red;
+						}
+					</style>
+				</>
+			}`,
+			'App.tsrx',
+		);
+
+		expect(code).toContain(`className="host ${cssHash}"`);
+	});
+
+	it('does not treat local Dynamic components as runtime Dynamic imports', () => {
+		const { code, cssHash } = compile(
+			`import { Dynamic } from '@tsrx/react/dynamic';
+
+			function LocalDynamic(props) {
+				return <div {...props} />;
+			}
+
+			export function App() @{
+				const Dynamic = LocalDynamic;
+				<>
+					<Dynamic is="div" className="host">{'hello'}</Dynamic>
+
+					<style>
+						.host {
+							color: red;
+						}
+					</style>
+				</>
+			}`,
+			'App.tsrx',
+		);
+
+		expect(code).toContain('const Dynamic = LocalDynamic;');
+		expect(code).toContain('className="host"');
+		expect(code).not.toContain(`className="host ${cssHash}"`);
+	});
+
 	it('renders component-body if statements as React expressions', () => {
 		const { code } = compile(
 			`export function App() @{
@@ -982,44 +1053,6 @@ describe('@tsrx/react basic', () => {
 		expect(code).toContain('<Child content={');
 		expect(code).toContain("<span>{'hello'}</span>");
 		expect(code).not.toContain('<tsx>');
-		expect(mappings.errors).toEqual([]);
-	});
-
-	it('supports dynamic elements', () => {
-		const source = `export function App() @{
-			const dom = 'section';
-
-			<@dom class="box">
-				<span>{'hello'}</span>
-			</@dom>
-		}`;
-
-		const { code } = compile(source, 'App.tsrx');
-		const mappings = compile_to_volar_mappings(source, 'App.tsrx');
-
-		expect(code).toContain("const dom = 'section';");
-		expect(code).toContain('const DynamicElement = dom;');
-		expect(code).toContain('<DynamicElement class="box">');
-		expect(code).toContain("<span>{'hello'}</span>");
-		expect(code).toContain('return DynamicElement');
-		expect(code).toContain('? <DynamicElement class="box">');
-		expect(mappings.errors).toEqual([]);
-	});
-
-	it('supports member-form dynamic elements', () => {
-		const source = `export function App(props) @{
-			<@props.as class="box">
-				<span>{'hello'}</span>
-			</@props.as>
-		}`;
-
-		const { code } = compile(source, 'App.tsrx');
-		const mappings = compile_to_volar_mappings(source, 'App.tsrx');
-
-		expect(code).toContain('function App(props) {');
-		expect(code).toContain('const DynamicElement = props.as;');
-		expect(code).toContain('<DynamicElement class="box">');
-		expect(code).toContain("<span>{'hello'}</span>");
 		expect(mappings.errors).toEqual([]);
 	});
 

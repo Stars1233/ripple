@@ -242,17 +242,34 @@ describe('@tsrx/solid basic', () => {
 			expect(code).toContain("import { Switch, Match } from 'solid-js'");
 		});
 
-		it('for-of → <For each>{(item, i) => ...}', () => {
+		it('for-of with index and no key → <For keyed={false}>', () => {
 			const { code } = compile(
 				`function App({ items }: { items: number[] }) @{
 						@for (const item of items; index i) {
+						<li>{i + item()}</li>
+					}
+				}`,
+				'App.tsrx',
+			);
+			expect(code).toContain('<For each={items}');
+			expect(code).toContain('keyed={false}');
+			expect(code).toMatch(/\(item, i\) =>/);
+			expect(code).toContain('<li>{i + item()}</li>');
+			expect(code).toContain("import { For } from 'solid-js'");
+		});
+
+		it('for-of without index or key → default <For>', () => {
+			const { code } = compile(
+				`function App({ items }: { items: number[] }) @{
+						@for (const item of items) {
 						<li>{item}</li>
 					}
 				}`,
 				'App.tsrx',
 			);
 			expect(code).toContain('<For each={items}>');
-			expect(code).toMatch(/\(item, i\) =>/);
+			expect(code).not.toContain('keyed=');
+			expect(code).toContain('(item) => <li>{item}</li>');
 			expect(code).toContain("import { For } from 'solid-js'");
 		});
 
@@ -278,12 +295,13 @@ describe('@tsrx/solid basic', () => {
 						@try {
 						<div>{'content'}</div>
 					} @catch (err, reset) {
-						<div>{'error'}</div>
+						<div>{err().message}</div>
 					}
 				}`,
 				'App.tsrx',
 			);
 			expect(code).toContain('<Errored fallback={(err, reset) =>');
+			expect(code).toContain('<div>{err().message}</div>');
 			expect(code).toContain("import { Errored } from 'solid-js'");
 		});
 
@@ -413,7 +431,8 @@ describe('@tsrx/solid basic', () => {
 				'App.tsrx',
 			);
 
-			expect(code).toContain('<For each={items}>');
+			expect(code).toContain('<For each={items}');
+			expect(code).not.toContain('keyed=');
 			expect(code).toContain('<Show when={cond}');
 			expect(code).toContain('setup();');
 			expect(code).not.toContain('if (cond)');
@@ -583,6 +602,7 @@ describe('@tsrx/solid basic', () => {
 			);
 
 			expect(code).toContain('<For each={items}>');
+			expect(code).not.toContain('keyed=');
 			expect(code).toContain('(item) => <div>{item}</div>');
 			expect(code).not.toContain('for (const item of items)');
 		});
@@ -632,7 +652,7 @@ describe('@tsrx/solid basic', () => {
 						} @pending {
 							<div>{'loading'}</div>
 						} @catch (err) {
-							recover(err);
+							recover(err());
 						}
 				}`,
 				'App.tsrx',
@@ -641,7 +661,7 @@ describe('@tsrx/solid basic', () => {
 			expect(code).toContain('<Errored');
 			expect(code).toContain('<Loading fallback=');
 			expect(code).toContain('setup();');
-			expect(code).toContain('recover(err);');
+			expect(code).toContain('recover(err());');
 			expect(code).toMatch(/import \{[^}]*Errored[^}]*Loading[^}]*\} from 'solid-js'/);
 			expect(code).not.toContain('try {');
 		});
@@ -748,6 +768,28 @@ describe('@tsrx/solid basic', () => {
 			expect(css).toContain('.wrapper.');
 			// hash is applied to element's class attribute
 			expect(code).toMatch(/class="wrapper tsrx-[a-z0-9]+"/);
+		});
+
+		it('applies scoped css hashes to runtime Dynamic imports and aliases', () => {
+			const { code, cssHash } = compile(
+				`import { Dynamic } from '@tsrx/solid/dynamic';
+				const RuntimeDynamic = Dynamic;
+
+				export function App() @{
+					<>
+						<RuntimeDynamic is="div" class="host">{'hello'}</RuntimeDynamic>
+
+						<style>
+							.host {
+								color: red;
+							}
+						</style>
+					</>
+				}`,
+				'App.tsrx',
+			);
+
+			expect(code).toContain(`class="host ${cssHash}"`);
 		});
 
 		it('supports style expressions for scoped class maps', () => {

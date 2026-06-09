@@ -30,10 +30,8 @@ import {
 	get_for_of_iteration_params,
 	is_component_like_element,
 	planSwitchLift as plan_switch_lift,
-	identifier_to_jsx_name,
 	is_bare_render_expression,
 	is_jsx_child,
-	jsx_name_to_expression,
 	set_loc,
 } from '@tsrx/core';
 
@@ -96,6 +94,7 @@ const solid_platform = {
 		// Both fields are here to satisfy the descriptor shape; actual
 		// import injection goes through `hooks.injectImports`.
 		suspense: 'solid-js',
+		dynamic: '@tsrx/solid/dynamic',
 		errorBoundary: 'solid-js',
 		refProp: '@tsrx/solid/ref',
 	},
@@ -167,7 +166,7 @@ const solid_platform = {
 		// before `to_jsx_element` runs, so the dispatch path that would call
 		// `transformElementAttributes` is never reached for Solid. Attribute
 		// lowering happens in Solid's local `transform_element_attributes`,
-		// which `to_jsx_element` and `create_dynamic_jsx_element` call directly.
+		// which `to_jsx_element` calls directly.
 		transformElement: (inner, ctx) =>
 			to_jsx_element(/** @type {any} */ (inner), /** @type {any} */ (ctx)),
 	},
@@ -1059,17 +1058,16 @@ function build_show_element(test, children, fallback) {
 
 /**
  * `for (const item of items; index i) { ... }` →
- * `<For each={items}>{(item, i) => ...}</For>`
+ * `<For each={items} keyed={false}>{(item, i) => ...}</For>`
  *
  * `for (const item of items; key item.id) { ... }` →
  * `<For each={items} keyed={(item) => item.id}>{(item) => ...}</For>`
  *
- * Solid 2.0's `<For>` accepts a `keyed` prop (`boolean | (item) => any`) that
- * switches reconciliation from reference identity to derived keys. The callback
- * only receives the item — not the index — so a `key` expression that depends
- * only on the index can't be translated cleanly and will surface as a
- * scope error in the generated TSX. Item-based keys (the common case, e.g.
- * `key item.id`) translate directly.
+ * Solid 2.0's `<For>` defaults to raw row values for the child callback. When
+ * no explicit `key` is present, TSRX follows Solid's native callback shapes:
+ * index loops use `keyed={false}` (accessor item, raw index), while loops
+ * without an index use the default raw item. Explicit `key` clauses replace
+ * the implicit mode with the user-provided key expression.
  *
  * @param {any} node
  * @param {TransformContext} transform_context
@@ -1082,6 +1080,7 @@ function for_of_statement_to_jsx_child(node, transform_context) {
 	const loop_body = /** @type {any[]} */ (
 		node.body.type === 'BlockStatement' ? node.body.body : [node.body]
 	);
+	const uses_index_only_mode = !node.key && node.index;
 	validate_for_body_control_flow(loop_body, transform_context);
 
 	let arrow;
@@ -1114,6 +1113,8 @@ function for_of_statement_to_jsx_child(node, transform_context) {
 		attributes.push(
 			b.jsx_attribute(b.jsx_id('keyed'), to_jsx_expression_container(keyed_arrow, node.key)),
 		);
+	} else if (uses_index_only_mode) {
+		attributes.push(b.jsx_attribute(b.jsx_id('keyed'), to_jsx_expression_container(b.false)));
 	}
 
 	return create_jsx_element('For', attributes, [to_jsx_expression_container(arrow)]);
@@ -2162,10 +2163,6 @@ function to_jsx_element(node, transform_context) {
 		return tsrx_node_to_jsx_expression(node, transform_context, true);
 	}
 
-	if (node.dynamic) {
-		return dynamic_element_to_jsx_child(node, transform_context);
-	}
-
 	const name = clone_jsx_name(node.openingElement.name, node.openingElement.name);
 	const is_composite = is_component_like_element(node);
 	const attributes = transform_element_attributes(
@@ -2347,73 +2344,6 @@ function is_solid_jsx_ref_attribute(attr) {
 		attr.value.expression &&
 		attr.value.expression.type !== 'JSXEmptyExpression'
 	);
-}
-
-/**
- * @param {any} node
- * @param {TransformContext} transform_context
- * @returns {any}
- */
-function dynamic_element_to_jsx_child(node, transform_context) {
-	const element_name = node.openingElement.name;
-	const dynamic_id = set_loc(create_generated_identifier('DynamicElement'), element_name);
-	const alias_declaration = set_loc(
-		b.const(dynamic_id, jsx_name_to_expression(element_name)),
-		node,
-	);
-	const jsx_element = create_dynamic_jsx_element(dynamic_id, node, transform_context);
-
-	return to_jsx_expression_container(
-		b.call(
-			b.arrow(
-				[],
-				b.block([
-					alias_declaration,
-					b.return(b.conditional(clone_identifier(dynamic_id), jsx_element, create_null_literal())),
-				]),
-			),
-		),
-		node,
-	);
-}
-
-/**
- * @param {AST.Identifier} dynamic_id
- * @param {any} node
- * @param {TransformContext} transform_context
- * @returns {any}
- */
-function create_dynamic_jsx_element(dynamic_id, node, transform_context) {
-	const is_composite = is_component_like_element(node);
-	const attributes = transform_element_attributes(
-		node.openingElement?.attributes || [],
-		is_composite,
-		transform_context,
-		null,
-	);
-	const selfClosing = !!node.openingElement?.selfClosing;
-	const children = create_element_children(node.children || [], transform_context);
-	const name = identifier_to_jsx_name(clone_identifier(dynamic_id));
-
-	return /** @type {any} */ ({
-		type: 'JSXElement',
-		openingElement: {
-			type: 'JSXOpeningElement',
-			name,
-			attributes,
-			selfClosing,
-			metadata: { path: [] },
-		},
-		closingElement: selfClosing
-			? null
-			: {
-					type: 'JSXClosingElement',
-					name: clone_jsx_name(name),
-					metadata: { path: [] },
-				},
-		children,
-		metadata: { path: [] },
-	});
 }
 
 // =====================================================================

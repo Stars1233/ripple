@@ -84,6 +84,7 @@ interface BaseNodeMetaData {
 	parenthesized?: boolean;
 	native_tsrx?: boolean;
 	native_tsrx_template_block?: boolean;
+	runtime_dynamic_element?: boolean;
 	templateMode?: 'script' | 'template';
 	script_only?: boolean;
 	tsrxDirective?: 'if' | 'for' | 'switch' | 'try';
@@ -231,8 +232,7 @@ declare module 'estree' {
 		lazy?: boolean;
 	}
 
-	// We mark the whole node as marked when member is @[expression]
-	// Otherwise, we only mark Identifier nodes
+	// Ripple analysis may mark a whole member expression as tracked metadata.
 	interface MemberExpression {
 		tracked?: boolean;
 	}
@@ -700,7 +700,6 @@ declare module 'estree-jsx' {
 	}
 
 	interface JSXIdentifier {
-		tracked?: boolean;
 		metadata: BaseNodeMetaData & {
 			is_component?: boolean;
 		};
@@ -1292,7 +1291,6 @@ export interface Binding {
 	is_called: boolean;
 	/** Additional metadata for this binding */
 	metadata: {
-		is_dynamic_component?: boolean;
 		pattern?: AST.Identifier;
 		is_ripple_object?: boolean;
 		is_template_value?: boolean;
@@ -1450,7 +1448,6 @@ export interface TransformServerState extends BaseState {
 	namespace: NameSpace;
 	server_block_locals: AST.VariableDeclaration[];
 	server_exported_names: string[];
-	dynamicElementName?: AST.TemplateLiteral;
 	applyParentCssScope?: AST.CSS.StyleSheet['hash'];
 	dev?: boolean;
 	return_flags?: Map<AST.ReturnStatement, { name: string; tracked: boolean }>;
