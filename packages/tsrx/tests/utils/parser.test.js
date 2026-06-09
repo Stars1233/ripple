@@ -1295,6 +1295,46 @@ foo();`;
 		expect(text.value).toBe(' else\n');
 	});
 
+	it('parses same-line trailing text after an @if block closed by a tag', () => {
+		// Regression: the closing `</>` arrives as a relational `<` token because the
+		// control-flow block left the tokenizer in JS mode. The manual closing-tag
+		// re-entry used to underflow the tokenizer context stack (`context.length -=
+		// 2`), throwing "Invalid array length". Trailing text directly before the
+		// closing tag (no intervening element) is the trigger.
+		const returned = getReturned(`function App() { return <>@if (a) {<b />} done</>; }`);
+
+		const directive = returned.children.find((child) => child.type === 'JSXIfExpression');
+		const text = returned.children.find((child) => child.type === 'JSXText');
+
+		expect(directive.type).toBe('JSXIfExpression');
+		expect(text.value).toBe(' done');
+	});
+
+	it('parses same-line trailing text after an @for block closed by a tag', () => {
+		const returned = getReturned(
+			`function App() { return <>@for (const x of xs) {<b />} done</>; }`,
+		);
+
+		const directive = returned.children.find((child) => child.type === 'JSXForExpression');
+		const text = returned.children.find((child) => child.type === 'JSXText');
+
+		expect(directive.type).toBe('JSXForExpression');
+		expect(text.value).toBe(' done');
+	});
+
+	it('parses same-line trailing text after an @if block inside a named element', () => {
+		const element = findElement(
+			`function App() { return <div>@if (a) {<b />} done</div>; }`,
+			'div',
+		);
+
+		const directive = element.children.find((child) => child.type === 'JSXIfExpression');
+		const text = element.children.find((child) => child.type === 'JSXText');
+
+		expect(directive.type).toBe('JSXIfExpression');
+		expect(text.value).toBe(' done');
+	});
+
 	it('rejects braceless @if JSX output', () => {
 		expect(() =>
 			getReturned(`function App() { return <div>

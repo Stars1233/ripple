@@ -4288,6 +4288,18 @@ export function TSRXPlugin(config) {
 						this.start = startPos;
 						this.startLoc = startLoc;
 						this.exprAllowed = false;
+						// A genuine `jsxTagStart` pushes `tc_expr` + `tc_oTag` in its
+						// `updateContext`; faking the token here skips those pushes. That is
+						// harmless for an opening tag (the next token is the tag name), but a
+						// closing tag (`</`) immediately runs `context.length -= 2` in the
+						// slash `updateContext`, which would underflow the context stack and
+						// throw "Invalid array length" (e.g. `<>@if (a) { … } done</>`). Push
+						// the two contexts a real `jsxTagStart` would have added so the closing
+						// tag pops its own contexts instead of the enclosing template's.
+						if (this.input.charCodeAt(this.pos) === CharCode.slash) {
+							this.context.push(tstc.tc_expr);
+							this.context.push(tstc.tc_oTag);
+						}
 						this.next();
 					}
 					if (this.value === '/' || this.type === tt.slash) {
