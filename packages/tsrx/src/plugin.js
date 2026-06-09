@@ -4232,7 +4232,36 @@ export function TSRXPlugin(config) {
 						body.push(text);
 					}
 				} else if (this.#isJSXControlFlowDirectiveStart()) {
-					body.push(this.#parseJSXControlFlowExpression());
+					const directive = this.#parseJSXControlFlowExpression();
+					body.push(directive);
+					// `#parseTemplateControlFlowBlock` reads the token after the block's
+					// closing `}` in a code (b_stat) context, which runs `skipSpace()` and
+					// advances `start` past any whitespace. The following token is therefore a
+					// JS token (e.g. the `else` keyword), and when it is actually sibling
+					// template raw text it reaches `#parseTemplateRawText` having lost the
+					// space(s) between `}` and the text (e.g. `@if (x) { … } else` -> the text
+					// "else" instead of " else"). JSX text after a plain element keeps that
+					// whitespace, so when raw text follows and only whitespace was skipped,
+					// rewind `start` to the block's end to re-include the dropped whitespace.
+					const blockEnd = directive.end;
+					const nextCh = this.input.charCodeAt(this.start);
+					const startsRawText =
+						this.type !== tt.eof &&
+						nextCh !== CharCode.lessThan &&
+						nextCh !== CharCode.openBrace &&
+						nextCh !== CharCode.closeBrace &&
+						!this.#isJSXControlFlowDirectiveStart();
+					if (
+						startsRawText &&
+						typeof blockEnd === 'number' &&
+						this.start > blockEnd &&
+						/^\s*$/.test(this.input.slice(blockEnd, this.start))
+					) {
+						const loc = acorn.getLineInfo(this.input, blockEnd);
+						this.pos = blockEnd;
+						this.start = blockEnd;
+						this.startLoc = new acorn.Position(loc.line, loc.column);
+					}
 				} else if (this.type === tt.braceR) {
 					// Leaving a native template body. We may still be in TSX/JSX tokenization
 					// context (e.g. after parsing markup), but the closing `}` is a JS token.

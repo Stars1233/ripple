@@ -1274,7 +1274,25 @@ foo();`;
 
 		expect(directive.type).toBe('JSXIfExpression');
 		expect(directive.alternate).toBe(null);
-		expect(text.value).toContain('else');
+		expect(text.value).toMatch(/^ else/);
+	});
+
+	it('keeps the whitespace before bare else text in a @{ ... } block', () => {
+		const fragment = findNode(
+			`function Test() @{
+<>
+@if(a){<b>123</b>} else
+</>
+}`,
+			'JSXFragment',
+		);
+
+		const directive = fragment.children.find((child) => child.type === 'JSXIfExpression');
+		const text = fragment.children.find((child) => child.type === 'JSXText');
+
+		expect(directive.type).toBe('JSXIfExpression');
+		expect(directive.alternate).toBe(null);
+		expect(text.value).toBe(' else\n');
 	});
 
 	it('rejects braceless @if JSX output', () => {
