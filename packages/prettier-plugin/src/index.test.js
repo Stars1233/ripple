@@ -2528,6 +2528,51 @@ files = [...(files ?? []), ...dt.files];`;
 			expect(result).toBeWithNewline(expected);
 		});
 
+		it('expands empty braces for template control-flow blocks', async () => {
+			const input = `const App=()=> <>@if (ready) {} @else {}@for (const item of items) {} @empty {}</>;`;
+			const expected = `const App = () => <>
+  @if (ready) {
+  } @else {
+  }
+  @for (const item of items) {
+  } @empty {
+  }
+</>;`;
+			const result = await format(input);
+			expect(result).toBeWithNewline(expected);
+		});
+
+		it('expands empty braces for try family blocks', async () => {
+			const input = `function Foo() @{ @try {} @pending {} @catch {} }
+function Bar() @{ @try {} @catch {} }
+function Baz() { try {} catch {} finally {} }
+function Qux() { try {} catch {} }`;
+			const expected = `function Foo() @{
+  @try {
+  } @pending {
+  } @catch {
+  }
+}
+function Bar() @{
+  @try {
+  } @catch {
+  }
+}
+function Baz() {
+  try {
+  } catch {
+  } finally {
+  }
+}
+function Qux() {
+  try {
+  } catch {
+  }
+}`;
+			const result = await format(input);
+			expect(result).toBeWithNewline(expected);
+		});
+
 		it('prints function with a rest parameter correctly', async () => {
 			const expected = `function TestRest(...args: string[]) {
   console.log(args);
@@ -5719,7 +5764,8 @@ render(App);`;
     // <div>
     @try {
       <div>b is true</div>
-    } @catch (e) {}
+    } @catch (e) {
+    }
     // 	<div>
     // 		<div>
     // 			@if (b) {
@@ -5737,7 +5783,8 @@ render(App);`;
     // <div>
     @try {
       <div>b is true</div>
-    } @catch (e) {}
+    } @catch (e) {
+    }
     // 	<div>
     // 		<div>
     // 			@if (b) {

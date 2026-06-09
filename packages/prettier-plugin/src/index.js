@@ -1851,7 +1851,13 @@ function printRippleNode(node, path, options, print, args) {
 						blockParent.type === 'ForOfStatement' ||
 						blockParent.type === 'WhileStatement' ||
 						blockParent.type === 'DoWhileStatement' ||
-						blockParent.type === 'SwitchCase');
+						blockParent.type === 'TryStatement' ||
+						blockParent.type === 'CatchClause' ||
+						blockParent.type === 'SwitchCase' ||
+						blockParent.type === 'JSXIfExpression' ||
+						blockParent.type === 'JSXForExpression' ||
+						blockParent.type === 'JSXTryExpression' ||
+						blockParent.type === 'JSXSwitchExpression');
 
 				if (isControlFlow) {
 					nodeContent = ['{', hardline, '}'];

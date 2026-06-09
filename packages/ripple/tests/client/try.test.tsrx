@@ -24,7 +24,8 @@ describe('try block with catch and pending', () => {
 				@try {
 					let &[data] = trackAsync(() => promise);
 					<p class="resolved">{data}</p>
-				} @pending {}
+				} @pending {
+				}
 				<span class="after">{'after'}</span>
 			</>
 		}

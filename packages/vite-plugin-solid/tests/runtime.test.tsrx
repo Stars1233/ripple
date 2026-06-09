@@ -627,7 +627,8 @@ function EmptyPendingSuspenseApp(props: {
 	const LazyChild = lazy(props.loader);
 	@try {
 		<LazyChild value="hello" />
-	} @pending {}
+	} @pending {
+	}
 }
 
 // ── Try/pending/catch: Loading + Errored ──

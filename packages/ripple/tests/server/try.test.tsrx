@@ -12,7 +12,8 @@ describe('try block with catch and pending (server)', () => {
 				<span>{'before'}</span>
 				@try {
 					<DataChild />
-				} @pending {}
+				} @pending {
+				}
 				<span>{'after'}</span>
 			</>
 		}

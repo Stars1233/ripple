@@ -753,7 +753,8 @@ function SuspenseApp(props: { promise: Promise<string> }) @{
 function EmptyPendingSuspenseApp(props: { promise: Promise<string> }) @{
 	@try {
 		<AsyncChild promise={props.promise} />
-	} @pending {}
+	} @pending {
+	}
 }
 
 // ── Try/pending/catch: Suspense + ErrorBoundary ──

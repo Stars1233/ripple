@@ -861,7 +861,8 @@ function EmptyPendingSuspenseApp(props: { promise: Promise<typeof AsyncResolvedC
 	const AsyncChild = defineVaporAsyncComponent(() => props.promise);
 	@try {
 		<AsyncChild value="hello" />
-	} @pending {}
+	} @pending {
+	}
 }
 
 function ThrowingSuspenseChild() @{
