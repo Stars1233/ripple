@@ -298,6 +298,39 @@ const items=[1,2,3];
 		expect(result).toBeWithNewline(expected);
 	});
 
+	it('preserves authored multiline whitespace around a single JSXText child', async () => {
+		const input = `function Foo() @{
+  @if (props.onRemove) {
+    <button
+      class={\`\${styles.actionButton} \${styles.actionButtonDanger}\`}
+      type="button"
+      onClick={() => {
+        void props.onRemove?.();
+      }}
+    >
+      Remove shortcut
+    </button>
+  }
+}`;
+
+		const expected = `function Foo() @{
+  @if (props.onRemove) {
+    <button
+      class={\`\${styles.actionButton} \${styles.actionButtonDanger}\`}
+      type="button"
+      onClick={() => {
+        void props.onRemove?.();
+      }}
+    >
+      Remove shortcut
+    </button>
+  }
+}`;
+
+		const result = await format(input);
+		expect(result).toBeWithNewline(expected);
+	});
+
 	it('preserves inline text spaces around expression children', async () => {
 		const input = `function Test(){return <div><p class="status">Visible: {String(visible)}</p><p>{name} is visible</p><p>Hello {name}!</p></div>}`;
 		const expected = `function Test() {

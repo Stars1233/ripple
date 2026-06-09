@@ -6079,11 +6079,19 @@ function printJSXElement(node, path, options, print) {
 		return Array.isArray(leadingComments) && leadingComments.length > 0;
 	});
 	const forceMultiline = hasClosingComments || hasChildLeadingComments;
+	const singleChildNode = childNodes.length === 1 ? childNodes[0] : null;
+	const hasAuthoredMultilineSingleTextChild =
+		singleChildNode?.type === 'JSXText' && /[\r\n]/u.test(singleChildNode.value);
 
 	// Check if content can be inlined (single text node or single expression).
 	// Trailing or child-leading comments force the multi-line layout. A single
 	// text child stays inline when it fits and otherwise fills/wraps to printWidth.
-	if (!forceMultiline && childrenDocs.length === 1 && typeof childrenDocs[0] === 'string') {
+	if (
+		!forceMultiline &&
+		!hasAuthoredMultilineSingleTextChild &&
+		childrenDocs.length === 1 &&
+		typeof childrenDocs[0] === 'string'
+	) {
 		// The open tag breaks for attributes independently; the text+closing get
 		// their own group so the text only drops to its own (filled) lines when it
 		// itself overflows — otherwise it hugs `>text</tag>`.
