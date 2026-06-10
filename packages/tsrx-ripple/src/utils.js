@@ -5,7 +5,9 @@
  */
 
 import {
+	add_extra_source_mappings_from_matching_expression,
 	buildAssignmentValue,
+	clone_expression_node,
 	extractPaths,
 	builders,
 	isBooleanAttribute,
@@ -1663,6 +1665,11 @@ export function escape_html(value, is_attr = false) {
  * @returns {boolean}
  */
 export function is_element_dom_element(node) {
+	// A dynamic tag's id is an arbitrary expression (possibly a lowercase
+	// identifier) and resolves at runtime, never statically to a DOM element.
+	if (/** @type {AST.Element} */ (node).isDynamic === true) {
+		return false;
+	}
 	const id = /** @type {AST.Element} */ (node).id;
 	return (
 		id.type === 'Identifier' &&
@@ -1670,6 +1677,53 @@ export function is_element_dom_element(node) {
 		id.name !== 'children' &&
 		!id.tracked
 	);
+}
+
+export const dynamic_element_import_local = 'TsrxDynamic';
+
+/**
+ * @param {AST.Element} node
+ * @returns {boolean}
+ */
+export function lower_dynamic_element(node) {
+	if (node.isDynamic !== true) {
+		return false;
+	}
+
+	const expression = /** @type {AST.Expression & { was_expression?: boolean }} */ (node.id);
+	const closing_name = /** @type {any} */ (node.closingElement?.name);
+	const closing_expression =
+		closing_name?.expression && clone_expression_node(closing_name.expression);
+	expression.was_expression = true;
+	add_extra_source_mappings_from_matching_expression(expression, closing_expression);
+	node.id = b.id(dynamic_element_import_local);
+	if (node.openingElement?.name) {
+		node.openingElement.name = b.jsx_id(dynamic_element_import_local);
+	}
+	if (node.closingElement?.name) {
+		node.closingElement.name = b.jsx_id(dynamic_element_import_local);
+	}
+	node.attributes = [
+		/** @type {AST.Attribute} */ ({
+			type: 'Attribute',
+			name: {
+				type: 'Identifier',
+				name: 'is',
+				tracked: false,
+				start: expression.start,
+				end: expression.end,
+				loc: expression.loc,
+			},
+			value: expression,
+			shorthand: false,
+			start: expression.start,
+			end: expression.end,
+			loc: expression.loc,
+		}),
+		...node.attributes,
+	];
+	node.isDynamic = false;
+	return true;
 }
 
 /**
@@ -2619,7 +2673,7 @@ export function jsx_to_ripple_node(node, inherited_path = []) {
 		const opening = node.openingElement;
 		const name = opening.name;
 
-		/** @type {AST.Identifier | AST.MemberExpression} */
+		/** @type {AST.Identifier | AST.MemberExpression | AST.Expression} */
 		let id;
 
 		if (name.type === 'JSXIdentifier') {
@@ -2641,6 +2695,8 @@ export function jsx_to_ripple_node(node, inherited_path = []) {
 				start: name.start,
 				end: name.end,
 			});
+		} else if (name.type === 'JSXExpressionContainer' && name.isDynamic === true) {
+			id = name.expression;
 		} else {
 			// Fallback - should not reach here
 			id = /** @type {AST.Identifier} */ ({
@@ -2726,6 +2782,9 @@ export function jsx_to_ripple_node(node, inherited_path = []) {
 				end: node.end,
 			})
 		);
+		if (node.isDynamic === true || opening.isDynamic === true || name.isDynamic === true) {
+			element.isDynamic = true;
+		}
 
 		element.children = /** @type {AST.Node[]} */ (
 			/** @type {AST.Node[]} */ (node.children)

@@ -299,13 +299,14 @@ declare module 'estree' {
 
 	interface Element extends AST.BaseExpression {
 		type: 'Element';
-		id: AST.Identifier | AST.MemberExpression | AST.Literal;
+		id: AST.Expression;
 		attributes: Array<Attribute | SpreadAttribute>;
 		children: AST.Node[];
 		openingElement: ESTreeJSX.JSXOpeningElement;
 		closingElement: ESTreeJSX.JSXClosingElement | null;
 		selfClosing?: boolean;
 		unclosed?: boolean;
+		isDynamic?: boolean;
 		css?: string;
 		metadata: BaseNodeMetaData;
 		start: number;
@@ -727,6 +728,7 @@ declare module 'estree-jsx' {
 	interface JSXExpressionContainer {
 		text?: boolean;
 		style?: boolean;
+		isDynamic?: boolean;
 	}
 
 	interface JSXMemberExpression {

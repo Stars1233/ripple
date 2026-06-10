@@ -15,6 +15,7 @@ import {
 	tsx_with_ts_locations,
 } from './helpers.js';
 import {
+	add_extra_source_mappings_from_matching_expression,
 	clone_expression_node,
 	clone_identifier,
 	clone_jsx_name,
@@ -69,6 +70,7 @@ const TSRX_IF_RETURN_ERROR =
 const TSRX_IF_BREAK_ERROR = 'Break statements are not allowed inside TSRX template @if blocks.';
 const TSRX_IF_CONTINUE_ERROR =
 	'Continue statements are not allowed inside TSRX template @if blocks. Filter before rendering or use conditional output instead.';
+const DYNAMIC_IMPORT_LOCAL = 'TsrxDynamic';
 
 /**
  * @param {AST.Node} node
@@ -300,6 +302,7 @@ export function createJsxTransform(platform) {
 			needs_normalize_spread_props: false,
 			needs_normalize_spread_props_for_ref_attr: false,
 			needs_fragment: false,
+			needs_dynamic_element: false,
 			needs_for_of_iterable: false,
 			needs_iteration_value_type: false,
 			stylesheets,
@@ -364,6 +367,8 @@ export function createJsxTransform(platform) {
 			},
 
 			JSXElement(node, { next, path, state }) {
+				lower_dynamic_jsx_element(node, state);
+
 				if (!node.metadata?.native_tsrx) {
 					return next() ?? node;
 				}
@@ -462,6 +467,7 @@ export function createJsxTransform(platform) {
 			transformed_program.body.unshift(...type_only_style_anchors);
 		}
 		const expanded = expand_component_helpers(transformed_program);
+		inject_dynamic_import(expanded, transform_context);
 		if (platform.hooks?.injectImports) {
 			platform.hooks.injectImports(expanded, transform_context, suspense_source);
 		} else {
@@ -495,6 +501,64 @@ export function createJsxTransform(platform) {
 	}
 
 	return transform;
+}
+
+/**
+ * Lower a single parser-native dynamic tag (`<{expr}>`) into the target runtime
+ * `<Dynamic is={expr}>` helper shape while the existing JSXElement walker is
+ * already visiting it. The dynamic name container travels by reference through
+ * element rebuilds, so checking it covers rebuilt elements too; once lowered,
+ * the name is a plain `JSXIdentifier` and the element is skipped on re-visits.
+ *
+ * @param {any} node
+ * @param {TransformContext} transform_context
+ * @returns {void}
+ */
+function lower_dynamic_jsx_element(node, transform_context) {
+	const dynamic_name = node.openingElement?.name;
+	if (dynamic_name?.type !== 'JSXExpressionContainer' || dynamic_name.isDynamic !== true) return;
+	if (!transform_context.platform.imports.dynamic) return;
+
+	const dynamic_expression = dynamic_name.expression;
+	if (!dynamic_expression) return;
+	const generated_expression = clone_expression_node(dynamic_expression);
+	if (node.closingElement?.name?.expression) {
+		// One generated `is={expr}` stands in for both tags; record the closing
+		// tag's positions so editor features keep working on `</{expr}>`.
+		add_extra_source_mappings_from_matching_expression(
+			generated_expression,
+			clone_expression_node(node.closingElement.name.expression),
+		);
+	}
+
+	node.openingElement.name = b.jsx_id(DYNAMIC_IMPORT_LOCAL);
+	node.openingElement.attributes = [
+		b.jsx_attribute(
+			b.jsx_id('is'),
+			b.jsx_expression_container(generated_expression, dynamic_name),
+			false,
+			dynamic_name,
+		),
+		...(node.openingElement.attributes || []),
+	];
+	if (node.closingElement?.name) {
+		node.closingElement.name = b.jsx_id(DYNAMIC_IMPORT_LOCAL);
+	}
+
+	transform_context.needs_dynamic_element = true;
+}
+
+/**
+ * @param {AST.Program} program
+ * @param {TransformContext} transform_context
+ * @returns {void}
+ */
+function inject_dynamic_import(program, transform_context) {
+	const source = transform_context.platform.imports.dynamic;
+	if (!transform_context.needs_dynamic_element || !source) return;
+	program.body.unshift(
+		b.import_declaration([b.import_specifier('Dynamic', DYNAMIC_IMPORT_LOCAL)], source),
+	);
 }
 
 /**
@@ -3262,7 +3326,13 @@ function to_jsx_element(
 		? null
 		: set_loc(
 				b.jsx_closing_element(
-					clone_jsx_name(name, node.closingElement?.name || node.closingElement || node),
+					// Clone from the actual closing name when there is one: a dynamic
+					// tag's closing expression (`</{Tag}>`) has its own source positions,
+					// which editor mappings need.
+					clone_jsx_name(
+						node.closingElement?.name ?? name,
+						node.closingElement?.name || node.closingElement || node,
+					),
 				),
 				node.closingElement || node,
 			);

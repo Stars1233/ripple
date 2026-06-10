@@ -5870,7 +5870,12 @@ function printJSXElement(node, path, options, print) {
 	const openingElement = node.openingElement;
 	const closingElement = node.closingElement;
 
-	const tagName = printJSXElementName(openingElement.name);
+	// Dynamic tags (`<{expr}>`) print the opening expression for both tags so
+	// they stay textually identical; static names print as plain strings.
+	const tagName =
+		/** @type {any} */ (openingElement.name).type === 'JSXExpressionContainer'
+			? ['{', path.call(print, 'openingElement', 'name', 'expression'), '}']
+			: printJSXElementName(openingElement.name);
 
 	const isSelfClosing = openingElement.selfClosing;
 	const hasAttributes = openingElement.attributes && openingElement.attributes.length > 0;

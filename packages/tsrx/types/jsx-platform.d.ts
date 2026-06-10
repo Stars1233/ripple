@@ -39,6 +39,7 @@ export interface JsxTransformContext {
 	needs_normalize_spread_props: boolean;
 	needs_normalize_spread_props_for_ref_attr: boolean;
 	needs_fragment: boolean;
+	needs_dynamic_element: boolean;
 	needs_for_of_iterable: boolean;
 	needs_iteration_value_type: boolean;
 	stylesheets: AST.CSS.StyleSheet[];

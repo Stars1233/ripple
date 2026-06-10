@@ -76,6 +76,25 @@ const REGEX_PRECEDING_KEYWORDS = new Set([
 	'throw',
 ]);
 
+// Transparent wrappers to look through when validating a dynamic tag
+// expression (`<{expr}>`), and syntax that disqualifies one outright.
+const DYNAMIC_TAG_WRAPPER_TYPES = new Set([
+	'TSAsExpression',
+	'TSTypeAssertion',
+	'TSNonNullExpression',
+	'ParenthesizedExpression',
+	'ChainExpression',
+]);
+const DYNAMIC_TAG_DISALLOWED_TYPES = new Set([
+	'SpreadElement',
+	'ExperimentalSpreadProperty',
+	'ObjectExpression',
+	'ArrayExpression',
+	'CallExpression',
+	'NewExpression',
+	'TaggedTemplateExpression',
+]);
+
 /** @type {WeakMap<Record<string, boolean>, Map<string, number>>} */
 const argument_clash_first_positions = new WeakMap();
 /** @type {WeakMap<Record<string, boolean>, Set<string>>} */
@@ -1163,6 +1182,7 @@ export function TSRXPlugin(config) {
 					if (next === CharCode.slash) return false;
 					const tagLike =
 						next === CharCode.greaterThan ||
+						next === CharCode.openBrace ||
 						next === CharCode.at ||
 						next === CharCode.dollar ||
 						next === CharCode.underscore ||
@@ -2581,8 +2601,68 @@ export function TSRXPlugin(config) {
 				} else if (node.type === 'MemberExpression' || node.type === 'JSXMemberExpression') {
 					// For components like <Foo.Bar>, return "Foo.Bar"
 					return this.getElementName(node.object) + '.' + this.getElementName(node.property);
+				} else if (this.#isDynamicJSXElementName(node)) {
+					// Dynamic tags (`<{Tag}>`) name by expression source. The braces keep
+					// them from colliding with static tag names ('style', 'head', ...) and
+					// read as source syntax in error messages (`</{Tag}>`).
+					const expression = /** @type {AST.Expression} */ (/** @type {any} */ (node).expression);
+					return `{${this.input.slice(expression.start, expression.end).trim()}}`;
 				}
 				return null;
+			}
+
+			/**
+			 * @param {any} name
+			 * @returns {boolean}
+			 */
+			#isDynamicJSXElementName(name) {
+				return !!(name && name.type === 'JSXExpressionContainer' && name.isDynamic === true);
+			}
+
+			/**
+			 * Dynamic tag expressions must be able to resolve to an element name:
+			 * an identifier, member access, static string, or a runtime expression
+			 * composed of those. Constructed values (calls, spreads, concatenation,
+			 * interpolation, object/array literals) and static non-string literals
+			 * can never be valid tag names.
+			 * @param {any} expression
+			 * @returns {boolean}
+			 */
+			#isValidDynamicTagExpression(expression) {
+				let node = expression;
+				while (node && DYNAMIC_TAG_WRAPPER_TYPES.has(node.type)) {
+					node = node.expression;
+				}
+				if (!node || node.type?.startsWith?.('JSX')) return false;
+				if (node.type === 'Identifier') return node.name !== 'undefined';
+				if (node.type === 'Literal') return typeof node.value === 'string';
+				if (node.type === 'UnaryExpression' && node.operator === 'void') return false;
+				return !this.#containsDisallowedDynamicTagSyntax(node);
+			}
+
+			/**
+			 * @param {any} node
+			 * @param {Set<any>} [seen]
+			 * @returns {boolean}
+			 */
+			#containsDisallowedDynamicTagSyntax(node, seen = new Set()) {
+				if (!node || typeof node !== 'object' || seen.has(node)) return false;
+				seen.add(node);
+				if (Array.isArray(node)) {
+					return node.some((child) => this.#containsDisallowedDynamicTagSyntax(child, seen));
+				}
+				if (
+					DYNAMIC_TAG_DISALLOWED_TYPES.has(node.type) ||
+					(node.type === 'TemplateLiteral' && node.expressions.length > 0) ||
+					(node.type === 'BinaryExpression' && node.operator === '+')
+				) {
+					return true;
+				}
+				for (const key of Object.keys(node)) {
+					if (key === 'loc' || key === 'start' || key === 'end' || key === 'metadata') continue;
+					if (this.#containsDisallowedDynamicTagSyntax(node[key], seen)) return true;
+				}
+				return false;
 			}
 
 			/**
@@ -2639,6 +2719,7 @@ export function TSRXPlugin(config) {
 					const isTagLikeAfterLt =
 						next === CharCode.slash ||
 						next === CharCode.greaterThan ||
+						next === CharCode.openBrace ||
 						next === CharCode.at ||
 						next === CharCode.dollar ||
 						next === CharCode.underscore ||
@@ -2759,6 +2840,7 @@ export function TSRXPlugin(config) {
 						!isWhitespaceAfterLt &&
 						(nextChar === CharCode.slash ||
 							nextChar === CharCode.greaterThan ||
+							nextChar === CharCode.openBrace ||
 							nextChar === CharCode.at ||
 							nextChar === CharCode.dollar ||
 							nextChar === CharCode.underscore ||
@@ -3444,12 +3526,28 @@ export function TSRXPlugin(config) {
 				return this.finishNode(node, 'JSXIdentifier');
 			}
 
+			#parseJSXDynamicElementName() {
+				const container = this.jsx_parseExpressionContainer();
+				container.isDynamic = true;
+				if (!this.#isValidDynamicTagExpression(container.expression)) {
+					this.raise(
+						/** @type {number} */ (container.expression?.start ?? container.start),
+						'Dynamic element names must be an identifier, member expression, static string, or runtime expression; calls, spreads, string concatenation, string interpolation, and static null, undefined, boolean, number, object, and array literals are not valid tag names.',
+					);
+				}
+				return container;
+			}
+
 			/**
 			 * @type {Parse.Parser['jsx_parseElementName']}
 			 */
 			jsx_parseElementName() {
 				if (this.type === tstt.jsxTagEnd) {
 					return '';
+				}
+
+				if (this.type === tt.braceL) {
+					return this.#parseJSXDynamicElementName();
 				}
 
 				let node = this.jsx_parseNamespacedName();
@@ -3983,7 +4081,10 @@ export function TSRXPlugin(config) {
 				);
 				node.attributes = [];
 				const nodeName = this.jsx_parseElementName();
-				if (nodeName) node.name = nodeName;
+				if (nodeName) node.name = /** @type {any} */ (nodeName);
+				if (this.#isDynamicJSXElementName(nodeName)) {
+					/** @type {any} */ (node).isDynamic = true;
+				}
 				if (this.match(tt.relational) || this.match(tt.bitShift)) {
 					const typeArguments = /** @type {any} */ (this).tsTryParseAndCatch(() =>
 						/** @type {any} */ (this).tsParseTypeArgumentsInExpression(),
@@ -4003,6 +4104,9 @@ export function TSRXPlugin(config) {
 							this.getElementName(nodeName) === 'style' ? 'JSXStyleElement' : 'JSXElement';
 						/** @type {any} */ (opening_template_node).openingElement = node;
 						/** @type {any} */ (opening_template_node).closingElement = null;
+						if (this.#isDynamicJSXElementName(nodeName)) {
+							/** @type {any} */ (opening_template_node).isDynamic = true;
+						}
 					} else {
 						/** @type {any} */ (opening_template_node).type = 'JSXFragment';
 						/** @type {any} */ (opening_template_node).openingFragment =
@@ -4076,6 +4180,7 @@ export function TSRXPlugin(config) {
 					this.#openingNativeTemplateNode = previous_opening_native_template_node;
 				}
 				const tag_name = open.name ? this.getElementName(open.name) : null;
+				const is_dynamic = this.#isDynamicJSXElementName(open.name);
 				const is_style = tag_name === 'style';
 				const inside_head = this.#path.findLast((n) => this.#isNativeElementNamed(n, 'head'));
 
@@ -4109,6 +4214,9 @@ export function TSRXPlugin(config) {
 						/** @type {ESTreeJSX.JSXElement} */ (node).type = 'JSXElement';
 						/** @type {ESTreeJSX.JSXElement} */ (node).openingElement = open;
 						/** @type {ESTreeJSX.JSXElement} */ (node).closingElement = null;
+						if (is_dynamic) {
+							/** @type {any} */ (node).isDynamic = true;
+						}
 					}
 				}
 
@@ -4314,6 +4422,9 @@ export function TSRXPlugin(config) {
 							);
 						} finally {
 							this.#closingNativeTemplateNode = false;
+						}
+						if (this.#isDynamicJSXElementName(closingElement.name)) {
+							/** @type {any} */ (closingElement).isDynamic = true;
 						}
 						this.exprAllowed = false;
 
