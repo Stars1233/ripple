@@ -57,7 +57,6 @@ import {
 	is_native_tsrx_template_node,
 	is_tsrx_component_function,
 	is_style_element,
-	dynamic_element_import_local,
 	lower_dynamic_element,
 	simple_hash,
 	strong_hash,
@@ -1975,9 +1974,7 @@ const visitors = {
 	Element(node, context) {
 		const { state, visit } = context;
 
-		if (lower_dynamic_element(node)) {
-			state.imports.add(`import { Dynamic as ${dynamic_element_import_local} } from 'ripple'`);
-		}
+		lower_dynamic_element(node, b.member(b.id('_$_'), 'dynamic_element'));
 
 		if (
 			is_style_element(node) &&
@@ -2409,10 +2406,15 @@ const visitors = {
 			/** @type {AST.Statement[]} */
 			const statements = [b.const(comp_id, visited_id), b.const(args_id, b.array(args))];
 
-			if (local_metadata) {
+			if (local_metadata || node.metadata?.dynamicElement === true) {
+				// Locally defined components and the internal `_$_.dynamic_element`
+				// helper are statically known; a dynamic tag's possibly-null value
+				// is handled inside the helper itself.
 				statements.push(comp_call_statement);
 			} else {
-				// imported or children
+				// Imported components and component-valued props (e.g. `children`,
+				// optional component props) may be undefined at render time —
+				// render nothing instead of crashing.
 				statements.push(b.if(comp_id, b.block([comp_call_statement])));
 			}
 

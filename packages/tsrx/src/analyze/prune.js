@@ -1,4 +1,5 @@
 /** @import * as AST from 'estree' */
+/** @import * as ESTreeJSX from 'estree-jsx' */
 /** @import { Visitors, TopScopedClasses, StyleClasses } from '../../types/index' */
 /** @typedef {0 | 1} Direction */
 
@@ -66,8 +67,14 @@ function get_attribute_value(attribute) {
  * @param {AST.Node} node
  * @returns {boolean}
  */
-function is_runtime_dynamic_element(node) {
-	return node?.metadata?.runtime_dynamic_element === true;
+function is_dynamic_element(node) {
+	// `metadata.dynamicElement` marks lowered dynamic tags; `isDynamic` is the
+	// parser flag on a not-yet-lowered `<{expr}>` element. Both resolve their
+	// tag at runtime, so they can match any type selector.
+	return (
+		node?.metadata?.dynamicElement === true ||
+		/** @type {ESTreeJSX.JSXExpressionContainer} */ (node)?.isDynamic === true
+	);
 }
 
 /**
@@ -390,7 +397,7 @@ function get_descendant_elements(node, adjacent_only) {
  * @returns {boolean}
  */
 function can_render_dynamic_content(element, check_classes = false) {
-	if (is_runtime_dynamic_element(element)) {
+	if (is_dynamic_element(element)) {
 		return true;
 	}
 
@@ -1014,7 +1021,7 @@ function relative_selector_might_apply_to_node(relative_selector, rule, element,
 			}
 
 			case 'TypeSelector': {
-				if (is_runtime_dynamic_element(element)) {
+				if (is_dynamic_element(element)) {
 					break;
 				}
 

@@ -95,6 +95,9 @@ const solid_platform = {
 		// import injection goes through `hooks.injectImports`.
 		suspense: 'solid-js',
 		dynamic: '@tsrx/solid/dynamic',
+		// Production output binds dynamic tags straight to Solid's `dynamic`
+		// factory; the type-only transform keeps the `Dynamic` component shape.
+		dynamicFactory: { name: 'dynamic', source: '@solidjs/web' },
 		errorBoundary: 'solid-js',
 		refProp: '@tsrx/solid/ref',
 	},
@@ -2200,6 +2203,11 @@ function to_jsx_element(node, transform_context) {
 			openingElement,
 			closingElement,
 			children,
+			// Keep lowered dynamic tags recognizable to scoped-CSS passes and
+			// the static-hoist veto after the rebuild.
+			...(node.metadata?.dynamicElement === true
+				? { metadata: { path: [], dynamicElement: true } }
+				: null),
 		}),
 		node,
 	);
