@@ -3693,7 +3693,16 @@ function build_tsrx_ts_return_expression(children) {
 		? b.literal(null)
 		: children.length === 1
 			? children[0]
-			: b.jsx_fragment(/** @type {ESTreeJSX.JSXFragment['children']} */ (children));
+			: b.jsx_fragment(
+					// A plain expression placed directly as a JSX child reads as JSX text
+					// in the TS view (`<>{a}{b}</>` would become `<>ab</>`), so it needs
+					// an expression container to stay visible to TypeScript.
+					children.map((child) =>
+						child.type === 'JSXElement' || child.type === 'JSXFragment'
+							? child
+							: b.jsx_expression_container(child),
+					),
+				);
 }
 
 /**

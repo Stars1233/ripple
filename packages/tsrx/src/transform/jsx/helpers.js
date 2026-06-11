@@ -4,20 +4,19 @@
 import tsx from 'esrap/languages/tsx';
 
 /**
- * Zimmerframe provides `path` as the ancestor chain. A native template node whose
- * parent is another native template node renders as a JSX child; anywhere else it
- * renders as a standalone expression (e.g. a return value).
+ * Zimmerframe provides `path` as the ancestor chain. A native template node in
+ * the children list of any JSX element/fragment renders as a JSX child;
+ * anywhere else it renders as a standalone expression (e.g. a return value).
+ * The parent may be a parsed native template node or a synthetic fragment the
+ * transform built around render children — either way a bare expression in a
+ * child slot would print as JSX text.
  *
  * @param {any[]} path
  * @returns {boolean}
  */
 export function in_jsx_child_context(path) {
 	const parent = path[path.length - 1];
-	return (
-		!!parent &&
-		(parent.type === 'JSXElement' || parent.type === 'JSXFragment') &&
-		parent.metadata?.native_tsrx
-	);
+	return !!parent && (parent.type === 'JSXElement' || parent.type === 'JSXFragment');
 }
 
 /**

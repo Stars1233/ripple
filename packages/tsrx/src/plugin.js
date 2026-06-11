@@ -2714,7 +2714,10 @@ export function TSRXPlugin(config) {
 					this.pos++;
 					return this.finishToken(tt.arrow);
 				}
-				if (code === CharCode.lessThan) {
+				if (code === CharCode.lessThan && this.type !== tstt.jsxText) {
+					// After a JSX text token a `<` can only open a tag; without this guard
+					// text ending in an identifier character (`hello<div>`) would read as
+					// the start of a type argument list (`hello<T>`).
 					const next = this.input.charCodeAt(this.pos + 1);
 					if (
 						next !== CharCode.slash &&

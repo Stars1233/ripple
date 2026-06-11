@@ -109,4 +109,19 @@ function App() @{
 		expect(code).toContain('return <article');
 		expect(code).not.toContain('"const className = \'editable\';"');
 	});
+
+	it('keeps fragment expression children inside containers in the TS view', () => {
+		const source = `
+function StatusBadge() @{
+	const a = 'hi';
+	<>{<>{a} <>{<>{a}</>}</> </>}</>
+}
+`;
+		const { code } = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
+
+		// Bare expressions as fragment children would read as JSX text (`<>aa</>`),
+		// hiding both identifiers from TypeScript.
+		expect(code).toContain('<>{a}{a}</>');
+		expect(code).not.toContain('<>aa</>');
+	});
 });

@@ -1279,6 +1279,72 @@ foo();`;
 		expect(block.render.openingElement.name.name).toBe('T');
 	});
 
+	it('parses template text touching a following element as text, not a type-argument list', () => {
+		const block = getReturned(`function App() { return @{ <>hello<span>{a}</span></> }; }`);
+
+		const fragment = block.render;
+		expect(fragment.children.map((child) => child.type)).toEqual(['JSXText', 'JSXElement']);
+		expect(fragment.children[0].value).toBe('hello');
+		expect(fragment.children[1].openingElement.name.name).toBe('span');
+	});
+
+	it('parses template text touching a following fragment as text, not a type-argument list', () => {
+		const block = getReturned(`function App() { return @{ <>hello<>{a}</></> }; }`);
+
+		const fragment = block.render;
+		expect(fragment.children.map((child) => child.type)).toEqual(['JSXText', 'JSXFragment']);
+		expect(fragment.children[0].value).toBe('hello');
+		expect(fragment.children[1].children.map((child) => child.type)).toEqual([
+			'JSXExpressionContainer',
+		]);
+	});
+
+	it('keeps expressions as containers between touching text inside an expression container', () => {
+		const block = getReturned(`function App() { return @{ <>{<>x{a}y<>{b}</>z</>}</> }; }`);
+
+		const inner = block.render.children[0].expression;
+		expect(inner.type).toBe('JSXFragment');
+		expect(inner.children.map((child) => child.type)).toEqual([
+			'JSXText',
+			'JSXExpressionContainer',
+			'JSXText',
+			'JSXFragment',
+			'JSXText',
+		]);
+		expect(inner.children[1].expression.name).toBe('a');
+		expect(inner.children[3].children[0].expression.name).toBe('b');
+	});
+
+	it('parses expression containers at every level of nested fragments in expression position', () => {
+		const ast = parseModule(
+			`function StatusBadge() @{
+				<>{<>{a} <>{<>{a}</>}</> </>}</>
+			}`,
+			'App.tsrx',
+		);
+
+		const outer = ast.body[0].body.render;
+		expect(outer.type).toBe('JSXFragment');
+		expect(outer.children.map((child) => child.type)).toEqual(['JSXExpressionContainer']);
+
+		const level2 = outer.children[0].expression;
+		expect(level2.type).toBe('JSXFragment');
+		expect(level2.children.map((child) => child.type)).toEqual([
+			'JSXExpressionContainer',
+			'JSXText',
+			'JSXFragment',
+		]);
+		expect(level2.children[0].expression.name).toBe('a');
+
+		const level3 = level2.children[2];
+		expect(level3.children.map((child) => child.type)).toEqual(['JSXExpressionContainer']);
+
+		const level4 = level3.children[0].expression;
+		expect(level4.type).toBe('JSXFragment');
+		expect(level4.children.map((child) => child.type)).toEqual(['JSXExpressionContainer']);
+		expect(level4.children[0].expression.name).toBe('a');
+	});
+
 	it('parses parenthesized conditional JSX spread attributes in render output', () => {
 		const returned = getReturned(`function App() { return <div>@{
 			let &[enabled] = track(true);

@@ -48,6 +48,23 @@ const TSRX_FORGOTTEN_STATEMENT_CONTAINER_ERROR =
  */
 export function runSharedCompileDiagnosticsTests({ compile_to_volar_mappings, name }) {
 	describe(`[${name}] compile diagnostics`, () => {
+		it('keeps fragment expression children inside containers in type-only output', () => {
+			const result = compile_to_volar_mappings(
+				`function StatusBadge() @{
+					const a = 1;
+					<>{<>{a} <>{<>{a}</>}</> </>}</>
+				}`,
+				'App.tsrx',
+				{ loose: true },
+			);
+
+			// Bare expressions as fragment children would read as JSX text
+			// (`<>{a}a</>`), hiding the identifiers from TypeScript.
+			expect(result.errors).toEqual([]);
+			expect(result.code).toContain('<>{a}{a}</>');
+			expect(result.code).not.toContain('<>{a}a</>');
+		});
+
 		it('keeps callback returns around JSX values clean in type-only output', () => {
 			const result = compile_to_volar_mappings(
 				`function Test() @{
@@ -1637,6 +1654,39 @@ export function runSharedCompileTests({
 
 	runSharedComponentLoopControlFlowTests({ compile, name });
 	runSharedNestedLazyDestructuringTests({ compile, name });
+
+	describe(`[${name}] fragment expression children`, () => {
+		// A bare expression placed directly as a JSX child reads as JSX text
+		// (`<>{a}b</>` renders the letter "b"), so every expression that ends up
+		// in a fragment children list must keep its `{ … }` container.
+
+		it('keeps a sibling nested-fragment expression in a container', () => {
+			const { code } = compile(
+				`function App() @{
+					const a = 1, b = 2;
+					<>{a} <>{<>{b}</>}</></>
+				}`,
+				'App.tsrx',
+			);
+
+			expect(code).toContain('<>{a}{b}</>');
+			expect(code).not.toContain('<>{a}b</>');
+		});
+
+		it('keeps expressions at every level of nested fragments in expression position', () => {
+			const { code } = compile(
+				`function StatusBadge() @{
+					const a = 1;
+					<>{<>{a} <>{<>{a}</>}</> </>}</>
+				}`,
+				'App.tsrx',
+			);
+
+			expect(code).toContain('<>{a}{a}</>');
+			expect(code).not.toContain('<>{a}a</>');
+			expect(code).not.toContain('<>aa</>');
+		});
+	});
 
 	describe(`[${name}] component export shapes`, () => {
 		// Function export prefix preservation should stay identical across
