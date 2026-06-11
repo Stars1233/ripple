@@ -145,6 +145,73 @@ function read_jsx_tag_end(line: string, start: number): number {
 	return line.length;
 }
 
+function is_jsx_tag_start(next: string | undefined): boolean {
+	return (
+		next === '/' || next === '>' || next === '@' || next === '{' || /[A-Za-z]/.test(next ?? '')
+	);
+}
+
+function highlight_jsx_expression(expression: string): string {
+	let index = 0;
+	let html = '';
+
+	while (index < expression.length) {
+		const char = expression[index];
+		const next = expression[index + 1];
+
+		if (char === '"' || char === "'" || char === '`') {
+			const string_end = read_string(expression, index);
+			html += span('str', expression.slice(index, string_end));
+			index = string_end;
+			continue;
+		}
+
+		if (/[0-9]/.test(char)) {
+			let number_end = index + 1;
+			while (number_end < expression.length && /[\d.]/.test(expression[number_end])) {
+				number_end++;
+			}
+			html += span('val', expression.slice(index, number_end));
+			index = number_end;
+			continue;
+		}
+
+		if (/[A-Za-z_$]/.test(char)) {
+			const ident_end = read_identifier(expression, index);
+			const ident = expression.slice(index, ident_end);
+			let class_name = 'prop';
+
+			if (LITERALS.has(ident)) {
+				class_name = 'val';
+			} else if (TEMPLATE_KEYWORDS.has(ident)) {
+				class_name = 'kw';
+			} else if (/^[A-Z]/.test(ident)) {
+				class_name = 'type';
+			}
+
+			html += span(class_name, ident);
+			index = ident_end;
+			continue;
+		}
+
+		if ('{}()[]'.includes(char)) {
+			html += span('br', char);
+			index++;
+			continue;
+		}
+
+		if (char === '/' && next === '/') {
+			html += span('cmt', expression.slice(index));
+			break;
+		}
+
+		html += escape_html(char);
+		index++;
+	}
+
+	return html;
+}
+
 function jsx_tag_depth_delta(tag: string): number {
 	const trimmed = tag.trim();
 	if (!trimmed.startsWith('<')) return 0;
@@ -184,13 +251,15 @@ function read_jsx_tag(
 			html += span('str', tag.slice(index, string_end));
 			index = string_end;
 		} else if (char === '{') {
-			html += span('tbr', char);
-			expression_depth++;
-			index++;
-		} else if (char === '}') {
-			html += span('tbr', char);
-			expression_depth = Math.max(expression_depth - 1, 0);
-			index++;
+			const expression_end = read_template_expression_end(tag, index + 1);
+			html += span('tbr', '{');
+			html += highlight_jsx_expression(tag.slice(index + 1, expression_end));
+			if (expression_end < tag.length) {
+				html += span('tbr', '}');
+				index = expression_end + 1;
+			} else {
+				index = expression_end;
+			}
 		} else if (/[A-Za-z_@]/.test(char)) {
 			const ident_end = read_identifier(tag, index);
 			const ident = tag.slice(index, ident_end);
@@ -372,10 +441,7 @@ function highlight_code_line(
 				continue;
 			}
 
-			if (
-				char === '<' &&
-				(next === '/' || next === '>' || next === '@' || /[A-Za-z]/.test(next ?? ''))
-			) {
+			if (char === '<' && is_jsx_tag_start(next)) {
 				const tag = read_jsx_tag(line, index);
 				html += tag.html;
 				index = tag.next;
@@ -408,10 +474,7 @@ function highlight_code_line(
 			continue;
 		}
 
-		if (
-			char === '<' &&
-			(next === '/' || next === '>' || next === '@' || /[A-Za-z]/.test(next ?? ''))
-		) {
+		if (char === '<' && is_jsx_tag_start(next)) {
 			const tag = read_jsx_tag(line, index);
 			html += tag.html;
 			index = tag.next;
