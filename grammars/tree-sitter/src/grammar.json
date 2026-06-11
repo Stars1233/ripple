@@ -2356,6 +2356,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "jsx_statement_container"
+        },
+        {
+          "type": "SYMBOL",
           "name": "jsx_if_expression"
         },
         {
