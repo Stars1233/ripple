@@ -1226,7 +1226,7 @@ export function GettingStartedPage() @{
 			}
 			:global(.code-block .comment),
 			:global(.code-block .cmt) {
-				color: #808080;
+				color: #6a9955;
 			}
 			:global(.code-block .val) {
 				color: #b5cea8;
@@ -1238,13 +1238,13 @@ export function GettingStartedPage() @{
 				color: #808080;
 			}
 			:global(.code-block .attr) {
-				color: #92c5f8;
+				color: #9cdcfe;
 			}
 			:global(.code-block .br) {
-				color: #ffd700;
+				color: #d4d4d4;
 			}
 			:global(.code-block .tbr) {
-				color: #ffd700;
+				color: #569cd6;
 			}
 			:global(.code-block .css-sel) {
 				color: #d7ba7d;
