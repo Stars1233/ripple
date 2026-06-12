@@ -386,10 +386,19 @@ function highlight_code_line(
 	let jsx_text_depth = initial_jsx_text_depth;
 	let jsx_expression_depth = 0;
 
+	// Pre-@ statement syntax: a line in template-children position that starts
+	// like a statement (optionally after a closing brace) renders as code, not
+	// template text. The lookaheads keep prose lines unaffected.
+	const code_statement_line =
+		initial_jsx_text_depth > 0 &&
+		/^[\t ]*\}?[\t ]*(?:(?:if|for|while|switch|catch)[\t ]*\(|else[\t ]+if[\t ]*\(|(?:try|else|do|finally|pending|empty)[\t ]*\{|(?:const|let|var)[\t ]+[A-Za-z_$])/.test(
+			line,
+		);
+
 	while (index < line.length) {
 		const char = line[index];
 		const next = line[index + 1];
-		const in_jsx_text = jsx_expression_depth === 0 && jsx_text_depth > 0;
+		const in_jsx_text = jsx_expression_depth === 0 && jsx_text_depth > 0 && !code_statement_line;
 
 		if (comment_state.in_block_comment) {
 			const comment_end = line.indexOf('*/', index);
