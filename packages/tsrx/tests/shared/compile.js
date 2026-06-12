@@ -3255,7 +3255,7 @@ export function optionalFn(bar: string, baz?: string) {
 			const { code, css, cssHash } = compile(
 				`export function App() @{
 					<>
-						<div>{'Hello world'}</div>
+						<div ${generatedClassAttrName}="div">{'Hello world'}</div>
 
 						<style>
 							.div { color: red; }
@@ -3267,7 +3267,7 @@ export function optionalFn(bar: string, baz?: string) {
 
 			expect(css).not.toBe('');
 			expect(code).toContain("{'Hello world'}");
-			expect(code).toContain(`${generatedClassAttrName}="${cssHash}"`);
+			expect(code).toContain(`${generatedClassAttrName}="div ${cssHash}"`);
 			expect(css).toContain(`.div.${cssHash}`);
 			expect(css).toContain('color: red;');
 		});
@@ -3464,6 +3464,77 @@ export function optionalFn(bar: string, baz?: string) {
 
 			expect(css).toContain('margin: 5px;');
 			expect(code).toContain('card');
+		});
+
+		it('prunes style expression selectors that the class map cannot reach', () => {
+			const { css, cssHash } = compile(
+				`export function App() @{
+						const styles = <style>
+							div { color: red; }
+							.parent .card { font-weight: bold; }
+							.card {
+								color: green;
+								&:hover { color: blue; }
+							}
+							:global(.badge) { padding: 0; }
+							:global(body) { margin: 0; }
+						</style>;
+						<div class={styles.card} />
+					}`,
+				'App.tsrx',
+			);
+
+			expect(css).toContain('/* (unused) div { color: red; }*/');
+			expect(css).toContain('/* (unused) .parent .card { font-weight: bold; }*/');
+			expect(css).toContain(`.card.${cssHash}`);
+			expect(css).toContain('&:hover { color: blue; }');
+			expect(css).toContain('.badge { padding: 0; }');
+			expect(css).not.toContain(`.badge.${cssHash}`);
+			expect(css).toContain('/* (unused) :global(body) { margin: 0; }*/');
+		});
+
+		it('matches free-standing selectors for both class and className attributes', () => {
+			const { css, cssHash } = compile(
+				`export function App() @{
+						<>
+							<div class="a">{'a'}</div>
+							<span className="b">{'b'}</span>
+
+							<style>
+								.a { color: red; }
+								.b { color: blue; }
+							</style>
+						</>
+					}`,
+				'App.tsrx',
+			);
+
+			expect(css).toContain(`.a.${cssHash}`);
+			expect(css).toContain(`.b.${cssHash}`);
+			expect(css).not.toContain('(unused)');
+		});
+
+		it('prunes free-standing selectors that match no element', () => {
+			const { css, cssHash } = compile(
+				`export function App() @{
+						<>
+							<div ${generatedClassAttrName}="card">{'Foo'}</div>
+
+							<style>
+								div { color: red; }
+								.card { color: green; }
+								span { color: gray; }
+								:global(.test) { color: black; }
+							</style>
+						</>
+					}`,
+				'App.tsrx',
+			);
+
+			expect(css).toContain(`div.${cssHash}`);
+			expect(css).toContain(`.card.${cssHash}`);
+			expect(css).toContain('/* (unused) span { color: gray; }*/');
+			expect(css).toContain('.test { color: black; }');
 		});
 	});
 

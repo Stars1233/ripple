@@ -441,15 +441,6 @@ export function createJsxTransform(platform) {
 					return next() ?? node;
 				}
 
-				if (is_style_element(node) && is_style_expression_position(path)) {
-					const stylesheet = get_style_element_stylesheet(node);
-					if (stylesheet) {
-						analyze_css(stylesheet);
-						state.stylesheets.push(stylesheet);
-						return /** @type {any} */ (create_style_expression_value(node, stylesheet, state));
-					}
-				}
-
 				// Capture raw children BEFORE the walker transforms them so platform
 				// hooks can inspect the original JSX child shape.
 				const raw_children = /** @type {any} */ (node.children || []).map(
@@ -487,16 +478,14 @@ export function createJsxTransform(platform) {
 					const stylesheet = get_style_element_stylesheet(node);
 					if (stylesheet) {
 						analyze_css(stylesheet);
-						state.stylesheets.push(stylesheet);
+						state.stylesheets.push(prepare_stylesheet_for_render(stylesheet, true));
 						return /** @type {any} */ (create_style_expression_value(node, stylesheet, state));
 					}
 				}
-				return /** @type {any} */ (
-					b.jsx_element(
-						/** @type {ESTreeJSX.JSXElement} */ ({ ...node, type: 'JSXElement', children: [] }),
-						node.openingElement?.attributes ?? [],
-						[],
-					)
+				return b.jsx_element(
+					/** @type {ESTreeJSX.JSXElement} */ ({ ...node, type: 'JSXElement', children: [] }),
+					node.openingElement?.attributes ?? [],
+					[],
 				);
 			},
 
@@ -561,9 +550,7 @@ export function createJsxTransform(platform) {
 			sourceMapContent: source,
 		});
 
-		const { css, cssHash } = render_css_result(
-			/** @type {any} */ (stylesheets.map(prepare_stylesheet_for_render)),
-		);
+		const { css, cssHash } = render_css_result(/** @type {any} */ (stylesheets));
 
 		return { ast: final_program, code: result.code, map: result.map, css, cssHash };
 	}
@@ -1934,6 +1921,8 @@ function prepare_tsrx_fragment_styles(node, transform_context) {
 	if (!css) return null;
 
 	const style_refs = collect_style_ref_attributes(node);
+	// `prune_css` inside marks the matching selectors as used/scoped; selectors
+	// that match no element render commented out, like the Ripple target.
 	apply_css_definition_metadata(node, css, transform_context, style_refs.length > 0);
 	transform_context.stylesheets.push(css);
 	const fragment = annotate_tsrx_with_hash(
