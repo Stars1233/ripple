@@ -264,3 +264,61 @@ export function UrgentSupersedesTransition(props) @{
 		}
 	</div>
 }
+
+// ---------------------------------------------------------------------------
+// Async startTransition (React 19 Actions). The action awaits `props.gate`
+// before committing its setter; isPending must stay true until that promise
+// SETTLES — not merely for one microtask. On settle (fulfil or reject) the
+// pending flag drops exactly once.
+// ---------------------------------------------------------------------------
+export function AsyncStartTransition(props) @{
+	const [n, setN] = useState(0);
+	const [isPending, start] = useTransition();
+	<div>
+		<span id="n">
+			{n as string}
+		</span>
+		<span id="pending">
+			{isPending ? 'pending' : 'idle'}
+		</span>
+		<button
+			id="go"
+			onClick={() => start(async () => {
+				await props.gate;
+				setN(n + 1);
+			})}
+		>{'go'}</button>
+	</div>
+}
+
+// ---------------------------------------------------------------------------
+// Async action priority across `await`. The setter runs AFTER the await, by
+// which point the synchronous slice (and TRANSITION_DEPTH) is long gone. It
+// must still schedule at transition priority: when that post-await render
+// suspends, the prior DOM is kept (no fallback flash) — the React 18/19
+// "show old screen while new loads" behavior, now driven by an async action.
+// ---------------------------------------------------------------------------
+export function AsyncTransitionKeepsDom(props) @{
+	const [promise, setPromise] = useState(props.initialPromise);
+	const [isPending, start] = useTransition();
+	<div>
+		<span id="pending">
+			{isPending ? 'pending' : 'idle'}
+		</span>
+		<button
+			id="go"
+			onClick={() => start(async () => {
+				await props.gate;
+				setPromise(props.nextPromise);
+			})}
+		>{'go'}</button>
+		@try {
+			const value = use(promise);
+			<span id="value">
+				{value as string}
+			</span>
+		} @pending {
+			<span id="fallback">{'fallback'}</span>
+		}
+	</div>
+}

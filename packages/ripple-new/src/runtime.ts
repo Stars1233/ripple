@@ -168,6 +168,18 @@ let syncFlush = false; // flushSync sets this to drain the queue synchronously
 /** Depth of nested startTransition() calls currently on the call stack. */
 let TRANSITION_DEPTH = 0;
 /**
+ * Number of async transition actions whose returned promise has not yet settled.
+ * `TRANSITION_DEPTH` only covers the SYNCHRONOUS slice of a `startTransition`
+ * callback; for an `async` action it is already 0 by the time the continuation
+ * after the first `await` runs, so post-await setters would otherwise schedule
+ * at urgent priority. Keeping this count elevated across the in-flight window
+ * makes those setters transition-priority (React 19 Actions). Caveat: it's a
+ * process-global window, so an unrelated urgent update fired while an async
+ * action is pending is also tagged transition — perfect per-action scoping
+ * would need AsyncContext, which isn't available in the browser target.
+ */
+let ASYNC_TRANSITION_COUNT = 0;
+/**
  * Outstanding transition WORK count — incremented when startTransition fires,
  * decremented when its renders commit (and again for any tryBlock that holds
  * the transition pending while suspended). useTransition's isPending tracks
@@ -239,7 +251,8 @@ export function scheduleRender(block: Block): void {
 	// Capture the caller's priority — setters inside startTransition() see
 	// TRANSITION_DEPTH > 0 and tag the render as 'transition'. An urgent setter
 	// arriving for a block already queued at 'transition' upgrades it.
-	const mode: 'urgent' | 'transition' = TRANSITION_DEPTH > 0 ? 'transition' : 'urgent';
+	const mode: 'urgent' | 'transition' =
+		TRANSITION_DEPTH > 0 || ASYNC_TRANSITION_COUNT > 0 ? 'transition' : 'urgent';
 	if (block.pending) {
 		if (mode === 'urgent') block.pendingMode = 'urgent';
 		return;
@@ -256,6 +269,7 @@ export function scheduleRender(block: Block): void {
 
 function flush(): void {
 	scheduled = false;
+	let pendingError: { err: any } | null = null;
 	while (QUEUE.length) {
 		const block = QUEUE.shift()!;
 		block.pending = false;
@@ -263,11 +277,21 @@ function flush(): void {
 			try {
 				renderBlock(block);
 			} catch (err) {
-				handleRenderError(block, err);
+				try {
+					handleRenderError(block, err);
+				} catch (unhandled) {
+					// No tryBlock claimed this error. Don't let it abandon the
+					// rest of the queue or skip commitEffects() — that would
+					// strand unrelated roots batched into the same flush and
+					// drop their already-rendered effects. Remember the first
+					// such error and surface it once the flush fully drains.
+					if (pendingError === null) pendingError = { err: unhandled };
+				}
 			}
 		}
 	}
 	commitEffects();
+	if (pendingError !== null) throw pendingError.err;
 }
 
 /**
@@ -281,6 +305,7 @@ export function flushSync<T>(fn: () => T): T {
 	try {
 		const result = fn();
 		// Drain anything scheduled by fn.
+		let pendingError: { err: any } | null = null;
 		while (QUEUE.length) {
 			const block = QUEUE.shift()!;
 			block.pending = false;
@@ -288,11 +313,19 @@ export function flushSync<T>(fn: () => T): T {
 				try {
 					renderBlock(block);
 				} catch (err) {
-					handleRenderError(block, err);
+					try {
+						handleRenderError(block, err);
+					} catch (unhandled) {
+						// See flush(): finish draining and commit effects before
+						// surfacing an unhandled render error, so one failing root
+						// can't strand the rest of this synchronous flush.
+						if (pendingError === null) pendingError = { err: unhandled };
+					}
 				}
 			}
 		}
 		commitEffectsSync();
+		if (pendingError !== null) throw pendingError.err;
 		return result;
 	} finally {
 		syncFlush = prevSync;
@@ -918,11 +951,24 @@ export function useState<T>(
 	return [s.value, s.setter];
 }
 
-export function useReducer<S, A>(
+export function useReducer<S, A, I = S>(
 	reducer: (s: S, a: A) => S,
-	initial: S | (() => S),
+	initialArg: I,
+	initOrSlot?: ((arg: I) => S) | symbol,
 	slot?: symbol,
 ): [S, (action: A) => void] {
+	// The compiler appends the hook slot symbol as the final argument. So the
+	// React 2-arg form `useReducer(reducer, initialState)` arrives as
+	// `(reducer, initialState, slot)` and the lazy 3-arg form
+	// `useReducer(reducer, initialArg, init)` arrives as
+	// `(reducer, initialArg, init, slot)`. Disambiguate by which trailing arg
+	// is the symbol.
+	let init: ((arg: I) => S) | undefined;
+	if (typeof initOrSlot === 'symbol') {
+		slot = initOrSlot;
+	} else {
+		init = initOrSlot;
+	}
 	if (slot === undefined) missingSlot('useReducer');
 	const scope = CURRENT_SCOPE!;
 	const block = CURRENT_BLOCK!;
@@ -930,7 +976,12 @@ export function useReducer<S, A>(
 		| { value: S; dispatch: (a: A) => void; reducer: (s: S, a: A) => S }
 		| undefined;
 	if (s === undefined) {
-		const initVal = typeof initial === 'function' ? (initial as () => S)() : initial;
+		const initVal =
+			init !== undefined
+				? init(initialArg)
+				: typeof initialArg === 'function'
+					? (initialArg as unknown as () => S)()
+					: (initialArg as unknown as S);
 		s = {
 			value: initVal,
 			reducer,
@@ -2898,14 +2949,15 @@ function attachResume(state: TrySlot, thenable: TrackedThenable<any>): void {
 // tearing down the current view.
 // ---------------------------------------------------------------------------
 
-export function startTransition(fn: () => void): void {
+export function startTransition(fn: () => void | Promise<unknown>): void {
 	// Bump the priority flag FIRST so any scheduleRender calls fired by the
 	// listener notification (and by fn itself) are tagged as transition.
 	TRANSITION_DEPTH++;
+	let result: unknown;
 	try {
 		tickTransitionCount(+1);
 		try {
-			fn();
+			result = fn();
 		} finally {
 			TRANSITION_DEPTH--;
 		}
@@ -2913,19 +2965,41 @@ export function startTransition(fn: () => void): void {
 		tickTransitionCount(-1);
 		throw err;
 	}
-	// The synchronous slice is done. Decrement after the scheduler has had a
-	// chance to flush the queued renders this transition produced — if any of
-	// those renders held the transition open by suspending, they incremented
-	// the count themselves via handleSuspense, so the net count stays > 0.
-	queueMicrotask(() => tickTransitionCount(-1));
+	if (result != null && typeof (result as { then?: unknown }).then === 'function') {
+		// React 19 Actions parity: an async callback returns a promise. Keep the
+		// transition pending until that promise settles — the awaited
+		// continuation (and any setters after `await`) resumes on a later
+		// microtask, AFTER a fixed queueMicrotask decrement would have already
+		// dropped isPending. Decrement exactly once on settle (fulfil OR reject).
+		// ASYNC_TRANSITION_COUNT stays elevated across the same window so setters
+		// fired after the `await` schedule at transition priority (TRANSITION_DEPTH
+		// is already 0 by then — the synchronous slice has returned).
+		ASYNC_TRANSITION_COUNT++;
+		let settled = false;
+		const settle = () => {
+			if (settled) return;
+			settled = true;
+			ASYNC_TRANSITION_COUNT--;
+			tickTransitionCount(-1);
+		};
+		(result as Promise<unknown>).then(settle, settle);
+	} else {
+		// Synchronous callback: decrement after the scheduler has had a chance to
+		// flush the queued renders this transition produced — if any of those
+		// renders held the transition open by suspending, they incremented the
+		// count themselves via handleSuspense, so the net count stays > 0.
+		queueMicrotask(() => tickTransitionCount(-1));
+	}
 }
 
-export function useTransition(slot?: symbol): [boolean, (fn: () => void) => void] {
+export function useTransition(
+	slot?: symbol,
+): [boolean, (fn: () => void | Promise<unknown>) => void] {
 	if (slot === undefined) missingSlot('useTransition');
 	const scope = CURRENT_SCOPE!;
 	const block = CURRENT_BLOCK!;
 	let s = scope.hooks?.get(slot) as
-		| { isPending: boolean; start: (fn: () => void) => void }
+		| { isPending: boolean; start: (fn: () => void | Promise<unknown>) => void }
 		| undefined;
 	if (s === undefined) {
 		const slotRef = { isPending: false, start: startTransition };
@@ -3754,9 +3828,39 @@ function reconcileKeyed<T, E>(
 	}
 
 	// Fast bail: all survivors AND no moves AND no mounts → old middle is the
-	// same shape & order as new middle. Linked-list pointers are still correct
-	// (we never touched them). Just return.
-	if (!moved && patched === newMidLen) return;
+	// same shape & order as new middle.
+	if (!moved && patched === newMidLen) {
+		// If the survivor walk did NOT unmount anything (oldRemain ===
+		// patched), the linked-list pointers are still correct end-to-end
+		// and we can return without touching them. But if blocks were
+		// unmounted BETWEEN survivors, the survivors' .prevSibling /
+		// .nextSibling pointers still reference now-disposed blocks AND
+		// state.head / state.tail may also point at disposed blocks. The
+		// next reconcile would then walk those stale pointers, decrement
+		// state.size for blocks that no longer exist, and ultimately
+		// crash with a null-pointer access in the prefix/suffix walk.
+		//
+		// Relink the entire middle chain so its prev/next pointers — and
+		// the boundary into beforeMiddle / afterMiddle / state.head /
+		// state.tail — accurately reflect the post-unmount topology.
+		// O(newMidLen); only fires when survivors and removes are mixed.
+		// Surfaced by fuzz-keyed-list seed=-2060211668 action 9 (a
+		// replace-all 13 → 2 where both survivors are in original order).
+		if (oldRemain !== patched) {
+			let prev: Block | null = beforeMiddle;
+			for (let i = 0; i < newMidLen; i++) {
+				const block = oldItems.get(newKeys[i])!;
+				block.prevSibling = prev;
+				if (prev) prev.nextSibling = block;
+				else state.head = block;
+				prev = block;
+			}
+			prev!.nextSibling = afterMiddle;
+			if (afterMiddle) afterMiddle.prevSibling = prev;
+			else state.tail = prev;
+		}
+		return;
+	}
 
 	// ── Small-displacement shortcut. When every old item survived AND only a
 	// small number of positions actually changed (≤ K_DISP), we can compute
@@ -3814,6 +3918,31 @@ function reconcileKeyed<T, E>(
 				if (next) next.prevSibling = block;
 				else state.tail = block;
 			}
+			// Boundary patch: the first and last block of the NEW middle may be
+			// identity-mapped (not in _disp), in which case the displacement
+			// loop never touched them — they still carry their pre-reconcile
+			// neighbour pointers, which can be stale (e.g. pointing at a block
+			// that the survivor walk just unmounted, or at a prior-reconcile
+			// neighbour that has since shifted). Always re-pin the boundary
+			// pointers so state.head / state.tail / beforeMiddle.next /
+			// afterMiddle.prev are correct for the next reconcile.
+			//
+			// Repro for why this matters: surfaced by fuzz-keyed-list seed
+			// -1491785866 — a `replace-all` that shrinks the list (e.g. 6 → 3)
+			// where the last survivor is identity-mapped. Without the patch,
+			// state.tail keeps pointing at the prior-tail block (now deleted)
+			// and the surviving last block's .nextSibling still points at the
+			// removed sibling. The next reconcile then stops its old-middle
+			// walk early (at the stale nextSibling) and re-mounts the
+			// last survivor as a NEW block, producing a duplicate row.
+			const newMidFirst = oldItems.get(newKeys[0])!;
+			const newMidLast = oldItems.get(newKeys[newMidLen - 1])!;
+			newMidFirst.prevSibling = beforeMiddle;
+			newMidLast.nextSibling = afterMiddle;
+			if (beforeMiddle) beforeMiddle.nextSibling = newMidFirst;
+			else state.head = newMidFirst;
+			if (afterMiddle) afterMiddle.prevSibling = newMidLast;
+			else state.tail = newMidLast;
 			return;
 		}
 	}
