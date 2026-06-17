@@ -1,7 +1,8 @@
 # News SSR + hydration benchmark
 
 A large "news site" document (header + a `@for` feed of article cards, lorem
-ipsum) that measures, per target (**ripple-new**, **Solid 2.0**, **React 19**):
+ipsum) that measures, per target (**ripple-new**, **ripple**, **Solid 2.0**,
+**React 19**):
 
 - **SSR render time** — the built `renderApp()` → HTML string, in Node, warm.
 - **Hydration time** — the SYNCHRONOUS hydration work in a headless browser, on a
@@ -30,10 +31,17 @@ All apps are authored in the SAME `.tsrx` source shape and render the same
 dataset, so the comparison is pure framework cost:
 
 - **ripple-new** — `@tsrx/ripple-new` (single runtime, `render()` + `hydrate()`).
+- **ripple** (original) — `@tsrx/ripple` + `ripple` (`ripple/server` `render()` →
+  `{ head, body, css }` + `ripple` `hydrate()`). State via `track`. There's no
+  transform-only Ripple vite plugin (the published one is the metaframework), so
+  the bench's `vite.config.js` carries a tiny inline `.tsrx`→Ripple transform.
 - **Solid 2.0** — `@tsrx/solid` + `vite-plugin-solid` (`@solidjs/web`
   `renderToString` + `hydrate`, a hydratable two-build Vite drives per-request).
 - **React 19** — `@tsrx/react` (`react-dom/server` `renderToString` +
   `react-dom/client` `hydrateRoot`; one JSX transform serves both, no two-build).
+
+Reactive state is authored per target (the one real authoring difference):
+ripple-new/React `useState`, Solid `createSignal`, original Ripple `track`.
 
 This bench exercises ripple-new's cursor-based hydration of **control flow +
 nested components** (the `@for` feed adopts each item's `<!--[-->…<!--]-->` range;
@@ -46,16 +54,17 @@ hydration was extended beyond single leaf templates.
 pnpm install
 node benchmarks/news/gen.mjs 50          # regenerate the dataset into every target (default 50)
 node benchmarks/news/run.mjs ripple-new  # builds (prod) + benches; `run.mjs 20` also works
-node benchmarks/news/run.mjs solid 20    # Solid 2.0, 20 iterations (+5 warmup)
+node benchmarks/news/run.mjs ripple 20   # original Ripple, 20 iterations (+5 warmup)
+node benchmarks/news/run.mjs solid 20    # Solid 2.0
 node benchmarks/news/run.mjs react 20    # React 19
 node benchmarks/news/run.mjs react 20 --no-build   # reuse the existing dist/ (skip rebuild)
 ```
 
 `run.mjs [target] [iterations] [--no-build]` — `target` ∈
-`{ripple-new, solid, react}` (default `ripple-new`; a bare number is treated as
-iterations for back-compat). Each run rebuilds the target's production client +
-SSR bundles unless `--no-build` is passed. Build output goes to `<target>/dist/`
-(git-ignored).
+`{ripple-new, ripple, solid, react}` (default `ripple-new`; a bare number is
+treated as iterations for back-compat). Each run rebuilds the target's production
+client + SSR bundles unless `--no-build` is passed. Build output goes to
+`<target>/dist/` (git-ignored).
 
 ## Layout
 
@@ -63,7 +72,7 @@ SSR bundles unless `--no-build` is passed. Build output goes to `<target>/dist/`
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
 | `gen.mjs`                      | Generates `<target>/src/data.js` for every target (deterministic lorem-ipsum).                                                       |
 | `<target>/src/App.tsrx`        | Header component + `@for` feed of article cards + footer.                                                                            |
-| `<target>/src/Header.tsrx`     | A stateful component (ripple-new/React `useState`, Solid `createSignal`) with a theme toggle.                                        |
+| `<target>/src/Header.tsrx`     | A stateful component (ripple-new/React `useState`, Solid `createSignal`, Ripple `track`) with a theme toggle.                        |
 | `<target>/src/entry-server.ts` | `renderApp()` → `{ head, body, css }`.                                                                                               |
 | `<target>/src/entry-client.ts` | Deferred `window.__hydrate()`.                                                                                                       |
 | `run.mjs`                      | `vite build` (client + SSR, prod) → static-serves the built artifacts + Playwright; measures SSR + hydration; prints median/min/p95. |
