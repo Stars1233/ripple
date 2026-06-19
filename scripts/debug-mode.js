@@ -2,9 +2,16 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 
-const require = createRequire(import.meta.url);
+// Resolve the target package relative to the playground that invoked this
+// script (process.cwd()), not relative to scripts/. Playground devDependencies
+// like @tsrx/ripple-new are only linked into the playground's local
+// node_modules and are not hoisted to the repo root.
+const require = createRequire(path.join(process.cwd(), 'package.json'));
 const package_name = process.argv[3];
-const { compile, compile_to_volar_mappings } = require(package_name);
+const pkg = require(package_name);
+const { compile } = pkg;
+// Older @tsrx/* packages export snake_case; the newer ripple-new uses camelCase.
+const compile_to_volar_mappings = pkg.compile_to_volar_mappings ?? pkg.compileToVolarMappings;
 const FILE_EXTENSIONS = ['.tsrx'];
 const isRipple = package_name === '@tsrx/ripple';
 

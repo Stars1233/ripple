@@ -7,7 +7,12 @@
   "scripts": {
     "dev": "vite --host",
     "build": "vite build",
-    "preview": "vite preview --host"
+    "preview": "vite preview --host",
+    "debug-all": "node ../../scripts/debug-mode.js all @tsrx/ripple-new",
+    "debug-client": "node ../../scripts/debug-mode.js client @tsrx/ripple-new",
+    "debug-ssr": "node ../../scripts/debug-mode.js server @tsrx/ripple-new",
+    "debug-volar": "node ../../scripts/debug-mode.js tsx @tsrx/ripple-new",
+    "debug-tsx": "pnpm run debug-volar"
   },
   "dependencies": {
     "ripple-new": "workspace:*"
