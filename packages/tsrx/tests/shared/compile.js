@@ -675,6 +675,55 @@ export function runSharedTsxExpressionTsrxTests({ compile, name, classAttrName }
 				expect(code, source).not.toContain(rawNode);
 			}
 		});
+
+		it('lowers @if as the left operand of a logical expression', () => {
+			const { code } = compile(
+				`function App() {
+						let c = (@if (true) { <>{1}</> }) || 'default';
+						return <div>{c}</div>;
+					}`,
+				'App.tsrx',
+			);
+			expect(code).toContain(`|| 'default'`);
+			expect(code).not.toContain('@if');
+			expect(code).not.toContain('JSXIfExpression');
+		});
+
+		it('lowers @switch as an operand of a logical expression', () => {
+			const { code } = compile(
+				`function App({ status }: { status: string }) {
+						const view =
+							fallback ||
+							@switch (status) {
+								@case 'loading': { <p>Loading...</p> }
+								@default: { <p>Unknown status.</p> }
+							};
+						return <div>{view}</div>;
+					}`,
+				'App.tsrx',
+			);
+			expect(code).toContain('Loading...');
+			expect(code).toContain('Unknown status.');
+			expect(code).not.toContain('@switch');
+			expect(code).not.toContain('JSXSwitchExpression');
+		});
+
+		it('lowers @if as a conditional (ternary) branch', () => {
+			const { code } = compile(
+				`function App({ ok }: { ok: boolean }) {
+						const view = ok
+							? @if (ok) { <p>All good</p> } @else { <p>Broke</p> }
+							: <span>n/a</span>;
+						return <div>{view}</div>;
+					}`,
+				'App.tsrx',
+			);
+			expect(code).toContain('All good');
+			expect(code).toContain('Broke');
+			expect(code).toContain('n/a');
+			expect(code).not.toContain('@if');
+			expect(code).not.toContain('JSXIfExpression');
+		});
 	});
 }
 
@@ -907,7 +956,7 @@ export function runSharedFragmentExpressionRenderTests({ compile, name }) {
 				'App.tsrx',
 			);
 
-			expect(code).toContain('return "Hello";');
+			expect(code).toContain('return <>{"Hello"}</>;');
 		});
 
 		it('renders lone expression fragment shorthand inside conditional render bodies', () => {
@@ -2240,7 +2289,7 @@ export function optionalFn(bar: string, baz?: string) {
 			);
 
 			expect(code).toContain("const visible = 'render me'");
-			expect(code).toContain('return visible;');
+			expect(code).toContain('return <>{visible}</>;');
 			expect(code).not.toMatch(/\{\n\s+visible;\n\s+\}/);
 		});
 
@@ -2383,7 +2432,7 @@ export function optionalFn(bar: string, baz?: string) {
 				`class Foo { bar() { const props = {}; return <><Bar {...props} /></>; } }`,
 				'App.tsrx',
 			);
-			expect(code).toContain('return <Bar {...props} />;');
+			expect(code).toContain('return <><Bar {...props} /></>;');
 			expect(code).not.toContain('<tsx');
 		});
 
@@ -2393,19 +2442,25 @@ export function optionalFn(bar: string, baz?: string) {
 			// opens a block/object literal. The JSXExpressionContainer must
 			// be unwrapped to its inner expression in expression position.
 			const { code } = compile(`class Foo { bar() { return <>{'Hello'}</>; } }`, 'App.tsrx');
-			expect(code).toContain("return 'Hello';");
+			expect(code).toContain("return <>{'Hello'}</>;");
 			expect(code).not.toContain("return {'Hello'}");
 		});
 
 		it('unwraps a JSX fragment containing a single identifier expression', () => {
 			const { code } = compile(`class Foo { bar() { const x = 1; return <>{x}</>; } }`, 'App.tsrx');
-			expect(code).toContain('return x;');
+			expect(code).toContain('return <>{x}</>;');
 			expect(code).not.toContain('return {x}');
 		});
 
 		it('unwraps text-only JSX fragments to strings', () => {
 			const { code } = compile(`class Foo { bar() { return <>plain text</>; } }`, 'App.tsrx');
 			expect(code).toContain('plain text');
+			expect(code).not.toContain('return null;');
+		});
+
+		it('keeps an empty authored fragment as render output (not null)', () => {
+			const { code } = compile(`class Foo { bar() { return <></>; } }`, 'App.tsrx');
+			expect(code).toContain('return <></>;');
 			expect(code).not.toContain('return null;');
 		});
 
@@ -2418,8 +2473,10 @@ export function optionalFn(bar: string, baz?: string) {
 				'App.tsrx',
 			);
 
-			expect(code).toContain('const x = "Hello world";');
-			expect(code).toContain('return x;');
+			// An authored `<>…</>` is kept verbatim in value position (var-init), so the
+			// text fragment stays a fragment instead of unwrapping to a bare string.
+			expect(code).toContain('const x = <>{"Hello world"}</>;');
+			expect(code).toContain('return <>{x}</>;');
 		});
 
 		it('parses backtick text inside fragments as JSX text', () => {
@@ -2462,17 +2519,85 @@ export function optionalFn(bar: string, baz?: string) {
 
 		it('unwraps a JSX fragment whose single child is already a fragment', () => {
 			const { code } = compile(`class Foo { bar() { return <><>{'x'}</></>; } }`, 'App.tsrx');
-			expect(code).toContain("return 'x';");
+			expect(code).toContain("return <>{'x'}</>;");
 		});
 
 		it('unwraps an explicit JSX fragment with a single expression', () => {
 			const { code } = compile(`class Foo { bar() { return <>{'Hello'}</>; } }`, 'App.tsrx');
-			expect(code).toContain("return 'Hello';");
+			expect(code).toContain("return <>{'Hello'}</>;");
 		});
 
 		it('unwraps an explicit JSX fragment with a single element', () => {
 			const { code } = compile(`class Foo { bar() { return <><div>hi</div></>; } }`, 'App.tsrx');
 			expect(code).toContain('hi');
+		});
+
+		// A fragment is always a truthy element, but its single child may be falsy.
+		// In a render-output slot the collapse is invisible (covered above), but when
+		// the fragment is COMBINED into an expression the collapse flips meaning:
+		// `<>{0}</> || 'd'` renders `0`, while `0 || 'd'` renders `'d'`. Keep the
+		// fragment in those positions instead of unwrapping it.
+		it('keeps a fragment combined into an expression as a fragment', () => {
+			const operand = compile(
+				`function App() { let c = <>{0}</> || 'd'; return <div>{c}</div>; }`,
+				'App.tsrx',
+			);
+			expect(operand.code).toContain('<>');
+			expect(operand.code).toContain('</>');
+			expect(operand.code).not.toMatch(/let c = 0 \|\|/);
+
+			const ternary = compile(
+				`function App({ o }: { o: boolean }) { let c = o ? <>{1}</> : <>{2}</>; return <div>{c}</div>; }`,
+				'App.tsrx',
+			);
+			expect(ternary.code).toContain('<>');
+			expect(ternary.code).not.toMatch(/\?\s*1\s*:\s*2/);
+		});
+
+		// An AUTHORED `<>…</>` is kept verbatim in a JS value position (a variable
+		// initializer, an assignment) — it must not unwrap to its single child, which
+		// turns the author's JSX into a plain value.
+		it('keeps an authored fragment in value position', () => {
+			const expr = compile(
+				`function App() { const v = <>{1}</>; return <div>{v}</div>; }`,
+				'App.tsrx',
+			);
+			expect(expr.code).toContain('<>');
+			expect(expr.code).toContain('</>');
+			expect(expr.code).not.toMatch(/const v = 1;/);
+
+			const element = compile(
+				`function App() { const v = <><span>x</span></>; return <div>{v}</div>; }`,
+				'App.tsrx',
+			);
+			expect(element.code).toContain('<>');
+			expect(element.code).toContain('<span>x</span>');
+		});
+
+		// The branches of an `@if` (`@for`/`@switch`) keep their authored fragments:
+		// `c ? <>{a}</> : <>{b}</>`, not the unwrapped `c ? a : b`. (The compiler's
+		// own wrapper around the directive still collapses it to the conditional.)
+		it('keeps authored fragments in control-flow branches', () => {
+			const { code } = compile(
+				`function App() { const xyz = @if (cond()) { <>{[1, 2, 3]}</> } @else { <>{[3, 4, 5]}</> }; return <div>{xyz}</div>; }`,
+				'App.tsrx',
+			);
+			expect(code).toContain('<>');
+			expect(code).toContain('</>');
+			expect(code).not.toMatch(/\?\s*\[1, 2, 3\]\s*:/);
+			expect(code).not.toContain('@if');
+		});
+
+		// A compiler-generated wrapper (around `@switch` used as a sole value) is NOT
+		// authored, so it still collapses to its rendered value rather than being kept.
+		it('still collapses a generated wrapper around a directive', () => {
+			const { code } = compile(
+				`function App({ s }: { s: string }) { const v = @switch (s) { @case 'a': { <p>A</p> } @default: { <p>D</p> } }; return <div>{v}</div>; }`,
+				'App.tsrx',
+			);
+			expect(code).toContain('A');
+			expect(code).toContain('D');
+			expect(code).not.toContain('@switch');
 		});
 
 		it('keeps an explicit JSX fragment with multiple children', () => {
@@ -2503,10 +2628,10 @@ export function optionalFn(bar: string, baz?: string) {
 			);
 
 			expect(code).not.toContain('return;');
-			expect(code).toMatch(/function FragmentReturn\(\) {\s+return App__static/);
-			expect(code).toMatch(/function TsxReturn\(\) {\s+return App__static/);
+			expect(code).toMatch(/function FragmentReturn\(\) {\s+return <>{App__static\d+}<\/>;/);
+			expect(code).toMatch(/function TsxReturn\(\) {\s+return <>{App__static\d+}<\/>;/);
 			expect(code).toMatch(/const App__static\d+ = <div[^>]*>tsrx<\/div>;/);
-			expect(code).toMatch(/function TsrxReturn\(\) {\s+return App__static/);
+			expect(code).toMatch(/function TsrxReturn\(\) {\s+return <>{App__static\d+}<\/>;/);
 		});
 
 		it('keeps special fragment returns inside component prop arrow functions', () => {

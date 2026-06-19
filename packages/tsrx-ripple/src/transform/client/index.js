@@ -56,6 +56,7 @@ import {
 	setLocation,
 	createElementRefTargetTypeForName as create_element_ref_target_type_for_name,
 	wrapEdgeWhitespace as wrap_edge_whitespace,
+	isTemplateValuePosition,
 } from '@tsrx/core';
 const b = builders;
 import {
@@ -2038,7 +2039,23 @@ const visitors = {
 
 		// to_ts mode: produce a JSX fragment from native TSRX children.
 		if (state.to_ts) {
-			return build_tsrx_to_ts_expression(node, context);
+			const expression = build_tsrx_to_ts_expression(node, context);
+			// Keep an AUTHORED `<> … </>` verbatim in EVERY position — a value slot
+			// (`const v = <>{1}</>`), render output (`return <>{x}</>`, `() => <>{x}</>`),
+			// or a JSX-child `{ … }` container (`<div>{<>{x}</>}</div>`) — matching the JS
+			// targets; collapsing it to a bare child risks the wrong output (a fragment is
+			// always truthy, and the type changes). A fragment COMBINED into a surrounding
+			// expression is likewise kept, including the compiler-generated wrapper around a
+			// directive used as a `||`/`&&` operand (`@if (…) { … } || 'x'` → `<>{…}</> || 'x'`):
+			// the wrapper is a truthy value so the fallback stays dead, exactly as the JS
+			// targets / runtime treat it (the type view must agree). A directive as the SOLE
+			// value of a slot (`const v = @if (…)`) still collapses — `is_combined_expression_position`
+			// excludes those slots — and a nested authored fragment collapses outer→inner via
+			// `wrap_to_ts_value_in_fragment`'s short-circuit.
+			return is_authored_native_fragment(node) ||
+				is_combined_expression_position(context.path, node)
+				? wrap_to_ts_value_in_fragment(expression, node)
+				: expression;
 		}
 
 		const children_filtered = node.children.filter((child) => {
@@ -3678,16 +3695,18 @@ function build_tsrx_ts_return_expression(children, in_jsx_child, loc_node) {
  * @returns {TsrxTsStatement[]}
  */
 function transform_tsrx_ts_children(children, context) {
-	const { state, visit } = context;
+	const { state } = context;
 	/** @type {TsrxTsStatement[]} */
 	const init = [];
 	const ts_state = { ...state, init };
 
 	for (const child of children) {
 		if (child == null || child.type === 'EmptyStatement') continue;
+		// Spread `context` (not just `visit`/`state`) so flags like `value_position`
+		// reach nested fragment/element children — see transform_tsrx_tsx_child.
 		transform_ts_child(
 			/** @type {AST.Node} */ (child),
-			/** @type {TransformClientContext} */ ({ visit, state: ts_state }),
+			/** @type {TransformClientContext} */ ({ ...context, state: ts_state }),
 		);
 	}
 
@@ -3705,6 +3724,20 @@ function transform_tsrx_ts_children(children, context) {
  * @returns {TsrxTsViewNode}
  */
 function build_tsrx_to_ts_expression(node, context, in_jsx_child = false) {
+	// A compiler-generated wrapper (utils.js `wrap_directive_in_jsx_fragment`) around
+	// a single VALUE-position directive lowers to a TYPED VALUE (ternary / `.map` /
+	// returning IIFE), not the void render IIFE `transform_tsrx_tsx_children` would
+	// emit. Render position never sets `tsrx_generated_wrapper`, so it is unaffected;
+	// authored `<> … </>` (no wrapper flag) keeps flowing through the normal path.
+	if (node.metadata?.tsrx_generated_wrapper === true) {
+		const only = (node.children || []).find(
+			(/** @type {any} */ child) => child && child.type !== 'EmptyStatement',
+		);
+		if (only && /** @type {any} */ (only).metadata?.tsrxDirective) {
+			const value = build_tsrx_ts_directive_value(only, context);
+			return in_jsx_child ? b.jsx_expression_container(value) : value;
+		}
+	}
 	const children = transform_tsrx_tsx_children(/** @type {AST.Node[]} */ (node.children), context);
 	return build_tsrx_ts_return_expression(
 		children,
@@ -3846,6 +3879,18 @@ function transform_tsrx_tsx_child(node, context) {
 			return expression;
 		}
 		return b.jsx_expression_container(expression);
+	}
+
+	// A directive nested as a child of VALUE content (inside an authored fragment that
+	// is itself a directive's branch/case value) is value content too — lower it to
+	// its value (`{cond ? <a/> : <b/>}`), like the JS targets. In render position (a
+	// direct child of the component's rendered output) it still renders, so this is
+	// gated on `value_position` set by `build_tsrx_ts_directive_value`.
+	if (
+		/** @type {any} */ (context).value_position &&
+		/** @type {any} */ (node).metadata?.tsrxDirective
+	) {
+		return b.jsx_expression_container(build_tsrx_ts_directive_value(node, context));
 	}
 
 	return undefined;
@@ -4084,6 +4129,257 @@ function transform_tsrx_ts_render_control_flow_statement(node, context) {
 		: null;
 
 	return b.try(try_body, catch_handler, finalizer, pending);
+}
+
+/**
+ * Lower a VALUE-position control-flow directive (`const v = @if (…) { … }`) to a
+ * typed TS value for the to_ts view — a ternary (`@if`), an array `.map` (`@for`),
+ * or a returning IIFE (`@switch`/`@try`) — matching the JS targets' types. Unlike
+ * the render path (`transform_tsrx_ts_render_control_flow_statement`), each branch
+ * LEAF is returned, so the value is not a void IIFE. Render position never reaches
+ * here — only the generated value-wrapper fragment does (see
+ * `build_tsrx_to_ts_expression`).
+ * @param {any} node
+ * @param {VisitorClientContext} context
+ * @returns {AST.Expression}
+ */
+function build_tsrx_ts_directive_value(node, context) {
+	const scoped = (/** @type {AST.Node} */ scope_node) => ({
+		...context,
+		// Everything lowered as a directive's branch/case value is value content, so a
+		// directive nested in a fragment here lowers to a value (see transform_tsrx_tsx_child).
+		value_position: true,
+		state: {
+			...context.state,
+			scope:
+				/** @type {ScopeInterface} */ (context.state.scopes.get(scope_node)) || context.state.scope,
+		},
+	});
+	// Combine a render expression into a JSX child so multiple siblings can be
+	// merged into one fragment.
+	const to_fragment_child = (/** @type {any} */ expr) =>
+		expr?.type === 'JSXElement' ||
+		expr?.type === 'JSXFragment' ||
+		expr?.type === 'JSXText' ||
+		expr?.type === 'JSXExpressionContainer'
+			? expr
+			: b.jsx_expression_container(/** @type {AST.Expression} */ (expr));
+
+	// Lower a branch body to statements ending in a SINGLE `return` of the combined
+	// render value. All sibling templates — plain elements/expressions AND nested
+	// `@if`/`@for`/`@switch`/`@try` directives (each lowered to its own VALUE) — are
+	// merged into one `return <> … </>` (not several returns where only the first is
+	// reachable, nor a bare nested `if` dropped from the value). Setup statements are
+	// kept before the return so they share the IIFE scope.
+	const branch_returning_body = (
+		/** @type {AST.Node[]} */ body,
+		/** @type {AST.Node} */ scope_node,
+	) => {
+		const ctx = scoped(scope_node);
+		/** @type {AST.Statement[]} */
+		const setup = [];
+		/** @type {any[]} */
+		const renders = [];
+		for (const stmt of body) {
+			if (stmt == null || stmt.type === 'EmptyStatement') continue;
+			if (/** @type {any} */ (stmt).metadata?.tsrxDirective) {
+				// A nested directive is render content here — lower it to its own value.
+				renders.push(to_fragment_child(build_tsrx_ts_directive_value(stmt, scoped(stmt))));
+				continue;
+			}
+			// A render node lowers to a render expression (collected into the fragment);
+			// anything else (a `const`, a side effect) stays setup before the return.
+			for (const lowered of transform_tsrx_ts_children([stmt], ctx)) {
+				const expr = statement_to_tsrx_ts_expression(lowered);
+				if (expr) renders.push(to_fragment_child(expr));
+				else setup.push(/** @type {AST.Statement} */ (lowered));
+			}
+		}
+		const value = build_tsrx_ts_return_expression(
+			renders,
+			false,
+			/** @type {AST.NodeWithLocation} */ (scope_node),
+		);
+		return [...setup, b.return(/** @type {AST.Expression} */ (value))];
+	};
+
+	// A branch as a VALUE (a ternary arm): the bare value when there is no setup, an
+	// IIFE that returns it otherwise.
+	const branch_value = (/** @type {AST.Node[]} */ body, /** @type {AST.Node} */ scope_node) => {
+		const stmts = branch_returning_body(body, scope_node);
+		if (stmts.length === 1 && stmts[0].type === 'ReturnStatement' && stmts[0].argument) {
+			return /** @type {AST.Expression} */ (stmts[0].argument);
+		}
+		return b.call(b.thunk(b.block(stmts)));
+	};
+
+	if (node.type === 'IfStatement') {
+		const cons_body =
+			node.consequent.type === 'BlockStatement' ? node.consequent.body : [node.consequent];
+		const consequent = branch_value(cons_body, node.consequent);
+		let alternate = /** @type {AST.Expression} */ (b.literal(null));
+		if (node.alternate) {
+			const alt = /** @type {any} */ (node.alternate);
+			alternate =
+				alt.type === 'IfStatement'
+					? build_tsrx_ts_directive_value(alt, scoped(alt))
+					: branch_value(alt.type === 'BlockStatement' ? alt.body : [alt], alt);
+		}
+		return b.conditional(
+			/** @type {AST.Expression} */ (context.visit(node.test, context.state)),
+			consequent,
+			alternate,
+		);
+	}
+
+	if (node.type === 'ForOfStatement') {
+		// `@for await` iterates an AsyncIterable, which `Array.from` does NOT accept.
+		// Accumulate with a real `for await` loop instead (the runtime renders via
+		// `_$_.for`; this is the to_ts type view only). Await the async IIFE so the
+		// binding types as the item array, not a `Promise` — the enclosing component is
+		// async, since `for await` requires it.
+		if (node.await) {
+			const items_id = b.id('$$items');
+			/** @type {AST.Statement[]} */
+			const loop_body = [];
+			// `; index i` has no map-callback equivalent here; declare it as a typed
+			// `number` (its runtime value is irrelevant to the type view), like the
+			// render path. `; key expr` stays so it type-checks.
+			if (node.index) {
+				loop_body.push(
+					b.let(/** @type {AST.Identifier} */ (context.visit(node.index)), b.literal(0)),
+				);
+			}
+			if (node.key) {
+				loop_body.push(b.stmt(/** @type {AST.Expression} */ (context.visit(node.key))));
+			}
+			loop_body.push(
+				b.stmt(
+					b.call(
+						b.member(items_id, b.id('push')),
+						b.call(b.thunk(b.block(branch_returning_body(node.body.body, node.body)))),
+					),
+				),
+			);
+			const for_await = b.for_of(
+				/** @type {AST.Pattern} */ (context.visit(node.left)),
+				/** @type {AST.Expression} */ (context.visit(node.right)),
+				b.block(loop_body),
+				true,
+				/** @type {AST.NodeWithLocation} */ (node),
+			);
+			const result =
+				node.empty != null
+					? b.conditional(
+							b.binary('===', b.member(items_id, b.id('length')), b.literal(0)),
+							branch_value(node.empty.body, node.empty),
+							items_id,
+						)
+					: items_id;
+			const iife = b.arrow(
+				[],
+				b.block([b.const(items_id, b.array([])), for_await, b.return(result)]),
+				true,
+			);
+			// The custom esrap AwaitExpression printer reads `node.loc`, so stamp it.
+			return setLocation(b.await(b.call(iife)), /** @type {AST.NodeWithLocation} */ (node));
+		}
+		const body = branch_returning_body(
+			/** @type {AST.BlockStatement} */ (node.body).body,
+			node.body,
+		);
+		// A keyed `@for (…; key expr)` evaluates `expr` per item — keep it so the key
+		// type-checks (it references the loop variable), matching the render path.
+		if (node.key) {
+			body.unshift(b.stmt(/** @type {AST.Expression} */ (context.visit(node.key))));
+		}
+		// `node.left` is a `const x` VariableDeclaration; the `.map` callback needs the
+		// bare pattern (`x`), not the declaration statement. `; index i` becomes the
+		// callback's second parameter (`(x, i)`), not a dropped reference.
+		const left = /** @type {any} */ (node.left);
+		const param = left.type === 'VariableDeclaration' ? left.declarations[0].id : left;
+		const params = [/** @type {AST.Pattern} */ (context.visit(param))];
+		if (node.index) {
+			params.push(/** @type {AST.Pattern} */ (context.visit(node.index)));
+		}
+		// `@for` iterates ANY iterable, but many (Set, Map, generators) have no `.length`
+		// or `.map`, so lowering those directly typed the binding as an error and never
+		// surfaced the `@empty` branch. `Array.from(iterable)` yields a real array — the
+		// Ripple `to_ts` analog of the JS targets' `map_iterable` helper.
+		const items = () =>
+			b.call(
+				b.member(b.id('Array'), b.id('from')),
+				/** @type {AST.Expression} */ (context.visit(node.right)),
+			);
+		const map_arrow = b.arrow(params, b.block(body));
+		if (node.empty != null) {
+			// Bind `Array.from(iterable)` ONCE: a one-shot iterable (a generator) would be
+			// exhausted by a second `Array.from`, so the `.length` test and the `.map` must
+			// read the same materialized array.
+			const items_id = b.id('$$items');
+			return b.call(
+				b.thunk(
+					b.block([
+						b.const(items_id, items()),
+						b.return(
+							b.conditional(
+								b.binary('===', b.member(items_id, b.id('length')), b.literal(0)),
+								branch_value(node.empty.body, node.empty),
+								b.call(b.member(items_id, b.id('map')), map_arrow),
+							),
+						),
+					]),
+				),
+			);
+		}
+		return b.call(b.member(items(), b.id('map')), map_arrow);
+	}
+
+	if (node.type === 'SwitchStatement') {
+		const cases = node.cases.map((/** @type {any} */ sc) =>
+			b.switch_case(
+				sc.test ? /** @type {AST.Expression} */ (context.visit(sc.test)) : null,
+				branch_returning_body(flatten_switch_consequent(sc.consequent), sc.consequent),
+			),
+		);
+		const switch_stmt = b.switch(
+			/** @type {AST.Expression} */ (context.visit(node.discriminant)),
+			cases,
+			/** @type {AST.NodeWithLocation} */ (node),
+		);
+		return b.call(b.thunk(b.block([switch_stmt, b.return(b.literal(null))])));
+	}
+
+	// TryStatement: try/catch/pending leaves return; a `finally` must not.
+	const try_body = b.block(
+		branch_returning_body(node.block.body, node.block),
+		/** @type {AST.NodeWithLocation} */ (node.block),
+	);
+	let catch_handler = null;
+	if (node.handler) {
+		catch_handler = b.catch_clause(
+			node.handler.param || null,
+			node.handler.resetParam || null,
+			b.block(
+				branch_returning_body(node.handler.body.body, node.handler.body),
+				/** @type {AST.NodeWithLocation} */ (node.handler.body),
+			),
+			/** @type {AST.NodeWithLocation} */ (node.handler),
+		);
+	}
+	const pending = node.pending
+		? b.block(
+				branch_returning_body(node.pending.body, node.pending),
+				/** @type {AST.NodeWithLocation} */ (node.pending),
+			)
+		: null;
+	const finalizer = node.finalizer
+		? b.block(
+				transform_body(node.finalizer.body, scoped(node.finalizer)),
+				/** @type {AST.NodeWithLocation} */ (node.finalizer),
+			)
+		: null;
+	return b.call(b.thunk(b.block([b.try(try_body, catch_handler, finalizer, pending)])));
 }
 
 /**
@@ -4459,7 +4755,14 @@ function transform_ts_child(node, context) {
 		}
 		state.init.push(/** @type {AST.Statement} */ (result));
 	} else if (node.type === 'TsrxFragment') {
-		const result = build_tsrx_to_ts_expression(node, context);
+		let result = build_tsrx_to_ts_expression(node, context);
+		// Keep an AUTHORED `<> … </>` here too (a render-output / control-flow branch
+		// body, e.g. the `<>{[1,2,3]}</>` branch of an `@if`), so it is not unwrapped to
+		// a bare `[1,2,3]`. The fragment's contents (including any `<style>`) are already
+		// lowered by `build_tsrx_to_ts_expression`; this only re-adds the `<> … </>`.
+		if (is_authored_native_fragment(node)) {
+			result = wrap_to_ts_value_in_fragment(result, node);
+		}
 		if (!state.init) {
 			return result;
 		}
@@ -4576,6 +4879,76 @@ function is_native_tsrx_value_position(path) {
 		parent?.type === 'Element' ||
 		parent?.type === 'TsrxFragment'
 	);
+}
+
+/**
+ * A `<> … </>` combined INTO a surrounding expression (an operator operand, a
+ * conditional branch, an array element, …) rather than being the sole value of a
+ * render-output slot. There the to_ts collapse of a single-child fragment to its
+ * bare value flips meaning — a fragment is always truthy, but `<>{0}</>` collapses
+ * to a falsy `0`, so `<>{0}</> || 'x'` would render `'x'` instead of `0`. Keep the
+ * fragment in these positions.
+ * @param {AST.Node[]} path
+ * @param {AST.Node} node
+ * @returns {boolean}
+ */
+/**
+ * An AUTHORED `<> … </>` fragment (not a compiler-generated wrapper around a
+ * directive, nor a code-block-chain wrapper). These are kept verbatim in the
+ * to_ts output instead of being unwrapped to their single child.
+ * @param {any} node
+ * @returns {boolean}
+ */
+function is_authored_native_fragment(node) {
+	return (
+		node?.type === 'TsrxFragment' &&
+		node.metadata?.native_tsrx === true &&
+		node.metadata?.tsrx_generated_wrapper !== true &&
+		node.metadata?.tsrx_code_block_chain !== true
+	);
+}
+
+/**
+ * @param {AST.Node[]} path
+ * @param {AST.Node} node
+ * @returns {boolean}
+ */
+function is_combined_expression_position(path, node) {
+	const parent = /** @type {any} */ (path.at(-1));
+	if (!parent || !isTemplateValuePosition(parent, node)) return false;
+	switch (parent.type) {
+		// Sole-value render-output slots: the collapse is invisible, keep it.
+		case 'VariableDeclarator':
+			return parent.init !== node;
+		case 'AssignmentExpression':
+			return parent.right !== node;
+		case 'CallExpression':
+		case 'NewExpression':
+			return !(Array.isArray(parent.arguments) && parent.arguments.includes(node));
+		default:
+			return true;
+	}
+}
+
+/**
+ * Re-wrap a lowered to_ts value in a `<> … </>` fragment so a fragment combined
+ * into an expression keeps its fragment identity (see
+ * `is_combined_expression_position`). A value that is already a fragment is left
+ * as-is; a JSX element/text/container nests directly; any other expression goes in
+ * a `{ … }` container.
+ * @param {any} expression
+ * @param {AST.Node} source
+ * @returns {any}
+ */
+function wrap_to_ts_value_in_fragment(expression, source) {
+	if (expression?.type === 'JSXFragment') return expression;
+	const child =
+		expression?.type === 'JSXElement' ||
+		expression?.type === 'JSXText' ||
+		expression?.type === 'JSXExpressionContainer'
+			? expression
+			: b.jsx_expression_container(/** @type {AST.Expression} */ (expression));
+	return setLocation(b.jsx_fragment([child]), /** @type {AST.NodeWithLocation} */ (source));
 }
 
 /**

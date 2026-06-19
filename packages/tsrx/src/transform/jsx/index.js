@@ -5,6 +5,7 @@
 import { walk } from 'zimmerframe';
 import { print } from 'esrap';
 import { error } from '../../errors.js';
+import { is_template_value_position } from '../../analyze/validation.js';
 import { analyze_css } from '../../analyze/css-analyze.js';
 import { prune_css } from '../../analyze/prune.js';
 import {
@@ -259,29 +260,170 @@ function is_jsx_control_flow_expression(node) {
 
 /**
  * Wrap a render-output node in a native TSRX fragment so it flows through the
- * same single-child render path as a `<> … </>` output.
+ * same single-child render path as a `<> … </>` output. This is a compiler
+ * GENERATED wrapper (it wraps a control-flow directive / render output so it
+ * lowers to a value) — it is marked `tsrx_generated_wrapper` so the single-child
+ * collapse keeps unwrapping it, unlike an AUTHORED `<> … </>` which is kept.
  * @param {any} node
  * @returns {any}
  */
 function wrap_in_native_tsrx_fragment(node) {
 	const fragment = b.jsx_fragment([node]);
-	fragment.metadata = { ...(fragment.metadata || {}), native_tsrx: true };
+	fragment.metadata = {
+		...(fragment.metadata || {}),
+		native_tsrx: true,
+		tsrx_generated_wrapper: true,
+	};
 	return fragment;
 }
 
 /**
- * Wrap a bare JSX control-flow directive that sits directly in an expression
- * position — an expression-bodied arrow (`() => @switch (…) { … }`), a
- * `return @switch (…) { … }`, an unused expression statement,
- * assignment to a variable
- * (`const x = @switch (…) { … }`, `x = @switch (…) { … }`), or a call/`new`
- * argument (`render(@if (…) { … })`) — in a native TSRX fragment.
+ * An AUTHORED `<> … </>` fragment (not a compiler-generated wrapper, nor a Ripple
+ * code-block-chain wrapper). These are kept verbatim in the output instead of
+ * being unwrapped to their single child.
  * @param {any} node
- * @param {TransformContext | null} lower_dynamic_context
+ * @returns {boolean}
+ */
+function is_authored_native_fragment(node) {
+	return (
+		node?.type === 'JSXFragment' &&
+		node.metadata?.native_tsrx === true &&
+		node.metadata?.tsrx_generated_wrapper !== true
+	);
+}
+
+/**
+ * Slots whose value is a render child / statement, not a JavaScript value
+ * expression. A control-flow directive (`@if`/`@for`/`@switch`/`@try`) is
+ * legitimate render output in these positions, so it must NOT be treated as a
+ * stray "control flow used as a value". Everything else is a value position:
+ * an unhandled control-flow directive there is the raw-value error case
+ * (a `@for` iterable, an `@if`/`@switch` test, etc.).
+ * @param {any} parent
+ * @param {string} key
+ * @returns {boolean}
+ */
+function is_statement_or_template_slot(parent, key) {
+	// JSX children, and the body of any block/program/function/loop.
+	if (key === 'children' || key === 'body') return true;
+	// A `@{ … }` code block's trailing output (`render`) is render position.
+	if (parent?.type === 'JSXCodeBlock' && key === 'render') return true;
+	// `{ @if … }` containers lower their expression through the render machinery.
+	if (parent?.type === 'JSXExpressionContainer' && key === 'expression') return true;
+	// Switch-case statement lists.
+	if (parent?.type === 'SwitchCase' && key === 'consequent') return true;
+	// An if-node branch is a statement block; its `alternate` is also where the
+	// `@else if` chain (another control-flow node) legitimately lives.
+	if (is_if_control_node(parent) && (key === 'consequent' || key === 'alternate')) return true;
+	return false;
+}
+
+/**
+ * Render-output value slots: the only expression positions a directive may be
+ * the SOLE value of. A control-flow directive here collapses to its rendered
+ * value (wrapped in a native fragment by `wrap_control_flow_expression_values`)
+ * and a `@{ … }` code block self-lowers to an IIFE. These are established forms
+ * (`const x = @switch …`, `() => @if …`, `return @if …`, `render(@for …)`),
+ * distinct from combining a directive INTO an expression (an operator operand, a
+ * `@for` iterable, an `@if`/`@switch` test), which is an error.
+ * @param {any} parent
+ * @param {string} key
+ * @returns {boolean}
+ */
+function is_render_output_value_slot(parent, key) {
+	switch (parent?.type) {
+		case 'ArrowFunctionExpression':
+			return key === 'body';
+		case 'ReturnStatement':
+			return key === 'argument';
+		case 'ExpressionStatement':
+			return key === 'expression';
+		case 'VariableDeclarator':
+			return key === 'init';
+		case 'AssignmentExpression':
+			return key === 'right';
+		case 'CallExpression':
+		case 'NewExpression':
+			return key === 'arguments';
+		default:
+			return false;
+	}
+}
+
+/**
+ * A `<> … </>` is combined INTO a surrounding expression (an operator operand, a
+ * conditional branch, an array element, a template-literal hole) — as opposed to
+ * being the sole value of a render-output slot, where its single-child collapse
+ * is invisible because the value is only rendered. In a combined position the
+ * collapse is NOT invisible: a fragment is always a truthy element, but its
+ * collapsed content may be falsy, so `<>{0}</> || 'x'` (renders `0`) must not turn
+ * into `0 || 'x'` (renders `'x'`). Keep the fragment in these positions.
+ * @param {any} parent
+ * @param {any} child
+ * @returns {boolean}
+ */
+function is_combined_expression_position(parent, child) {
+	if (!parent || !is_template_value_position(parent, child)) return false;
+	switch (parent.type) {
+		// Sole-value render-output slots: the collapse is invisible, keep it.
+		case 'VariableDeclarator':
+			return parent.init !== child;
+		case 'AssignmentExpression':
+			return parent.right !== child;
+		case 'CallExpression':
+		case 'NewExpression':
+			return !(Array.isArray(parent.arguments) && parent.arguments.includes(child));
+		default:
+			return true;
+	}
+}
+
+/**
+ * Re-wrap an already-lowered render value in a `<> … </>` fragment so a fragment
+ * combined into an expression keeps its fragment identity (see
+ * `is_combined_expression_position`). A value that is already a fragment is left
+ * as-is; a JSX element/text nests directly (`<><span /></>`); any other
+ * expression goes in a `{ … }` container (`<>{0}</>`).
+ * @param {any} expression
+ * @param {any} source
+ * @returns {any}
+ */
+function wrap_lowered_value_in_fragment(expression, source) {
+	if (expression?.type === 'JSXFragment') return expression;
+	const child =
+		expression?.type === 'JSXElement' ||
+		expression?.type === 'JSXText' ||
+		expression?.type === 'JSXExpressionContainer'
+			? expression
+			: to_jsx_expression_container(expression, source);
+	return set_loc(b.jsx_fragment([child]), source?.loc ? source : undefined);
+}
+
+/**
+ * Lower bare JSX control-flow directives that sit as the SOLE value of a
+ * render-output slot — an expression-bodied arrow (`() => @switch (…) { … }`), a
+ * `return @switch (…) { … }`, an unused expression statement, a variable
+ * initializer (`const x = @switch (…) { … }`), an assignment
+ * (`x = @switch (…) { … }`), or a call/`new` argument (`render(@if (…) { … })`)
+ * — by wrapping them in a native TSRX fragment so they flow through the same
+ * render machinery as a `<> … </>` output instead of leaking to the printer as a
+ * raw `JSX…Expression`.
+ *
+ * A control-flow directive or `@{ … }` code block used anywhere ELSE in a value
+ * position — COMBINED into an expression (`(@if …) || fallback`, an operator
+ * operand, an array element, a template-literal hole, a `@for` iterable, an
+ * `@if`/`@switch` test) — is likewise wrapped in a native TSRX fragment. In an
+ * operand position the fragment is then KEPT (a fragment is a truthy value, so
+ * `<>{…}</> || x` is preserved); in a "raw value" slot the fragment collapses to
+ * its rendered value. Either way nothing leaks to the printer as a raw
+ * `JSX…Expression`.
+ *
+ * @param {any} node
+ * @param {TransformContext} transform_context
  * @param {Set<any>} [seen]
  * @returns {void}
  */
-function wrap_control_flow_expression_values(node, lower_dynamic_context, seen = new Set()) {
+function wrap_control_flow_expression_values(node, transform_context, seen = new Set()) {
 	if (!node || typeof node !== 'object' || seen.has(node)) return;
 	seen.add(node);
 
@@ -293,18 +435,39 @@ function wrap_control_flow_expression_values(node, lower_dynamic_context, seen =
 	// `<{'div'}>`) is hoisted to a module-level static const while still
 	// carrying the raw dynamic tag. Alias lowerings return a replacement
 	// fragment, which is swapped into the child's position here.
+	const lower_dynamic = !!transform_context?.platform?.imports?.dynamicFactory;
 	const lower_child = (/** @type {any} */ child) => {
-		if (!lower_dynamic_context || child?.type !== 'JSXElement') return child;
-		return lower_dynamic_jsx_element(child, lower_dynamic_context) ?? child;
+		if (!lower_dynamic || child?.type !== 'JSXElement') return child;
+		return lower_dynamic_jsx_element(child, transform_context) ?? child;
 	};
+
+	// A control-flow directive or `@{ … }` code block combined into an expression
+	// (an operator operand, a `@for` iterable, an `@if`/`@switch` test, …) is
+	// wrapped in a native TSRX fragment so it flows through the render machinery
+	// instead of leaking to the printer as a raw `JSX…Expression`. In an operand
+	// position the fragment is then KEPT (a fragment is a truthy value); in a
+	// "raw value" slot like a `@for` iterable it collapses to its rendered value
+	// (see the JSXFragment visitor and `is_combined_expression_position`).
+	const wrap_directive_in_expression = (/** @type {any} */ value) =>
+		is_jsx_control_flow_expression(value) || value?.type === 'JSXCodeBlock'
+			? wrap_in_native_tsrx_fragment(value)
+			: value;
 
 	if (Array.isArray(node)) {
 		for (let i = 0; i < node.length; i++) {
 			node[i] = lower_child(node[i]);
-			wrap_control_flow_expression_values(node[i], lower_dynamic_context, seen);
+			wrap_control_flow_expression_values(node[i], transform_context, seen);
 		}
 		return;
 	}
+
+	// Wrap a bare control-flow directive that is the sole value of a render-output
+	// slot in a native TSRX fragment, collapsing to its rendered value. (A `@{ … }`
+	// code block in the same slots already self-lowers to an IIFE, so it is left
+	// as-is.) These render-output slots are the only value positions a directive is
+	// allowed in; see `is_render_output_value_slot`.
+	const wrap_value = (/** @type {any} */ value) =>
+		is_jsx_control_flow_expression(value) ? wrap_in_native_tsrx_fragment(value) : value;
 
 	if (
 		node.type === 'ArrowFunctionExpression' &&
@@ -327,15 +490,28 @@ function wrap_control_flow_expression_values(node, lower_dynamic_context, seen =
 		(node.type === 'CallExpression' || node.type === 'NewExpression') &&
 		Array.isArray(node.arguments)
 	) {
-		node.arguments = node.arguments.map((/** @type {any} */ arg) =>
-			is_jsx_control_flow_expression(arg) ? wrap_in_native_tsrx_fragment(arg) : arg,
-		);
+		node.arguments = node.arguments.map(wrap_value);
 	}
 
 	for (const key of Object.keys(node)) {
 		if (key === 'loc' || key === 'start' || key === 'end' || key === 'metadata') continue;
-		node[key] = lower_child(node[key]);
-		wrap_control_flow_expression_values(node[key], lower_dynamic_context, seen);
+		// A directive is allowed as a render child/statement, and as the sole value
+		// of a render-output slot (handled above for control flow; `@{ … }` blocks
+		// self-lower). Everywhere else it is combined into an expression — wrap it.
+		const allowed_slot =
+			is_statement_or_template_slot(node, key) || is_render_output_value_slot(node, key);
+		const value = node[key];
+		if (Array.isArray(value)) {
+			for (let i = 0; i < value.length; i++) {
+				value[i] = lower_child(value[i]);
+				if (!allowed_slot) value[i] = wrap_directive_in_expression(value[i]);
+				wrap_control_flow_expression_values(value[i], transform_context, seen);
+			}
+		} else {
+			node[key] = lower_child(node[key]);
+			if (!allowed_slot) node[key] = wrap_directive_in_expression(node[key]);
+			wrap_control_flow_expression_values(node[key], transform_context, seen);
+		}
 	}
 }
 
@@ -403,10 +579,7 @@ export function createJsxTransform(platform) {
 		};
 
 		expand_child_code_blocks(/** @type {any} */ (ast));
-		wrap_control_flow_expression_values(
-			/** @type {any} */ (ast),
-			platform.imports.dynamicFactory ? transform_context : null,
-		);
+		wrap_control_flow_expression_values(/** @type {any} */ (ast), transform_context);
 
 		if (!transform_context.typeOnly) {
 			preallocate_lazy_ids(/** @type {any} */ (ast), transform_context);
@@ -447,7 +620,20 @@ export function createJsxTransform(platform) {
 							(child.type !== 'JSXText' || child.value !== ''),
 					);
 				const in_jsx_child = in_jsx_child_context(path) || is_empty_container_child;
-				const expression = tsrx_node_to_jsx_expression(target, state, in_jsx_child);
+				let expression = tsrx_node_to_jsx_expression(target, state, in_jsx_child);
+				// Keep a fragment's `<> … </>` identity in expression position when it is
+				// either AUTHORED (the author wrote `<>{1}</>`, so it must not unwrap to a
+				// bare `1`) or combined into a surrounding expression (collapsing `<>{0}</>`
+				// to `0` would flip `<>{0}</> || 'x'` from rendering `0` to `'x'` — a
+				// fragment is always truthy). A compiler-generated wrapper (around a
+				// control-flow directive) is NOT authored, so it still collapses.
+				if (
+					!in_jsx_child &&
+					(is_authored_native_fragment(node) ||
+						is_combined_expression_position(path[path.length - 1], node))
+				) {
+					expression = wrap_lowered_value_in_fragment(expression, node);
+				}
 				for (const statement of create_tsrx_style_ref_setup_statements(
 					target,
 					style_context,
@@ -949,12 +1135,32 @@ function lower_code_block_stream_node(block, transform_context) {
  * @param {any[]} body_nodes
  * @param {boolean} return_null_when_empty
  * @param {TransformContext} transform_context
+ * @param {any} [source_authored_fragment] When the render output is an AUTHORED
+ *   `<> … </>` (`is_authored_native_fragment`), the built return value is re-wrapped
+ *   in a fragment so the author's fragment is kept verbatim (not collapsed to its
+ *   single child), matching value positions. A generated wrapper passes nothing.
  * @returns {any[]}
  */
-function build_render_statements(body_nodes, return_null_when_empty, transform_context) {
+function build_render_statements(
+	body_nodes,
+	return_null_when_empty,
+	transform_context,
+	source_authored_fragment = null,
+) {
 	body_nodes = body_nodes.flatMap((node) =>
 		node?.type === 'JSXCodeBlock' ? lower_code_block_stream_node(node, transform_context) : [node],
 	);
+
+	// When a caller (e.g. a directive branch / loop / switch-case body) passes the
+	// authored `<> … </>` as the trailing body node rather than a pre-unwrapped child
+	// list, detect it here so its wrapper is kept too. A generated wrapper carries
+	// `tsrx_generated_wrapper`, so it is excluded and still collapses.
+	if (!source_authored_fragment) {
+		const last_body_node = body_nodes[body_nodes.length - 1];
+		if (is_authored_native_fragment(last_body_node)) {
+			source_authored_fragment = last_body_node;
+		}
+	}
 
 	const statements = [];
 	const render_nodes = [];
@@ -1089,7 +1295,22 @@ function build_render_statements(body_nodes, return_null_when_empty, transform_c
 		hoist_static_render_nodes(render_nodes, transform_context);
 	}
 
-	const return_arg = build_return_expression(render_nodes);
+	let return_arg = build_return_expression(render_nodes);
+	// Keep an authored `<> … </>` render output verbatim instead of collapsing it:
+	// an empty `<></>` stays `<></>` (not `null`), and a single child stays wrapped
+	// (not its bare value). The `!== 'JSXFragment'` guard avoids double-wrapping a
+	// multi-child / nested result already returned as a fragment — matching the value
+	// seam. A generated wrapper is not authored, so it still collapses.
+	if (is_authored_native_fragment(source_authored_fragment)) {
+		if (return_arg === null) {
+			return_arg = set_loc(
+				b.jsx_fragment([]),
+				source_authored_fragment.loc ? source_authored_fragment : undefined,
+			);
+		} else if (return_arg.type !== 'JSXFragment') {
+			return_arg = wrap_lowered_value_in_fragment(return_arg, source_authored_fragment);
+		}
+	}
 	if (return_arg || (return_null_when_empty && !has_terminal_return)) {
 		statements.push(b.return(return_arg || b.literal(null)));
 	}
@@ -1410,10 +1631,15 @@ function transform_return_statement(node, { next, visit, state, path }) {
 function transform_jsx_code_block(node, { state, path, visit }) {
 	const body_nodes = get_jsx_code_block_body_nodes(node, state);
 	const parent = /** @type {any} */ (path.at(-1));
+	// Keep an authored `<> … </>` trailing render output verbatim (a generated
+	// control-flow wrapper carries `tsrx_generated_wrapper`, so it stays null).
+	const render_authored_fragment = is_authored_native_fragment(node.render) ? node.render : null;
 
 	if (parent && parent.body === node && is_function_or_class_boundary(parent)) {
 		const block = b.block(
-			mark_native_pretransformed_jsx(build_render_statements(body_nodes, true, state)),
+			mark_native_pretransformed_jsx(
+				build_render_statements(body_nodes, true, state, render_authored_fragment),
+			),
 			node,
 		);
 		block.metadata = {
@@ -1427,7 +1653,9 @@ function transform_jsx_code_block(node, { state, path, visit }) {
 		b.arrow(
 			[],
 			b.block(
-				mark_native_pretransformed_jsx(build_render_statements(body_nodes, true, state)),
+				mark_native_pretransformed_jsx(
+					build_render_statements(body_nodes, true, state, render_authored_fragment),
+				),
 				node,
 			),
 		),
@@ -1500,7 +1728,11 @@ function lower_jsx_code_block_function_body(node) {
 			// component render output. Wrap it in a native fragment so it flows
 			// through the same children-rendering path as a `<> … </>` render.
 			const fragment = b.jsx_fragment([render]);
-			fragment.metadata = { ...fragment.metadata, native_tsrx: true };
+			fragment.metadata = {
+				...fragment.metadata,
+				native_tsrx: true,
+				tsrx_generated_wrapper: true,
+			};
 			render = fragment;
 		}
 		statements.push(b.return(render, code_block.render));
@@ -2281,7 +2513,7 @@ function create_native_tsrx_render_statements(fragment, transform_context) {
 			target.type === 'JSXFragment' ? get_tsrx_render_children(target) : [target];
 		return [
 			...create_tsrx_style_ref_setup_statements(target, style_context, transform_context),
-			...build_render_statements(render_nodes, true, transform_context),
+			...build_render_statements(render_nodes, true, transform_context, fragment),
 		];
 	});
 }
@@ -2810,7 +3042,12 @@ function lower_remaining_jsx_code_blocks(node, transform_context, seen = new Set
 					if (child?.type !== 'JSXCodeBlock') return [child];
 					const body_nodes = get_jsx_code_block_body_nodes(child, transform_context);
 					return mark_native_pretransformed_jsx(
-						build_render_statements(body_nodes, true, transform_context),
+						build_render_statements(
+							body_nodes,
+							true,
+							transform_context,
+							is_authored_native_fragment(child.render) ? child.render : null,
+						),
 					);
 				});
 			}
@@ -4133,10 +4370,16 @@ function tsrx_node_to_jsx_expression(node, transform_context, in_jsx_child = fal
 		// (e.g. `let b = <></>`) drops the author's fragment and changes its type;
 		// `<></>` is a valid value and keeps the to_ts/runtime view faithful.
 		expression = set_loc(b.jsx_fragment([]), node.loc ? node : undefined);
-	} else if (children.length === 1 && is_empty_jsx_fragment(children[0])) {
-		// `<><></></>` — a fragment whose only child is an empty fragment. The generic
-		// single-child collapse below would unwrap it to the bare inner `<></>`,
-		// dropping the outer fragment the author wrote. Keep both levels.
+	} else if (
+		children.length === 1 &&
+		(is_empty_jsx_fragment(children[0]) ||
+			(children[0]?.type === 'JSXFragment' && is_authored_native_fragment(node)))
+	) {
+		// `<><X></></>` — a fragment whose only child is a fragment. The generic
+		// single-child collapse below would unwrap it to the bare inner fragment,
+		// dropping the outer fragment the author wrote. Keep both levels. (`<><></></>`
+		// is kept regardless; a non-empty inner is only kept for an authored outer, so
+		// a generated wrapper still collapses.)
 		expression = set_loc(b.jsx_fragment(children), node.loc ? node : undefined);
 	} else {
 		expression = return_value_body_to_expression(children, node, transform_context);

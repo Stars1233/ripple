@@ -282,6 +282,326 @@ describe('@tsrx/ripple lowers `@{ … }` code blocks in expression position', ()
 	});
 });
 
+describe('@tsrx/ripple lowers control flow combined into an expression', () => {
+	// A `@if`/`@for`/`@switch`/`@try` directive (or `@{ … }` block) combined into an
+	// operator expression is wrapped so it becomes a valid value: a `tsrx_element`
+	// render on the client/server, a `<> … </>` in to_ts. It must NOT leak as a bare
+	// `if (…) { … }` statement into expression position.
+	const operand = `function App({ something }: { something: boolean }) @{
+		const ad = (@if (something) { <div>Hello</div> }) || 'something else';
+		<div>{ad}</div>
+	}`;
+
+	for (const mode of /** @type {const} */ (['client', 'server'])) {
+		it(`wraps the directive in a tsrx_element render (${mode})`, () => {
+			const { code, errors } = compile(operand, 'App.tsrx', { collect: true, mode });
+			expect(errors).toEqual([]);
+			// `const ad = _$_.tsrx_element(…) || 'something else'` — the directive lives
+			// inside the render callback, not as a bare `if` in expression position.
+			expect(code).toMatch(/const ad = _\$_\.tsrx_element\(/);
+			expect(code).not.toMatch(/const ad = if\b/);
+		});
+	}
+
+	it('wraps the directive in a fragment in to_ts output', () => {
+		const { code, errors } = compile_to_volar_mappings(operand, 'App.tsrx', { loose: true });
+		expect(errors).toEqual([]);
+		// The directive value is wrapped in a `<> … </>` (a truthy fragment) as the `||`
+		// operand, matching React and the client/server runtime — NOT lowered to a bare
+		// `(something ? … : null) || …`, which would imply the fallback can fire when at
+		// runtime the render handle is always truthy. The type view must agree.
+		expect(code).toContain(
+			"const ad = <>{something ? <div>Hello</div> : null}</> || 'something else';",
+		);
+		expect(code).not.toMatch(/const ad = \(/);
+		expect(code).not.toMatch(/const ad = if\b/);
+	});
+
+	it('wraps a @{ … } code block operand and a ternary branch', () => {
+		const code_block = `function App() @{
+			const ad = (@{ const x = 1; <span>{x}</span> }) || 'd';
+			<div>{ad}</div>
+		}`;
+		const ternary = `function App({ o }: { o: boolean }) @{
+			const ad = o ? @if (o) { <p>a</p> } @else { <p>b</p> } : <span>c</span>;
+			<div>{ad}</div>
+		}`;
+		for (const source of [code_block, ternary]) {
+			const { code, errors } = compile(source, 'App.tsrx', { collect: true });
+			expect(errors, source).toEqual([]);
+			expect(code, source).toContain('_$_.tsrx_element');
+			expect(code, source).not.toMatch(/=\s*if\b/);
+		}
+	});
+
+	// A directive leaks in EVERY value position, not just operands — the wrap is
+	// keyed off the render-child/statement slots (allow-list), so it covers a
+	// concise arrow body (idiomatic in `.map()`), a member object, a `return`
+	// argument inside a nested function, etc., across all three modes.
+	const valuePositions = {
+		'concise arrow body (.map)': `function App({ xs }: { xs: number[] }) @{ <div>{xs.map((x) => @if (x) { <span>{x}</span> })}</div> }`,
+		'member object': `function App({ c }: { c: boolean }) @{ const v = (@if (c) { <span>a</span> }).foo; <div>{v}</div> }`,
+		'nested function return': `function App({ c }: { c: boolean }) @{ function inner() { return @if (c) { <span>a</span> }; } <div>{inner()}</div> }`,
+	};
+	for (const [kind, source] of Object.entries(valuePositions)) {
+		for (const [mode, fn, opts] of /** @type {const} */ ([
+			['client', compile, { collect: true }],
+			['server', compile, { collect: true, mode: 'server' }],
+			['to_ts', compile_to_volar_mappings, { loose: true }],
+		])) {
+			it(`wraps a directive in a ${kind} (${mode})`, () => {
+				const { code, errors } = fn(source, 'App.tsrx', opts);
+				expect(errors).toEqual([]);
+				// No control-flow statement / raw JSX node leaked into expression position.
+				expect(code).not.toMatch(/=\s*if\b/);
+				expect(code).not.toMatch(/=>\s*if\b/);
+				expect(code).not.toMatch(/return if\b/);
+				expect(code).not.toContain('JSXIfExpression');
+			});
+		}
+	}
+
+	it('does not redundantly wrap a @{ … } code block in non-render value positions', () => {
+		// Regression: a code block self-lowers to an IIFE/render of its own, so it must
+		// NOT be wrapped in an extra fragment when used as e.g. an array element.
+		const { code, errors } = compile(
+			`function App() @{ let xs = [@{ let a = 1; <span>{a}</span> }]; <div>{xs}</div> }`,
+			'App.tsrx',
+			{ collect: true },
+		);
+		expect(errors).toEqual([]);
+		expect(code).not.toContain('JSXCodeBlock');
+		// The element scope hash etc. is unrelated; just ensure no stray fragment
+		// wrapper was introduced around the code block in the array.
+		expect(code).not.toMatch(/\[\s*_\$_\.tsrx_element\(\(__anchor[\s\S]*?\)\) *,?\s*\]/);
+	});
+
+	// A directive used as the SOLE value of a slot (`let cd = @if (…) { … }`) has no
+	// native Ripple lowering, so without wrapping it leaked as `let cd = if (…) {}`
+	// (invalid in every mode). It is now wrapped like any other value position.
+	const soleValue = {
+		'@if': `function App({ c }: { c: boolean }) @{ let cd = @if (c) { <p>a</p> }; <div>{cd}</div> }`,
+		'@if empty': `function App({ c }: { c: boolean }) @{ let cd = @if (c) {}; <div>{cd}</div> }`,
+		'@switch': `function App({ c }: { c: boolean }) @{ let cd = @switch (c) { @case true: { <p>a</p> } @default: { <p>b</p> } }; <div>{cd}</div> }`,
+		assignment: `function App({ c }: { c: boolean }) @{ let cd; cd = @if (c) { <p>a</p> }; <div>{cd}</div> }`,
+	};
+	for (const [kind, source] of Object.entries(soleValue)) {
+		for (const mode of /** @type {const} */ (['client', 'server'])) {
+			it(`wraps a sole-value ${kind} directive (${mode})`, () => {
+				const { code, errors } = compile(source, 'App.tsrx', { collect: true, mode });
+				expect(errors).toEqual([]);
+				expect(code).toContain('_$_.tsrx_element');
+				expect(code).not.toMatch(/=\s*if\b/);
+				expect(code).not.toMatch(/=\s*switch\b/);
+			});
+		}
+
+		it(`wraps a sole-value ${kind} directive (to_ts)`, () => {
+			const { code, errors } = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
+			expect(errors).toEqual([]);
+			// to_ts lowers a sole-value directive to a typed VALUE (matching the JS
+			// targets): a ternary for `@if`, a returning IIFE for `@switch` — never a
+			// void IIFE whose branches lack `return`.
+			if (kind === '@switch') {
+				expect(code).toContain('return null;');
+				expect(code).toMatch(/case true:\s*return </);
+			} else {
+				expect(code).toMatch(/cd = c \?/);
+			}
+			expect(code).not.toMatch(/=\s*if\b/);
+			expect(code).not.toMatch(/=\s*switch\b/);
+		});
+	}
+
+	it('still lowers a sole-value @{ … } code block to an IIFE (not double-wrapped)', () => {
+		const { code, errors } = compile(
+			`function App() @{ let cd = @{ const x = 1; <span>{x}</span> }; <div>{cd}</div> }`,
+			'App.tsrx',
+			{ collect: true },
+		);
+		expect(errors).toEqual([]);
+		expect(code).toContain('_$_.tsrx_element');
+		expect(code).not.toMatch(/=\s*if\b/);
+	});
+});
+
+describe('@tsrx/ripple lowers a directive value to a typed value in to_ts (like the JS targets)', () => {
+	// A directive in VALUE position must lower to a value the const can be typed
+	// from — a ternary / `.map` / returning IIFE — NOT a void IIFE whose branches
+	// lack `return` (which would type the const as `void`).
+	const ts = (src) => compile_to_volar_mappings(src, 'App.tsrx', { loose: true }).code;
+
+	it('@if -> ternary', () => {
+		expect(
+			ts(`function App() @{ const v = @if (cond()) { <a /> } @else { <b /> }; <div>{v}</div> }`),
+		).toContain('const v = cond() ? <a /> : <b />;');
+	});
+
+	it('@if without else -> ternary with null', () => {
+		expect(ts(`function App() @{ const v = @if (cond()) { <a /> }; <div>{v}</div> }`)).toContain(
+			'const v = cond() ? <a /> : null;',
+		);
+	});
+
+	it('@switch -> returning IIFE with trailing return null', () => {
+		const code = ts(
+			`function App() @{ const v = @switch (cond()) { @case 1: { <a /> } @case 2: { <b /> } }; <div>{v}</div> }`,
+		);
+		expect(code).toMatch(/case 1:\s*return <a \/>;/);
+		expect(code).toContain('return null;');
+	});
+
+	it('@try -> returning IIFE with try/catch', () => {
+		const code = ts(
+			`function App() @{ const v = @try { <a /> } @catch (e) { <b /> }; <div>{v}</div> }`,
+		);
+		expect(code).toMatch(/try \{\s*return <a \/>;/);
+		expect(code).toMatch(/catch \(e\) \{\s*return <b \/>;/);
+	});
+
+	it('@for -> Array.from(iterable).map (iterable-safe, not an IIFE-with-for)', () => {
+		const code = ts(
+			`function App({ xs }: { xs: number[] }) @{ const v = @for (const x of xs) { <li>{x}</li> }; <div>{v}</div> }`,
+		);
+		expect(code).toMatch(/const v = Array\.from\(xs\)\.map\(\(x\) =>/);
+		expect(code).toContain('return <li>{x}</li>;');
+		expect(code).not.toMatch(/=\s*\(\(\)\s*=>\s*\{\s*for\b/);
+	});
+
+	// `@for` accepts any iterable, but `Set`/`Map`/generators have no `.length` or
+	// `.map`. Lower through `Array.from(...)` so the binding and the `@empty` branch
+	// type-check (the index `; index i` becomes the map callback's 2nd param).
+	it('@for over a non-array iterable is iterable-safe via Array.from (+ index, + @empty)', () => {
+		const empty = ts(
+			`function App({ xs }: { xs: Set<number> }) @{ const v = @for (const x of xs; index i) { <li>{i}{x}</li> } @empty { <p>none</p> }; <div>{v}</div> }`,
+		);
+		// no bare `xs.length` / `xs.map` (Set has neither) — both go through Array.from.
+		expect(empty).not.toMatch(/\bxs\.length\b/);
+		expect(empty).not.toMatch(/\bxs\.map\b/);
+		// `Array.from(xs)` is materialized ONCE (a generator would be exhausted twice),
+		// then the length test and `.map` read the same bound array.
+		expect(empty).toContain('const $$items = Array.from(xs);');
+		expect(empty).toMatch(/\$\$items\.length === 0/);
+		expect(empty).toMatch(/\$\$items\.map\(\(x, i\) =>/);
+		expect((empty.match(/Array\.from/g) || []).length).toBe(1);
+	});
+
+	// `@for await` iterates an AsyncIterable, which `Array.from` does NOT accept — it
+	// lowers to an awaited async IIFE with a real `for await` loop (no `Array.from`).
+	it('@for await lowers to an awaited for-await IIFE (not Array.from of an AsyncIterable)', () => {
+		const code = ts(
+			`async function App({ xs }: { xs: AsyncIterable<number> }) @{ const v = @for await (const x of xs) { <li>{x}</li> } @empty { <p/> }; <div>{v}</div> }`,
+		);
+		expect(code).toMatch(/const v = await \(async \(\) =>/);
+		expect(code).toMatch(/for await \(const x of xs\)/);
+		expect(code).toMatch(/\$\$items\.length === 0 \? <p \/> : \$\$items/);
+		// must NOT pass an AsyncIterable to Array.from (the bug).
+		expect(code).not.toMatch(/Array\.from\(xs\)/);
+	});
+
+	it('a directive in RENDER position is unchanged (still renders, no value lowering)', () => {
+		const code = ts(`function App() @{ <div>@if (cond()) { <a /> } @else { <b /> }</div> }`);
+		// Render position keeps its render IIFE; it is NOT turned into a ternary value.
+		expect(code).not.toMatch(/<div>\{cond\(\) \?/);
+	});
+
+	// A branch/case with multiple sibling templates must merge into ONE `return` of
+	// a fragment — not several returns where only the first is reachable (which would
+	// make the editor types disagree with the template).
+	it('merges multiple sibling templates in a branch into a single return', () => {
+		const ifCode = ts(
+			`function App() @{ const v = @if (cond()) { <a /> <b /> } @else { <c /> }; <div>{v}</div> }`,
+		);
+		expect(ifCode).toContain('const v = cond() ? <><a /><b /></> : <c />;');
+
+		const switchCode = ts(
+			`function App() @{ const v = @switch (cond()) { @case 1: { <a /> <b /> } }; <div>{v}</div> }`,
+		);
+		// One return per case (the merged fragment), not two unreachable returns —
+		// the `toMatch` would fail on `case 1: return <a />; return <b />;`.
+		expect(switchCode).toMatch(/case 1:\s*return <><a \/><b \/><\/>;/);
+		expect(switchCode).not.toMatch(/return <a \/>;\s*return <b \/>;/);
+
+		const forCode = ts(
+			`function App({ xs }: { xs: number[] }) @{ const v = @for (const x of xs) { <a /> <b /> }; <div>{v}</div> }`,
+		);
+		expect(forCode).toMatch(/\.map\(\(x\) => \{\s*return <><a \/><b \/><\/>;\s*\}\)/);
+	});
+
+	// A NESTED directive inside a branch/case is render content too: it must be
+	// lowered to its own value and merged into the branch's returned fragment — not
+	// emitted as a bare `if (…) { … }` dropped from the value.
+	it('lowers a nested directive inside a branch to a value and includes it in the return', () => {
+		const code = ts(
+			`function App() @{ const v = @switch (cond()) { @case 1: { <a /> <b /> @if (cond()) { <div>Hello</div> } } }; <div>{v}</div> }`,
+		);
+		expect(code).toContain('return <><a /><b />{cond() ? <div>Hello</div> : null}</>;');
+		// The nested @if must NOT leak as a bare render statement (no value).
+		expect(code).not.toMatch(/if \(cond\(\)\) \{\s*<div>Hello<\/div>;/);
+	});
+
+	// A directive nested inside an authored fragment that is itself a branch's value
+	// is value content too — it lowers to its own value (a `.map`, not the void
+	// render IIFE-with-`for` that drops to `void`).
+	it('lowers a directive nested in a fragment inside a branch value to a value', () => {
+		const code = ts(
+			`function App({ xs, c }: { xs: number[]; c: any }) @{ const v = @switch (c) { @case 1: { <><a /> @for (const x of xs) { <li>{x}</li> }</> } }; <div>{v}</div> }`,
+		);
+		expect(code).toMatch(
+			/<><a \/>\{Array\.from\(xs\)\.map\(\(x\) => \{\s*return <li>\{x\}<\/li>;\s*\}\)\}<\/>/,
+		);
+		// not a void IIFE-with-for inside the fragment.
+		expect(code).not.toMatch(/<a \/>\{\(\(\) => \{\s*for \(/);
+	});
+
+	// The same nested directive in RENDER position (a direct child of the rendered
+	// output) is NOT value-lowered — it still renders as a `for` loop.
+	it('keeps a nested directive in render position rendering (not value-lowered)', () => {
+		const code = ts(
+			`export const Head = ({ scripts }: { scripts: { src: string }[] }) => @{ <head>@for (const script of scripts) { <script src={script.src} /> }</head> }`,
+		);
+		expect(code).toContain('for (const script of scripts)');
+		expect(code).not.toMatch(/scripts\.map\(/);
+	});
+});
+
+describe('@tsrx/ripple keeps fragments combined into an expression in to_ts output', () => {
+	// A fragment is always truthy, but its single child may be falsy, so the to_ts
+	// collapse of `<>{0}</>` to `0` would flip `<>{0}</> || 'd'` from rendering `0`
+	// to rendering `'d'`. Keep the fragment when it is combined into an expression.
+	it('keeps a fragment as a logical operand', () => {
+		const { code } = compile_to_volar_mappings(
+			`function App() @{ let c = <>{0}</> || "default"; <div>{c}</div> }`,
+			'App.tsrx',
+			{ loose: true },
+		);
+		expect(code).toContain('<>');
+		expect(code).toContain('</>');
+		expect(code).not.toMatch(/let c = 0 \|\|/);
+	});
+
+	it('keeps fragments as ternary branches', () => {
+		const { code } = compile_to_volar_mappings(
+			`function App({ o }: { o: boolean }) @{ let c = o ? <>{1}</> : <>{2}</>; <div>{c}</div> }`,
+			'App.tsrx',
+			{ loose: true },
+		);
+		expect(code).toContain('<>');
+		expect(code).not.toMatch(/\?\s*1\s*:\s*2/);
+	});
+
+	it('keeps an authored fragment that is the sole value of a slot', () => {
+		// An authored `<>…</>` is kept verbatim in value position (it must not unwrap
+		// to a bare `1`); only generated directive wrappers collapse.
+		const { code } = compile_to_volar_mappings(
+			`function App() @{ const v = <>{1}</>; <div>{v}</div> }`,
+			'App.tsrx',
+			{ loose: true },
+		);
+		expect(code).toContain('const v = <>{1}</>;');
+	});
+});
+
 describe('@tsrx/ripple Volar mappings style anchors', () => {
 	it('omits stylesheet AST children from template style anchors', () => {
 		const source = `function App() @{
