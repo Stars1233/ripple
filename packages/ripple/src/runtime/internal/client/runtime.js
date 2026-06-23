@@ -34,6 +34,7 @@ import {
 	SUSPENSE_REJECTED,
 	TRY_BLOCK,
 	DIRECT_CHILD_BLOCK,
+	UPDATE_SOURCE,
 } from './constants.js';
 import {
 	begin_boundary_request,
@@ -93,6 +94,12 @@ let is_micro_task_queued = false;
 let clock = 0;
 /** @type {Block[]} */
 let queued_root_blocks = [];
+// Flush normally only scans the subtree of each directly-scheduled block, since a
+// tracked's subscribers live inside the subtree of the block that owns it. If a
+// tracked is ever read from outside its owner's subtree (e.g. smuggled across
+// sibling subtrees via a module-level variable), that invariant breaks, so we
+// permanently fall back to scanning the whole root tree to stay correct.
+let disable_scoped_flush = false;
 /** @type {(() => void)[]} */
 let queued_microtasks = [];
 /** @type {number} */
@@ -939,22 +946,33 @@ function trigger_track_get(fn, v) {
 function flush_updates(root_block) {
 	/** @type {Block | null} */
 	var current = root_block;
-	var containing_update = null;
 	var pre_effects = [];
 	var other_blocks = [];
 	var effects = [];
-	var containing_update_head = null;
+	// The nearest enclosing directly-scheduled block ("update source"). While it is
+	// non-null we are inside a source's subtree and scan every descendant. Above
+	// sources we only follow the CONTAINS_UPDATE routing path, so sibling subtrees
+	// that contain no update are skipped. When scoping is disabled we treat the
+	// whole root tree as one source — the original full-tree scan.
+	/** @type {Block | null} */
+	var scope_root = disable_scoped_flush ? root_block : null;
 
 	while (current !== null) {
 		var flags = current.f;
+		var on_path = (flags & CONTAINS_UPDATE) !== 0;
 
-		if ((flags & CONTAINS_UPDATE) !== 0) {
+		if (on_path) {
 			current.f ^= CONTAINS_UPDATE;
-			containing_update_head = { v: containing_update, n: containing_update_head };
-			containing_update = current;
 		}
 
-		if ((flags & PAUSED) === 0 && containing_update !== null) {
+		if ((flags & UPDATE_SOURCE) !== 0) {
+			current.f ^= UPDATE_SOURCE;
+			if (scope_root === null) {
+				scope_root = current;
+			}
+		}
+
+		if ((flags & PAUSED) === 0 && (on_path || scope_root !== null)) {
 			if ((flags & PRE_EFFECT_BLOCK) !== 0) {
 				pre_effects.push(current);
 			} else if ((flags & EFFECT_BLOCK) !== 0) {
@@ -976,10 +994,8 @@ function flush_updates(root_block) {
 		current = current.next;
 
 		while (current === null && parent !== null) {
-			if (parent === containing_update) {
-				var head = /** @type {{ v: Block | null, n: any }} */ (containing_update_head);
-				containing_update = head.v;
-				containing_update_head = head.n;
+			if (parent === scope_root) {
+				scope_root = null;
 			}
 			current = parent.next;
 			parent = parent.p;
@@ -1115,6 +1131,10 @@ export function schedule_update(block) {
 	if (scheduler_mode === FLUSH_MICROTASK) {
 		queue_microtask();
 	}
+	// The scheduled block roots the subtree that flush_updates scans for dirty
+	// subscribers. Mark it even if it (or an ancestor) is already on a routing
+	// path, so the early return below still records it as a scan root.
+	block.f |= UPDATE_SOURCE;
 	let current = block;
 
 	while (current !== null) {
@@ -1134,6 +1154,38 @@ export function schedule_update(block) {
  * @param {Tracked | Derived} tracked
  */
 function register_dependency(tracked) {
+	if (!disable_scoped_flush && active_block !== null && active_block !== tracked.b) {
+		// Scoped flush only scans the owner's subtree for dirty subscribers, valid
+		// only while every subscriber lives inside it. The subscriber↔owner
+		// ancestry is structural and stable for a block's lifetime (its `.p` chain
+		// never changes — DOM moves don't reparent blocks), so we only need to
+		// verify *new* dependency edges: if this reaction already depended on
+		// `tracked` on its previous run (it's in the prior chain), the ancestry
+		// walk was already done — skip it. This keeps the (possibly deep) walk off
+		// the hot path for the common case of stable subscriptions.
+		var already_seen = false;
+		var prev_dep = active_reaction === null ? null : active_reaction.d;
+		while (prev_dep !== null) {
+			if (prev_dep.t === tracked) {
+				already_seen = true;
+				break;
+			}
+			prev_dep = prev_dep.n;
+		}
+
+		if (!already_seen) {
+			var owner = tracked.b;
+			/** @type {Block | null} */
+			var node = active_block;
+			while (node !== null && node !== owner) {
+				node = node.p;
+			}
+			if (node === null) {
+				disable_scoped_flush = true;
+			}
+		}
+	}
+
 	var dependency = active_dependency;
 
 	if (dependency === null) {
