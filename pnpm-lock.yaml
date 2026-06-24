@@ -150,6 +150,9 @@ catalogs:
     ovsx:
       specifier: ^0.10.12
       version: 0.10.12
+    playwright:
+      specifier: ^1.61.0
+      version: 1.61.0
     polka:
       specifier: ^1.0.0-next.25
       version: 1.0.0-next.28
@@ -354,8 +357,8 @@ importers:
   benchmarks/news:
     dependencies:
       playwright:
-        specifier: ^1.49.0
-        version: 1.60.0
+        specifier: catalog:default
+        version: 1.61.0
       vite:
         specifier: catalog:default
         version: 8.0.12(@types/node@25.3.3)(esbuild@0.27.3)(jiti@2.6.1)
@@ -417,8 +420,8 @@ importers:
   benchmarks/recursive-context:
     dependencies:
       playwright:
-        specifier: ^1.49.0
-        version: 1.60.0
+        specifier: catalog:default
+        version: 1.61.0
 
   benchmarks/recursive-context/react:
     dependencies:
@@ -468,8 +471,8 @@ importers:
   benchmarks/signal-favoring:
     dependencies:
       playwright:
-        specifier: ^1.49.0
-        version: 1.60.0
+        specifier: catalog:default
+        version: 1.61.0
 
   benchmarks/signal-favoring/react:
     dependencies:
@@ -6040,13 +6043,13 @@ packages:
     resolution: {integrity: sha512-wQ0b/W4Fr01qtpHlqSqspcj3EhBvimsdh0KlHhH8HRZnMsEa0ea2fTULOXOS9ccQr3om+GcGRk4e+isrZWV8qQ==}
     engines: {node: '>=16.20.0'}
 
-  playwright-core@1.60.0:
-    resolution: {integrity: sha512-9bW6zvX/m0lEbgTKJ6YppOKx8H3VOPBMOCFh2irXFOT4BbHgrx5hPjwJYLT40Lu+4qtD36qKc/Hn56StUW57IA==}
+  playwright-core@1.61.0:
+    resolution: {integrity: sha512-caX7TrY3Ml6egyDX0WUcTHDxodl/b51y5wJOdCEA36QviK/s2g081hvmGs8eaE3DWb6NYZQ6BjO/QkNRPenoPA==}
     engines: {node: '>=18'}
     hasBin: true
 
-  playwright@1.60.0:
-    resolution: {integrity: sha512-hheHdokM8cdqCb0lcE3s+zT4t4W+vvjpGxsZlDnikarzx8tSzMebh3UiFtgqwFwnTnjYQcsyMF8ei2mCO/tpeA==}
+  playwright@1.61.0:
+    resolution: {integrity: sha512-Z+7BeeqQPRRzklHsVFP4KTGIyMxKUmfeRA4WisM6G3/XW6nwGeX6fX9qYaDa+CiUqpOkb2f6X3nar05R3kSuJQ==}
     engines: {node: '>=18'}
     hasBin: true
 
@@ -11719,11 +11722,11 @@ snapshots:
 
   pkce-challenge@5.0.1: {}
 
-  playwright-core@1.60.0: {}
+  playwright-core@1.61.0: {}
 
-  playwright@1.60.0:
+  playwright@1.61.0:
     dependencies:
-      playwright-core: 1.60.0
+      playwright-core: 1.61.0
     optionalDependencies:
       fsevents: 2.3.2
 
