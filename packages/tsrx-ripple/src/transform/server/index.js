@@ -750,6 +750,100 @@ function is_template_or_control_flow(node) {
 }
 
 /**
+ * Whether a `{ … }` expression child is lowered to `_$_.render_expression(…)`,
+ * which (unlike `render_tsrx_element` or plain text output) brackets its output
+ * in a `<!--[-->`…`<!--]-->` hydration boundary. Mirrors the routing in the
+ * `TSRXExpression` server visitor. A `@{ … }` block in template position reaches
+ * here as a `TSRXExpression` wrapping its IIFE call.
+ * @param {AST.TSRXExpression} node
+ * @param {TransformServerContext} context
+ * @returns {boolean}
+ */
+function tsrx_expression_emits_marker(node, context) {
+	const expression = /** @type {AST.Expression} */ (node.expression);
+	if (expression.type === 'Literal') {
+		return false;
+	}
+	if (is_static_native_tsrx_function_call(expression, context)) {
+		return false;
+	}
+	const scope = context.state.scope;
+	return (
+		is_children_template_expression(expression, scope) ||
+		contains_template_value_node(/** @type {AST.Node} */ (expression)) ||
+		is_template_value_call(expression, scope) ||
+		is_template_value_binding(expression, scope) ||
+		is_collection_value_expression(expression, scope, context) ||
+		expression_contains_call(expression)
+	);
+}
+
+/**
+ * Classify a single node for {@link fragment_leads_with_control_flow}:
+ *   - `true`  — it renders leading with content that emits its own `<!--[-->`
+ *               start marker during SSR: a TSRX control-flow directive
+ *               (`@if`/`@for`/`@switch`/`@try`) or a `{ … }`/`@{ … }` expression
+ *               lowered to `render_expression`;
+ *   - `false` — it renders leading with an element/component/text (real DOM that
+ *               the fragment reuses / adopts, no borrowable marker);
+ *   - `null`  — it produces no leading DOM (plain JS setup, a code-only `@{}`
+ *               block, an empty fragment) — keep scanning subsequent siblings.
+ * Only TSRX directives count; a regular JS `if`/`for`/`switch`/`try` (marked
+ * `metadata.regular_js`) is setup, renders nothing, and is skipped.
+ * @param {AST.Node} node
+ * @param {TransformServerContext} context
+ * @returns {boolean | null}
+ */
+function node_leads_with_control_flow(node, context) {
+	switch (node.type) {
+		case 'IfStatement':
+		case 'ForOfStatement':
+		case 'SwitchStatement':
+		case 'TryStatement':
+			return node.metadata?.regular_js ? null : true;
+		case 'Element':
+		case 'Text':
+			return false;
+		case 'TSRXExpression':
+			return tsrx_expression_emits_marker(/** @type {AST.TSRXExpression} */ (node), context);
+		case 'TsrxFragment':
+			return fragment_leads_with_control_flow(
+				node.children.filter((c) => c != null && c.type !== 'EmptyStatement'),
+				context,
+			);
+		case 'JSXCodeBlock':
+			// A `@{ … }` block renders only its `render` output (the body is setup);
+			// a code-only block (no render) contributes no DOM.
+			return node.render != null ? node_leads_with_control_flow(node.render, context) : null;
+		default:
+			// Non-renderable setup statement — keep scanning for the first node.
+			return null;
+	}
+}
+
+/**
+ * Whether a template fragment's first renderable child emits its own `<!--[-->`
+ * start marker during SSR (a TSRX control-flow directive or a `render_expression`
+ * child such as a `@{ … }` block). The client's fragment `expression()` would
+ * otherwise mistake that child's marker for the fragment's own boundary — so the
+ * fragment must be bracketed with its own hydration markers. A fragment leading
+ * with an element/component/text reuses its host boundary (or adopts real nodes)
+ * and must not be bracketed.
+ * @param {AST.Node[]} children
+ * @param {TransformServerContext} context
+ * @returns {boolean}
+ */
+function fragment_leads_with_control_flow(children, context) {
+	for (const child of children) {
+		const result = node_leads_with_control_flow(child, context);
+		if (result !== null) {
+			return result;
+		}
+	}
+	return false;
+}
+
+/**
  * @param {AST.Node[]} path
  * @returns {boolean}
  */
@@ -2255,7 +2349,11 @@ const visitors = {
 				const consequent = b.block(
 					transform_body(flattened_consequent, {
 						...context,
-						state: { ...context.state, scope: consequent_scope },
+						state: {
+							...context.state,
+							scope: consequent_scope,
+							control_flow_branch_body: true,
+						},
 					}),
 				);
 				case_body.push(...consequent.body);
@@ -2316,7 +2414,11 @@ const visitors = {
 
 		const body = transform_body(/** @type {AST.BlockStatement} */ (node.body).body, {
 			...context,
-			state: { ...context.state, scope: /** @type {ScopeInterface} */ (body_scope) },
+			state: {
+				...context.state,
+				scope: /** @type {ScopeInterface} */ (body_scope),
+				control_flow_branch_body: true,
+			},
 		});
 		const empty_id = node.empty ? b.id(context.state.scope.generate('for_empty')) : null;
 
@@ -2395,6 +2497,7 @@ const visitors = {
 				state: {
 					...context.state,
 					scope: /** @type {ScopeInterface} */ (consequent_scope),
+					control_flow_branch_body: true,
 				},
 			}),
 		);
@@ -2415,7 +2518,11 @@ const visitors = {
 			alternate = b.block(
 				transform_body(alternate_body_nodes, {
 					...context,
-					state: { ...context.state, scope: alternate_scope },
+					state: {
+						...context.state,
+						scope: alternate_scope,
+						control_flow_branch_body: node.alternate.type !== 'IfStatement',
+					},
 				}),
 			);
 		}
@@ -2738,7 +2845,8 @@ const visitors = {
 		}
 	},
 
-	TsrxFragment(node, { visit, state }) {
+	TsrxFragment(node, context) {
+		const { visit, state } = context;
 		const children = node.children.filter(
 			(child) => child != null && child.type !== 'EmptyStatement',
 		);
@@ -2755,13 +2863,38 @@ const visitors = {
 					init,
 					regular_js: false,
 					jsx_to_tsrx_element: true,
+					// The fragment's own children are no longer the direct body of the
+					// enclosing control-flow branch, so they must not inherit the marker.
+					control_flow_branch_body: false,
 				},
 			}),
 		);
 
 		if (state.template_child) {
-			// Template body: push children statements inline
-			if (init.length > 0) {
+			// In template position the client lowers `<>…</>` to a `<!>` placeholder +
+			// `_$_.expression(() => _$_.tsrx_element(…))`. During hydration that
+			// expression() needs a matching `<!--[-->`…`<!--]-->` boundary whenever it
+			// would otherwise borrow a nested control-flow's start marker as its own and
+			// advance the cursor past that child's content (desyncing hydration). That
+			// happens in two situations:
+			//   - the fragment is the direct body of a control-flow branch (or nested in
+			//     an element within one): the enclosing block already consumed its own
+			//     marker via hydrate_next before the branch body runs, leaving none for
+			//     the fragment — `control_flow_branch_body`;
+			//   - the fragment leads with control flow (e.g. a component body
+			//     `<> @for … </>`): its first child's marker would be mistaken for the
+			//     fragment's own.
+			// A fragment that leads with a component/element instead reuses its host
+			// boundary (or adopts real nodes) and must NOT be bracketed, or the extra
+			// markers desync the static-cursor (`next()` + skip_advance) client path.
+			const needs_boundary =
+				state.control_flow_branch_body || fragment_leads_with_control_flow(children, context);
+			if (needs_boundary && init.length > 0) {
+				state.init?.push(b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_OPEN))));
+				state.init?.push(b.block(init));
+				state.init?.push(b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_CLOSE))));
+			} else if (init.length > 0) {
+				// Template body: push children statements inline
 				state.init?.push(b.block(init));
 			}
 		} else {
