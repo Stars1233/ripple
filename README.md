@@ -88,7 +88,7 @@ Components are ordinary TypeScript functions. Return a JSX element directly when
 the component has one root, and use a JSX statement container (`@{...}`) when
 setup statements or multiple rendered siblings belong next to the UI.
 
-```tsrx
+```tsx
 type ButtonProps = {
   text: string;
   onClick: () => void;
@@ -118,7 +118,7 @@ after setup, wrap them in a fragment.
 Text such as `x = 123` between tags is JSX text, not JavaScript, unless it is
 inside a statement container.
 
-```tsrx
+```tsx
 import { track } from 'ripple';
 
 export function Counter() @{
@@ -131,7 +131,7 @@ export function Counter() @{
 
 The same rule applies in nested scopes:
 
-```tsrx
+```tsx
 export function Cart({ items }: { items: Item[] }) @{
   <div class="cart">@{
     const subtotal = items.reduce((sum, item) => sum + item.price, 0);
@@ -152,7 +152,7 @@ JavaScript comments are allowed between template children and are not rendered.
 
 Static text is JSX text. Dynamic values use normal JSX expression containers.
 
-```tsrx
+```tsx
 export function Greeting({ name }: { name?: string }) @{
   @if (name) {
     <p>Hello,{name}</p>
@@ -166,7 +166,7 @@ export function Greeting({ name }: { name?: string }) @{
 
 Rendered control flow uses directive-prefixed expressions:
 
-```tsrx
+```tsx
 import { RippleArray, track } from 'ripple';
 
 type Item = { id: number; name: string; done?: boolean };
@@ -197,7 +197,7 @@ Use ordinary `return` for real function exits in TypeScript setup. Use `@if` for
 conditional rendering; direct `return`, `continue`, and `break` statements are not
 valid inside `@if` template branches.
 
-```tsrx
+```tsx
 export function Dashboard({ user }: { user: User | null }) @{
   if (!user) {
     return null;
@@ -212,7 +212,7 @@ export function Dashboard({ user }: { user: User | null }) @{
 
 `@try` supports error and pending UI:
 
-```tsrx
+```tsx
 export function ProfilePanel() @{
   @try {
     <UserProfile />
@@ -232,7 +232,7 @@ export function ProfilePanel() @{
 Create state with `track()` and lazy destructuring. Reads of lazy bindings stay
 reactive, and assignments write back to the tracked value.
 
-```tsrx
+```tsx
 import { effect, track, type Tracked } from 'ripple';
 
 export function Counter() @{
@@ -262,7 +262,7 @@ useful when passing reactive values through data structures or props.
 
 Use Ripple collections when collection operations should be reactive.
 
-```tsrx
+```tsx
 import { RippleArray, RippleMap, RippleObject, RippleSet } from 'ripple';
 
 export function Inventory() @{
@@ -290,7 +290,7 @@ export function Inventory() @{
 
 DOM refs use `ref`, and events use JSX-style event props.
 
-```tsrx
+```tsx
 import { track } from 'ripple';
 
 export function SearchBox() @{
@@ -318,7 +318,7 @@ export function SearchBox() @{
 `<style>` blocks are static CSS and are scoped to the template. Use CSS custom
 properties for runtime values.
 
-```tsrx
+```tsx
 import { track } from 'ripple';
 
 export function Notice() @{
@@ -343,7 +343,7 @@ export function Notice() @{
 
 Module-scope style expressions can expose scoped class names:
 
-```tsrx
+```tsx
 const styles = <style>
   .highlight {
     background: #e8f5e9;
@@ -357,7 +357,7 @@ export function Badge() {
 
 ### Context And Portals
 
-```tsrx
+```tsx
 import { Context, Portal, track, type Tracked } from 'ripple';
 
 const ThemeContext = new Context<Tracked<string>>();
@@ -389,7 +389,7 @@ function ThemeLabel() @{
 Ripple supports `module server` in `.tsrx` files for server-oriented exports.
 Import from `server` inside the same file before calling the server function.
 
-```tsrx
+```tsx
 module server {
   export async function loadMessage() {
     return 'Loaded on the server';
