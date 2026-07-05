@@ -72,6 +72,137 @@ describe('@tsrx/ripple faithful text output', () => {
 		// A nullish/whitespace-only output should emit no text node at all.
 		expect(code).not.toContain('_$_.text');
 	});
+
+	it('emits a well-formed completion mapping for a `@` in a fragment (to_ts keeps text verbatim)', () => {
+		// A `@` typed on its own line in a fragment (an in-progress `@if`/`@for`/…) is
+		// recovered as text and compiles fine, so no compile-error fallback covers it. The
+		// editor still needs a completion mapping there — and because Ripple keeps text
+		// verbatim in to_ts (it does NOT trim as it does at runtime), the node's value and
+		// location match, so the mapping has equal source/generated lengths and the completion
+		// textEdit round-trips. The trimmed value + wide location combo used to produce a
+		// mismatched mapping and VS Code silently dropped every item. Mirrors the reported
+		// `@{ <> @ <Item/> </> }`.
+		const source = 'function Comp(props) @{\n\t<>\n\t@\n\t\t<div>{"x"}</div>\n\t</>\n}';
+		const { mappings } = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
+		const cursor = source.indexOf('@', source.indexOf('<>')) + 1;
+
+		const covering = mappings.filter(
+			(m) =>
+				m.data?.completion &&
+				cursor >= m.sourceOffsets[0] &&
+				cursor <= m.sourceOffsets[0] + m.lengths[0],
+		);
+
+		expect(covering.length).toBeGreaterThan(0);
+		for (const m of covering) {
+			expect(m.lengths[0]).toBe(m.generatedLengths[0]);
+			expect(m.data?.verification).toBeFalsy();
+		}
+	});
+});
+
+describe('@tsrx/ripple @switch to_ts', () => {
+	// Split the generated `switch (...) { … }` into per-case bodies (text between labels).
+	const case_bodies = (code) =>
+		code
+			.slice(code.indexOf('switch'))
+			.split(/\n\s*(?:case [^:]+:|default:)/)
+			.slice(1)
+			.map((segment) => segment.trim());
+
+	it('emits a terminating return in every @switch case (avoids TS 7029 fallthrough)', () => {
+		// `@case` always renders and cannot `break`/fall through, so each generated case must
+		// definitely return in the type-only view — even when the render is conditional (an
+		// `@if` with no else) or the case is empty. Otherwise TS reports "Fallthrough case in
+		// switch (7029)".
+		const { code } = compile_to_volar_mappings(
+			`export function App({ value }) @{
+				@switch (value) {
+					@case 1: {
+						@if (value) {
+							<div>{'a'}</div>
+						}
+					}
+					@case 2: {
+					}
+					@default: {
+						<div>{'d'}</div>
+					}
+				}
+			}`,
+			'App.tsrx',
+			{ loose: true },
+		);
+
+		const bodies = case_bodies(code);
+		expect(bodies).toHaveLength(3);
+		// Conditional case must end with a fallback return, not a bare `if` (the bug left it
+		// falling through to the next case).
+		expect(bodies[0]).toMatch(/return\s[^;]*;$/);
+		// Empty case must still return (not fall through).
+		expect(bodies[1]).toMatch(/^return\s/);
+	});
+
+	it('does not add an unreachable return when a case already returns on every path', () => {
+		// A single render output, or an exhaustive `@if`/`@else`, already returns — no synthetic
+		// return should be appended (it would be unreachable code).
+		const { code } = compile_to_volar_mappings(
+			`export function App({ value }) @{
+				@switch (value) {
+					@case 1: {
+						@if (value) {
+							<div>{'a'}</div>
+						} @else {
+							<div>{'b'}</div>
+						}
+					}
+					@default: {
+						<div>{'d'}</div>
+					}
+				}
+			}`,
+			'App.tsrx',
+			{ loose: true },
+		);
+
+		const bodies = case_bodies(code);
+		// The exhaustive if/else case ends with the `if/else` block, not an extra trailing
+		// return.
+		expect(bodies[0]).toMatch(/}$/);
+		expect(bodies[0]).not.toMatch(/}\s*return\s/);
+	});
+
+	it('gives every @switch case a return when interleaved with sibling children', () => {
+		// A `@switch` alongside other children in a fragment is lowered to its render value, so
+		// every case returns (with a trailing `return null`) — none may fall through. Mirrors
+		// the reported `<> @switch … @if … <Item/> </>`, where the switch cases (including empty
+		// ones) had no returns and TS reported a fallthrough.
+		const { code } = compile_to_volar_mappings(
+			`function Comp(props) @{
+				<>
+					@switch (value) {
+						@case 'case1': {
+							<></>
+						}
+						@case 'case2': {
+						}
+						@default: {
+						}
+					}
+					<Item></Item>
+				</>
+			}`,
+			'App.tsrx',
+			{ loose: true },
+		);
+
+		const bodies = case_bodies(code);
+		expect(bodies.length).toBeGreaterThanOrEqual(3);
+		// Every case — including the empty `case2`/`default` — must return, not fall through.
+		for (const body of bodies) {
+			expect(body).toMatch(/^return\b/);
+		}
+	});
 });
 
 describe('@tsrx/ripple style scope hashes', () => {

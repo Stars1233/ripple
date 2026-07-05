@@ -53,6 +53,7 @@ import {
 	mapping_data,
 	mapping_data_verify_only,
 	mapping_data_verify_complete,
+	mapping_data_completion_only,
 	build_line_offsets,
 	get_mapping_from_node,
 } from '../source-map-utils.js';
@@ -806,7 +807,27 @@ export function convert_source_map_to_mappings(
 				}
 				return;
 			} else if (node.type === 'JSXText') {
-				// Text content, no tokens to collect
+				// A text node whose first non-whitespace char is `@` is an in-progress template
+				// directive (`@`, `@i`, `@if …`) the parser recovered as text; emit a completion-only
+				// mapping so the editor can still offer `@if`/`@for`/`@switch`/`@try` completions there.
+				//
+				// Use a token (resolved by matching generated CONTENT) rather than get_mapping_from_node.
+				// At a control-flow boundary the text node's source start maps to several generated
+				// positions — e.g. a preceding `@switch` value-IIFE's `return null; })()` tail AND the
+				// text itself — and get_mapping_from_node just takes the first, so its generated length
+				// spans the wrong region and the editor can't map a completion's edit back to source
+				// (it then drops the item). The token resolves to the position whose generated text
+				// matches the node's value, giving a well-formed same-length mapping. Ripple keeps text
+				// verbatim in to_ts, so `source` and `generated` are identical. Other text stays unmapped.
+				if (node.loc && typeof node.value === 'string' && node.value.trimStart().startsWith('@')) {
+					tokens.push({
+						source: node.value,
+						generated: node.value,
+						loc: node.loc,
+						metadata: {},
+						mappingData: mapping_data_completion_only,
+					});
+				}
 				return;
 			} else if (node.type === 'JSXCodeBlock') {
 				for (const statement of node.body) {
