@@ -103,7 +103,7 @@ describe('completion plugin — function component snippet', () => {
 			{ triggerKind: 1 },
 		);
 
-		expect(find(result.items, 'function component')).toBeDefined();
+		expect(find(result.items, 'function Component(props) @{ }')).toBeDefined();
 	});
 
 	it('offers `function component` when typing `export func` (export declaration)', async () => {
@@ -119,6 +119,23 @@ describe('completion plugin — function component snippet', () => {
 			{ triggerKind: 1 },
 		);
 
-		expect(find(result.items, 'function component')).toBeDefined();
+		expect(find(result.items, 'function Component(props) @{ }')).toBeDefined();
+	});
+
+	it('offers the component snippet when typing `@` (filters against the typed `@`)', async () => {
+		// The component shape is also surfaced on the `@` directive path so it appears alongside
+		// `@if`/`@for`/`@{ }`. It carries a `@`-prefixed filterText so the typed `@` still matches it.
+		const source = 'export function App() @{\n\t<>\n\t\t@\n\t</>\n}';
+		const { service, uri } = create_completion_harness(source);
+
+		const result = await service.getCompletionItems(
+			uri,
+			{ line: 2, character: 3 },
+			{ triggerKind: 2, triggerCharacter: '@' },
+		);
+
+		const item = find(result.items, 'function Component(props) @{ }');
+		expect(item).toBeDefined();
+		expect(item.filterText).toMatch(/^@/);
 	});
 });
