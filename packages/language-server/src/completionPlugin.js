@@ -173,6 +173,22 @@ function generateImportEdit(documentText, importName) {
 }
 
 /**
+ * Generic (non-`@`) TSRX authoring snippet: the component-function shape. Target-neutral, so it
+ * is offered in every `.tsrx` file. Kept out of `TSRX_SNIPPETS` because it is not an `@`-directive
+ * — it must not be offered when the user is typing `@`, and it is the one snippet that still makes
+ * sense inside an `export` declaration (`export function Name(props)` followed by a code block).
+ */
+const COMPONENT_SNIPPET = {
+	label: 'function Component(props) @{ }',
+	kind: CompletionItemKind.Snippet,
+	detail: 'TSRX component function',
+	documentation: 'Create a new TSRX component',
+	insertText: 'function ${1:ComponentName}(${2:props}) @{\n\t$0\n}',
+	insertTextFormat: InsertTextFormat.Snippet,
+	sortText: '0-function-component',
+};
+
+/**
  * Target-neutral TSRX authoring snippets. These apply to every target (Ripple,
  * React, Solid, Preact, Vue) because they only use shared TSRX syntax — the
  * component-function shape, code blocks, and `@if`/`@for`/`@switch`/`@try` control flow.
@@ -190,6 +206,10 @@ const TSRX_SNIPPETS = [
 		insertText: '@{\n\t$0\n}',
 		insertTextFormat: InsertTextFormat.Snippet,
 		sortText: '0-@{',
+	},
+	{
+		...COMPONENT_SNIPPET,
+		filterText: '@',
 	},
 	{
 		label: '@for-of',
@@ -350,22 +370,6 @@ const TSRX_SNIPPETS = [
 		sortText: '0-pending',
 	},
 ];
-
-/**
- * Generic (non-`@`) TSRX authoring snippet: the component-function shape. Target-neutral, so it
- * is offered in every `.tsrx` file. Kept out of `TSRX_SNIPPETS` because it is not an `@`-directive
- * — it must not be offered when the user is typing `@`, and it is the one snippet that still makes
- * sense inside an `export` declaration (`export function Name(props)` followed by a code block).
- */
-const COMPONENT_SNIPPET = {
-	label: 'function component',
-	kind: CompletionItemKind.Snippet,
-	detail: 'TSRX component function',
-	documentation: 'Create a new TSRX component',
-	insertText: 'function ${1:ComponentName}(${2:props}) @{\n\t$0\n}',
-	insertTextFormat: InsertTextFormat.Snippet,
-	sortText: '0-function-component',
-};
 
 /**
  * Ripple-runtime-only snippets: reactivity primitives (`track`/`effect`/`untrack`)
