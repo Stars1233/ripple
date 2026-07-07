@@ -8,6 +8,7 @@
 	VisitorClientContext,
 	TransformClientState,
 	ScopeInterface,
+	Visitor,
 	Visitors,
 	Binding,
 }	from '../../../types/index';
@@ -41,7 +42,6 @@ import {
 	object,
 	renderCssResult,
 	prepareStylesheetForRender,
-	pruneCss,
 	collectStyleRefAttributes,
 	createStyleClassMap,
 	createStyleClassMapFromStylesheet,
@@ -87,7 +87,8 @@ import {
 	ripple_import_requires_block,
 	strip_class_typescript_syntax,
 	strip_typescript_expression_wrappers,
-	jsx_to_ripple_node,
+	visit_children_without,
+	adopt_raw_template_jsx,
 	build_index_read,
 	build_index_write,
 	build_index_update,
@@ -105,122 +106,40 @@ import {
 	rewrite_lazy_member_base,
 	strip_tsrx_style_elements,
 	wrap_code_block_in_iife,
+	visit_directive_wrapping_values,
+	get_code_block_render,
+	get_code_block_template_child,
+	lower_code_block_children,
 } from '../../utils.js';
+import {
+	get_attribute_name,
+	get_attribute_name_node,
+	get_attribute_value,
+	get_element_attributes,
+	get_element_id,
+	get_element_identifier,
+	get_style_css,
+	get_template_expression,
+	get_template_text_value,
+	is_dynamic_element,
+	is_empty_expression_container,
+	is_expression_attribute,
+	is_self_closing,
+	is_template_element,
+	is_template_directive,
+	is_template_expression,
+	is_template_fragment,
+	is_template_text,
+	is_template_text_or_expression,
+} from '../../template-ast.js';
 import is_reference from 'is-reference';
-
-/**
- * Re-run CSS pruning on JSX converted into Ripple template nodes so it receives
- * the same scoped metadata as normal Ripple template elements before codegen.
- *
- * @param {AST.Node[]} nodes
- * @param {TransformClientState} state
- * @returns {void}
- */
-function apply_tsrx_css_scoping(nodes, state) {
-	const component = state.component;
-	const css = get_component_css(state);
-	if (!component || !css) {
-		return;
-	}
-	const stylesheet = /** @type {AST.CSS.StyleSheet} */ (css);
-
-	const style_classes = /** @type {any} */ (component.metadata).styleClasses ?? new Map();
-	const top_scoped_classes = /** @type {any} */ (component.metadata).topScopedClasses ?? new Map();
-
-	const restore_nodes = prepare_legacy_nodes_for_css_pruning(nodes);
-
-	/**
-	 * @param {AST.Node} node
-	 * @returns {void}
-	 */
-	function visit_node(node) {
-		if (node.type === 'Element') {
-			pruneCss(stylesheet, node, style_classes, top_scoped_classes);
-			for (const child of node.children) {
-				visit_node(child);
-			}
-			return;
-		}
-
-		if ('children' in node && Array.isArray(node.children)) {
-			for (const child of node.children) {
-				visit_node(/** @type {AST.Node} */ (child));
-			}
-		}
-	}
-
-	try {
-		for (const node of nodes) {
-			visit_node(node);
-		}
-	} finally {
-		restore_nodes();
-	}
-}
-
-/**
- * Ripple still lowers JSX-shaped TSRX into internal Element nodes before its
- * renderer runs. Keep that compatibility local by presenting those nodes to the
- * shared CSS pruner as native JSX only during pruning.
- *
- * @param {AST.Node[]} nodes
- * @returns {() => void}
- */
-function prepare_legacy_nodes_for_css_pruning(nodes) {
-	/** @type {{ node: any, type: string, native_tsrx: unknown, had_native_tsrx: boolean }[]} */
-	const changed = [];
-	const seen = new Set();
-
-	/** @param {any} node */
-	function visit(node) {
-		if (!node || typeof node !== 'object' || seen.has(node)) {
-			return;
-		}
-		seen.add(node);
-
-		if (node.type === 'Element') {
-			node.metadata ??= { path: [] };
-			changed.push({
-				node,
-				type: node.type,
-				native_tsrx: node.metadata.native_tsrx,
-				had_native_tsrx: Object.prototype.hasOwnProperty.call(node.metadata, 'native_tsrx'),
-			});
-			node.type = 'JSXElement';
-			node.metadata.native_tsrx = true;
-		}
-
-		if (Array.isArray(node.children)) {
-			for (const child of node.children) {
-				visit(child);
-			}
-		}
-	}
-
-	for (const node of nodes) {
-		visit(node);
-	}
-
-	return () => {
-		for (let i = changed.length - 1; i >= 0; i--) {
-			const entry = changed[i];
-			entry.node.type = entry.type;
-			if (entry.had_native_tsrx) {
-				entry.node.metadata.native_tsrx = entry.native_tsrx;
-			} else {
-				delete entry.node.metadata.native_tsrx;
-			}
-		}
-	};
-}
 
 /**
  * @param {TransformClientState} state
  * @returns {AST.CSS.StyleSheet | null}
  */
 function get_component_css(state) {
-	const component = /** @type {any} */ (state.component);
-	return component?.css ?? component?.metadata?.css ?? null;
+	return state.component?.metadata.component_css ?? null;
 }
 
 /**
@@ -232,7 +151,7 @@ function get_component_css_hash(state) {
 }
 
 /**
- * @param {AST.Element} node
+ * @param {ESTreeJSX.JSXElement | AST.JSXStyleElement} node
  * @param {TransformClientContext} context
  * @returns {AST.ObjectExpression | null}
  */
@@ -254,7 +173,7 @@ function build_style_class_map_expression(node, context) {
 }
 
 /**
- * @param {AST.Element} node
+ * @param {ESTreeJSX.JSXElement | AST.JSXStyleElement} node
  * @param {TransformClientContext} context
  * @returns {void}
  */
@@ -267,7 +186,7 @@ function add_type_only_style_anchor(node, context) {
 }
 
 /**
- * @param {ESTreeJSX.JSXElement} element
+ * @param {AST.TSRXJSXElement} element
  */
 function disable_style_anchor_verification(element) {
 	if (element.openingElement?.name) {
@@ -285,30 +204,54 @@ function disable_style_anchor_verification(element) {
 }
 
 /**
+ * Copy-on-write: nodes on the changed spine are rebuilt (their scope mapping is
+ * mirrored onto the copies); untouched subtrees are shared with the input.
  * @param {AST.Node[]} body
  * @param {AST.Statement[]} setup
+ * @param {Map<AST.Node | AST.Node[], ScopeInterface>} [scopes]
  * @returns {AST.Node[]}
  */
-function insert_style_ref_setup_statements(body, setup) {
+function insert_style_ref_setup_statements(body, setup, scopes) {
 	if (setup.length === 0) {
 		return body;
 	}
 
 	let inserted = false;
 
+	/**
+	 * @template {AST.Node | AST.Node[]} T
+	 * @param {T} original
+	 * @param {T} copy
+	 * @returns {T}
+	 */
+	const mirror_scope = (original, copy) => {
+		const scope = scopes?.get(original);
+		if (scope) scopes?.set(copy, scope);
+		return copy;
+	};
+
 	/** @param {AST.Node[]} nodes */
 	const insert_in_list = (nodes) => {
 		const index = nodes.findIndex((node) => node.metadata?.returned_tsrx_child);
 		if (index !== -1) {
 			inserted = true;
-			return [
+			return mirror_scope(nodes, [
 				...nodes.slice(0, index),
 				...setup.map((statement) => clone_expression_node(statement, false)),
 				...nodes.slice(index),
-			];
+			]);
 		}
 
-		return nodes.map(insert_in_statement);
+		/** @type {AST.Node[] | null} */
+		let out = null;
+		for (let i = 0; i < nodes.length; i++) {
+			const next = insert_in_statement(nodes[i]);
+			if (next !== nodes[i]) {
+				out ??= nodes.slice();
+				out[i] = next;
+			}
+		}
+		return out === null ? nodes : mirror_scope(nodes, out);
 	};
 
 	/** @param {AST.Node} node */
@@ -317,34 +260,57 @@ function insert_style_ref_setup_statements(body, setup) {
 			return node;
 		}
 		if (node.type === 'BlockStatement') {
-			node.body = /** @type {AST.Statement[]} */ (insert_in_list(node.body || []));
-			return node;
+			const list = node.body || [];
+			const node_body = /** @type {AST.Statement[]} */ (insert_in_list(list));
+			return node_body === list ? node : mirror_scope(node, { ...node, body: node_body });
 		}
 		if (node.type === 'IfStatement') {
-			node.consequent = /** @type {AST.Statement} */ (insert_in_statement(node.consequent));
+			/** @type {{ consequent?: AST.Statement; alternate?: AST.Statement } | null} */
+			let updates = null;
+			const consequent = /** @type {AST.Statement} */ (insert_in_statement(node.consequent));
+			if (consequent !== node.consequent) (updates ??= {}).consequent = consequent;
 			if (node.alternate) {
-				node.alternate = /** @type {AST.Statement} */ (insert_in_statement(node.alternate));
+				const alternate = /** @type {AST.Statement} */ (insert_in_statement(node.alternate));
+				if (alternate !== node.alternate) (updates ??= {}).alternate = alternate;
 			}
-			return node;
+			return updates === null ? node : mirror_scope(node, { ...node, ...updates });
 		}
 		if (node.type === 'SwitchStatement') {
-			for (const switch_case of node.cases || []) {
-				switch_case.consequent = /** @type {AST.Statement[]} */ (
-					insert_in_list(switch_case.consequent || [])
-				);
+			const node_cases = node.cases || [];
+			/** @type {AST.SwitchCase[] | null} */
+			let cases = null;
+			for (let i = 0; i < node_cases.length; i++) {
+				const switch_case = node_cases[i];
+				const list = switch_case.consequent || [];
+				const consequent = /** @type {AST.Statement[]} */ (insert_in_list(list));
+				if (consequent !== list) {
+					cases ??= node_cases.slice();
+					cases[i] = mirror_scope(switch_case, { ...switch_case, consequent });
+				}
 			}
-			return node;
+			return cases === null ? node : mirror_scope(node, { ...node, cases });
 		}
 		if (node.type === 'TryStatement') {
-			node.block = /** @type {AST.BlockStatement} */ (insert_in_statement(node.block));
+			/** @type {{ block?: AST.BlockStatement; handler?: AST.CatchClause; finalizer?: AST.BlockStatement } | null} */
+			let updates = null;
+			const block = /** @type {AST.BlockStatement} */ (insert_in_statement(node.block));
+			if (block !== node.block) (updates ??= {}).block = block;
 			if (node.handler?.body) {
-				node.handler.body = /** @type {AST.BlockStatement} */ (
+				const handler_body = /** @type {AST.BlockStatement} */ (
 					insert_in_statement(node.handler.body)
 				);
+				if (handler_body !== node.handler.body) {
+					(updates ??= {}).handler = mirror_scope(node.handler, {
+						...node.handler,
+						body: handler_body,
+					});
+				}
 			}
 			if (node.finalizer) {
-				node.finalizer = /** @type {AST.BlockStatement} */ (insert_in_statement(node.finalizer));
+				const finalizer = /** @type {AST.BlockStatement} */ (insert_in_statement(node.finalizer));
+				if (finalizer !== node.finalizer) (updates ??= {}).finalizer = finalizer;
 			}
+			return updates === null ? node : mirror_scope(node, { ...node, ...updates });
 		}
 		return node;
 	};
@@ -361,7 +327,7 @@ function insert_style_ref_setup_statements(body, setup) {
  * @returns {AST.TypeNode | undefined}
  */
 function unwrap_type_annotation(type_annotation) {
-	/** @type {any} */
+	/** @type {AST.TypeNode | undefined | null} */
 	let annotation = type_annotation;
 
 	while (annotation) {
@@ -388,14 +354,11 @@ function is_string_type_annotation(type_annotation) {
 	if (!annotation) return false;
 
 	if (annotation.type === 'TSStringKeyword') return true;
-	if (
-		annotation.type === 'TSLiteralType' &&
-		/** @type {any} */ (annotation.literal)?.type === 'Literal'
-	) {
-		return typeof (/** @type {any} */ (annotation.literal).value) === 'string';
+	if (annotation.type === 'TSLiteralType' && annotation.literal.type === 'Literal') {
+		return typeof annotation.literal.value === 'string';
 	}
 	if (annotation.type === 'TSUnionType') {
-		return annotation.types.every((type) => is_string_type_annotation(/** @type {any} */ (type)));
+		return annotation.types.every((type) => is_string_type_annotation(type));
 	}
 
 	return false;
@@ -504,7 +467,7 @@ function is_stringish_expression(expression, state, visited = new Set()) {
 
 	if (expression.type === 'TSAsExpression' || expression.type === 'TSTypeAssertion') {
 		return (
-			is_string_type_annotation(/** @type {any} */ (expression.typeAnnotation)) ||
+			is_string_type_annotation(expression.typeAnnotation) ||
 			is_stringish_expression(/** @type {AST.Expression} */ (expression.expression), state, visited)
 		);
 	}
@@ -716,28 +679,24 @@ function visit_function(node, context) {
 		return context.next(SetStateForOutsideComponent(state));
 	}
 
-	delete node.returnType;
-	delete node.typeParameters;
-
-	for (const param of node.params) {
-		delete param.typeAnnotation;
-		// Handle AssignmentPattern (parameters with default values)
-		if (param.type === 'AssignmentPattern' && param.left) {
-			delete param.left.typeAnnotation;
-		}
-	}
-
-	// Replace lazy destructuring params with generated identifiers
+	// Strip parameter type annotations via copies (the source params are never
+	// mutated) and replace lazy destructuring params with generated identifiers
 	const transformed_params = node.params.map((param) => {
-		const pattern = param.type === 'AssignmentPattern' ? param.left : param;
+		/** @type {AST.Pattern} */
+		let param_out = param.typeAnnotation ? { ...param, typeAnnotation: undefined } : param;
+		// Handle AssignmentPattern (parameters with default values)
+		if (param_out.type === 'AssignmentPattern' && param_out.left?.typeAnnotation) {
+			param_out = { ...param_out, left: { ...param_out.left, typeAnnotation: undefined } };
+		}
+		const pattern = param_out.type === 'AssignmentPattern' ? param_out.left : param_out;
 		if (pattern.type === 'ObjectPattern' || pattern.type === 'ArrayPattern') {
 			const transformed_pattern = replace_lazy_param_pattern(pattern);
-			if (param.type === 'AssignmentPattern') {
-				return /** @type {AST.AssignmentPattern} */ ({ ...param, left: transformed_pattern });
+			if (param_out.type === 'AssignmentPattern') {
+				return /** @type {AST.AssignmentPattern} */ ({ ...param_out, left: transformed_pattern });
 			}
 			return transformed_pattern;
 		}
-		return param;
+		return param_out;
 	});
 
 	let body = /** @type {AST.BlockStatement | AST.Expression} */ (
@@ -766,24 +725,35 @@ function visit_function(node, context) {
 		...node,
 		params: transformed_params.map((param) => context.visit(param, state)),
 		body,
+		returnType: undefined,
+		typeParameters: undefined,
 	};
 }
 
 /**
  * @param {AST.Node | null | undefined} node
  * @param {boolean} [allow_direct_template]
- * @returns {AST.Element | AST.TsrxFragment | null}
+ * @returns {ESTreeJSX.JSXElement | ESTreeJSX.JSXFragment | null}
  */
 function get_native_tsrx_return_template_node(node, allow_direct_template = false) {
 	if (!node) return null;
 	if (allow_direct_template && is_native_tsrx_template_node(node)) {
-		return /** @type {AST.Element | AST.TsrxFragment} */ (/** @type {unknown} */ (node));
+		return /** @type {ESTreeJSX.JSXElement | ESTreeJSX.JSXFragment} */ (
+			/** @type {unknown} */ (node)
+		);
 	}
 	if (node.type === 'ReturnStatement' && is_native_tsrx_template_node(node.argument)) {
-		return /** @type {AST.Element | AST.TsrxFragment} */ (/** @type {unknown} */ (node.argument));
+		return /** @type {ESTreeJSX.JSXElement | ESTreeJSX.JSXFragment} */ (
+			/** @type {unknown} */ (node.argument)
+		);
 	}
-	if (node.type === 'JSXCodeBlock' && is_native_tsrx_template_node(node.render)) {
-		return /** @type {AST.Element | AST.TsrxFragment} */ (/** @type {unknown} */ (node.render));
+	if (node.type === 'JSXCodeBlock') {
+		const render = get_code_block_render(node);
+		if (is_native_tsrx_template_node(render)) {
+			return /** @type {ESTreeJSX.JSXElement | ESTreeJSX.JSXFragment} */ (
+				/** @type {unknown} */ (render)
+			);
+		}
 	}
 	if (
 		node.type === 'FunctionDeclaration' ||
@@ -848,12 +818,16 @@ function transform_native_tsrx_function(node, context) {
 		let props_param = node.params[0];
 
 		if (props_param.type === 'Identifier') {
-			delete props_param.typeAnnotation;
-			props = props_param;
+			props = props_param.typeAnnotation
+				? /** @type {AST.Pattern} */ ({ ...props_param, typeAnnotation: undefined })
+				: props_param;
 		} else if (props_param.type === 'ObjectPattern' || props_param.type === 'ArrayPattern') {
-			delete props_param.typeAnnotation;
 			if (!props_param.lazy) {
-				props = replace_lazy_param_pattern(props_param);
+				props = replace_lazy_param_pattern(
+					/** @type {AST.Pattern} */ (
+						props_param.typeAnnotation ? { ...props_param, typeAnnotation: undefined } : props_param
+					),
+				);
 			}
 		} else {
 			props = props_param;
@@ -870,7 +844,7 @@ function transform_native_tsrx_function(node, context) {
 		context.state.scope;
 	const node_id = node.type !== 'ArrowFunctionExpression' ? (node.id ?? null) : null;
 	const is_synthetic_children = node.metadata?.synthetic_children === true;
-	const raw_render_body = get_native_tsrx_function_body(node);
+	const raw_render_body = get_native_tsrx_function_body(node, context.state.scopes);
 	const css = get_component_css({ ...context.state, component: node });
 	const style_ref_setup = css
 		? createStyleRefSetupStatements(
@@ -883,7 +857,8 @@ function transform_native_tsrx_function(node, context) {
 			)
 		: [];
 	const render_body = strip_tsrx_style_elements(
-		insert_style_ref_setup_statements(raw_render_body, style_ref_setup),
+		insert_style_ref_setup_statements(raw_render_body, style_ref_setup, context.state.scopes),
+		context.state.scopes,
 	);
 	const transformed_body = transform_body(render_body, {
 		...context,
@@ -941,7 +916,7 @@ function transform_native_tsrx_function(node, context) {
 }
 
 /**
- * @param {AST.Element} node
+ * @param {ESTreeJSX.JSXElement} node
  * @param {number} index
  * @param {TransformClientContext} context
  */
@@ -958,7 +933,7 @@ function visit_head_element(node, index, context) {
 	const template = [];
 
 	transform_children(
-		node.children,
+		/** @type {AST.Node[]} */ (node.children),
 		/** @type {VisitorClientContext} */ ({
 			visit,
 			state: { ...state, init, update, final, template, inside_head: true },
@@ -1124,17 +1099,21 @@ function apply_updates(init, update, state) {
 }
 
 /**
- * @param {AST.Element} node
+ * @param {ESTreeJSX.JSXElement} node
  * @param {TransformClientContext} context
  */
 function visit_title_element(node, context) {
-	const normalized = normalize_children(node.children, context);
-	const content = normalized[0];
+	const normalized = normalize_children(/** @type {AST.Node[]} */ (node.children), context);
+	const content = /** @type {ESTreeJSX.JSXText | ESTreeJSX.JSXExpressionContainer} */ (
+		normalized[0]
+	);
 
 	const metadata = { tracking: false };
-	const visited = context.visit(content, { ...context.state, metadata });
 	const result = /** @type {AST.Expression} */ (
-		/** @type {{expression?: AST.Expression}} */ (visited).expression
+		context.visit(get_template_expression(content, !!context.state.to_ts), {
+			...context.state,
+			metadata,
+		})
 	);
 
 	if (metadata.tracking) {
@@ -1169,7 +1148,7 @@ function set_hidden_import_from_ripple(name, context, is_obfuscated = false) {
 }
 
 /**
- * @param {any} source_argument
+ * @param {ESTreeJSX.JSXExpressionContainer | AST.Expression} source_argument
  * @param {VisitorClientContext} context
  * @returns {AST.CallExpression}
  */
@@ -1223,7 +1202,7 @@ function create_ref_value_call(source_argument, context) {
 }
 
 /**
- * @param {AST.Element} node
+ * @param {AST.TSRXJSXElement} node
  * @param {TransformClientState} state
  * @returns {AST.TypeNode | null}
  */
@@ -1231,25 +1210,25 @@ function create_element_ref_target_type(node, state) {
 	if (!is_element_dom_element(node)) {
 		return null;
 	}
-	const element_name = /** @type {AST.Identifier} */ (node.id).name;
+	const element_name = /** @type {AST.Identifier} */ (get_element_id(node)).name;
 	const namespace =
 		element_name === 'svg' ? 'svg' : element_name === 'math' ? 'mathml' : state.namespace;
 	return create_element_ref_target_type_for_name(element_name, namespace);
 }
 
 /**
- * @param {any} source_argument
- * @returns {any}
+ * @param {ESTreeJSX.JSXExpressionContainer | AST.Expression} source_argument
+ * @returns {AST.Expression}
  */
 function get_ref_source_argument(source_argument) {
 	return source_argument.type === 'JSXExpressionContainer'
-		? source_argument.expression
+		? /** @type {AST.Expression} */ (source_argument.expression)
 		: source_argument;
 }
 
 /**
  * @param {AST.Expression[]} args
- * @param {any} source_argument
+ * @param {ESTreeJSX.JSXExpressionContainer | AST.Expression} source_argument
  * @param {AST.Expression} argument
  * @returns {void}
  */
@@ -1309,34 +1288,31 @@ function ripple_namespace_requires_block(name) {
 }
 
 /**
- * @param {AST.Element} node
+ * @param {AST.TSRXJSXElement} node
  * @param {TransformClientContext | VisitorClientContext} context
  * @returns {boolean}
  */
 function is_ripple_fragment_element(node, context) {
-	if (node.id.type === 'Identifier') {
-		return node.id.name === 'Fragment' && is_ripple_import(node.id, context);
+	const id = get_element_id(node);
+	if (id.type === 'Identifier') {
+		return id.name === 'Fragment' && is_ripple_import(id, context);
 	}
 
 	return (
-		node.id.type === 'MemberExpression' &&
-		node.id.property.type === 'Identifier' &&
-		node.id.property.name === 'Fragment' &&
-		is_ripple_import(node.id, context)
+		id.type === 'MemberExpression' &&
+		id.property.type === 'Identifier' &&
+		id.property.name === 'Fragment' &&
+		is_ripple_import(id, context)
 	);
 }
 
 /**
- * @param {AST.Element} node
- * @returns {AST.Attribute | null}
+ * @param {ESTreeJSX.JSXElement | AST.TSRXJSXElement} node
+ * @returns {ESTreeJSX.JSXAttribute | null}
  */
 function get_inner_html_attribute(node) {
-	for (const attr of node.attributes) {
-		if (
-			attr.type === 'Attribute' &&
-			attr.name.type === 'Identifier' &&
-			attr.name.name === 'innerHTML'
-		) {
+	for (const attr of get_element_attributes(node)) {
+		if (attr.type === 'JSXAttribute' && get_attribute_name(attr) === 'innerHTML') {
 			return attr;
 		}
 	}
@@ -1345,17 +1321,18 @@ function get_inner_html_attribute(node) {
 }
 
 /**
- * @param {AST.Attribute} attr
+ * @param {ESTreeJSX.JSXAttribute} attr
  * @param {VisitorClientContext} context
  * @returns {AST.Expression}
  */
 function get_attribute_value_expression(attr, context) {
-	if (attr.value === null) {
+	const value = get_attribute_value(attr);
+	if (value === null) {
 		return b.literal('');
 	}
 
 	return /** @type {AST.Expression} */ (
-		context.visit(attr.value, {
+		context.visit(value, {
 			...context.state,
 			flush_node: null,
 			metadata: { tracking: false },
@@ -1373,7 +1350,7 @@ function normalize_inner_html_expression(expression, id) {
 }
 
 /**
- * @param {AST.Element} node
+ * @param {ESTreeJSX.JSXElement | AST.TSRXJSXElement} node
  * @param {VisitorClientContext} context
  * @returns {void}
  */
@@ -1402,7 +1379,7 @@ function visit_ripple_fragment_element(node, context) {
 	}
 
 	transform_children(
-		node.children,
+		/** @type {AST.Node[]} */ (node.children),
 		/** @type {VisitorClientContext} */ ({
 			visit,
 			state,
@@ -1445,12 +1422,10 @@ function SetStateForOutsideComponent(state, more_state = {}) {
  */
 function build_jsx_to_tsrx_element(node, context) {
 	const { state, visit, path } = context;
-	const result = jsx_to_ripple_node(/** @type {AST.Node} */ (node), path);
+	const result = adopt_raw_template_jsx(/** @type {AST.Node} */ (node));
 	const converted = Array.isArray(result) ? result : [result];
 	/** @type {AST.Node[]} */
 	const children = converted.filter((child) => child != null && child.type !== 'EmptyStatement');
-
-	apply_tsrx_css_scoping(children, state);
 
 	const children_component = create_native_tsrx_render_function(
 		[],
@@ -1472,6 +1447,460 @@ function build_jsx_to_tsrx_element(node, context) {
 		),
 	);
 }
+
+/**
+ * Shared by the plain statement and the `@`-directive forms.
+ * @type {Visitor<AST.SwitchStatement | AST.JSXSwitchExpression, TransformClientState, AST.Node>}
+ */
+const visit_switch_statement = (node, context) => {
+	if (context.state.regular_js) {
+		return context.next();
+	}
+
+	if (!is_inside_component(context)) {
+		if (context.state.to_ts) {
+			return transform_ts_child(node, SetContextForOutsideComponent(context));
+		}
+
+		return context.next();
+	}
+
+	const root_controlled = node.metadata?.root_controlled === true;
+	if (!root_controlled) {
+		context.state.template?.push('<!>');
+	}
+
+	const id = root_controlled ? b.id('__anchor') : context.state.flush_node?.();
+	const statements = [];
+	const cases = [];
+
+	let id_gen = 0;
+	let counter = 0;
+	for (const switch_case of node.cases) {
+		const case_body = [];
+		const consequent = switch_case.consequent;
+
+		if (consequent.length !== 0) {
+			const flattened_consequent = flatten_switch_consequent(consequent);
+			const consequent_scope = context.state.scopes.get(consequent) || context.state.scope;
+
+			const block = transform_body(flattened_consequent, {
+				...context,
+				state: { ...context.state, scope: consequent_scope, flush_node: null },
+			});
+			const is_default = switch_case.test == null;
+			const consequent_id = context.state.scope.generate(
+				'switch_case_' + (is_default ? 'default' : id_gen),
+			);
+
+			statements.push(b.var(b.id(consequent_id), b.arrow([b.id('__anchor')], b.block(block))));
+			case_body.push(
+				b.stmt(b.call(b.member(b.id('result'), b.id('push'), false), b.id(consequent_id))),
+			);
+			id_gen++;
+		}
+		case_body.push(b.return(b.id('result')));
+
+		counter++;
+
+		cases.push(
+			b.switch_case(
+				switch_case.test ? /** @type {AST.Expression} */ (context.visit(switch_case.test)) : null,
+				case_body,
+			),
+		);
+	}
+
+	statements.push(
+		b.stmt(
+			b.call(
+				'_$_.switch',
+				id,
+				b.thunk(
+					b.block([
+						b.var(b.id('result'), b.array([])),
+						b.switch(/** @type {AST.Expression} */ (context.visit(node.discriminant)), cases),
+					]),
+				),
+				root_controlled ? b.true : undefined,
+			),
+		),
+	);
+
+	context.state.init?.push(b.block(statements));
+};
+
+/**
+ * Shared by the plain statement and the `@`-directive forms.
+ * @type {Visitor<AST.IfStatement | AST.JSXIfExpression, TransformClientState, AST.Node>}
+ */
+const visit_if_statement = (node, context) => {
+	if (context.state.regular_js || node.metadata?.regular_js) {
+		return context.next({ ...context.state, regular_js: true });
+	}
+
+	if (context.state.to_ts) {
+		return transform_ts_child(node, context);
+	}
+
+	if (!is_inside_component(context)) {
+		return context.next();
+	}
+
+	if (
+		(node.metadata?.script_only || node.metadata?.has_continue) &&
+		!node.metadata?.has_template &&
+		!node.alternate
+	) {
+		const consequent_scope =
+			/** @type {ScopeInterface} */ (context.state.scopes.get(node.consequent)) ||
+			context.state.scope;
+		const consequent_body =
+			node.consequent.type === 'BlockStatement' ? node.consequent.body : [node.consequent];
+		const continue_index = find_top_level_continue_index(consequent_body);
+		const consequent_statements =
+			continue_index === -1
+				? transform_body(consequent_body, {
+						...context,
+						state: { ...context.state, flush_node: null, scope: consequent_scope },
+					})
+				: transform_continue_consequent_body(consequent_body, {
+						...context,
+						state: { ...context.state, flush_node: null, scope: consequent_scope },
+					});
+		const consequent = b.block(consequent_statements);
+
+		context.state.init?.push(
+			b.if(
+				/** @type {AST.Expression} */ (
+					context.visit(node.test, {
+						...context.state,
+						metadata: { ...context.state.metadata },
+					})
+				),
+				consequent,
+			),
+		);
+		return;
+	}
+
+	const root_controlled = node.metadata?.root_controlled === true;
+	if (!root_controlled) {
+		context.state.template?.push('<!>');
+	}
+
+	const id = root_controlled ? b.id('__anchor') : context.state.flush_node?.();
+	const statements = [];
+
+	const consequent_scope =
+		/** @type {ScopeInterface} */ (context.state.scopes.get(node.consequent)) ||
+		context.state.scope;
+	const consequent_body =
+		node.consequent.type === 'BlockStatement' ? node.consequent.body : [node.consequent];
+	const consequent = b.block(
+		transform_body(consequent_body, {
+			...context,
+			state: { ...context.state, flush_node: null, scope: consequent_scope },
+		}),
+	);
+	const consequent_id = context.state.scope.generate('consequent');
+
+	statements.push(b.var(b.id(consequent_id), b.arrow([b.id('__anchor')], consequent)));
+
+	let alternate_id;
+
+	if (node.alternate !== null) {
+		const alternate = /** @type {AST.Statement} */ (node.alternate);
+		const alternate_scope = context.state.scopes.get(alternate) || context.state.scope;
+		/** @type {AST.Node[]} */
+		let alternate_body =
+			alternate.type === 'IfStatement'
+				? [alternate]
+				: alternate.type === 'BlockStatement'
+					? alternate.body
+					: [alternate];
+		const alternate_block = b.block(
+			transform_body(alternate_body, {
+				...context,
+				state: { ...context.state, flush_node: null, scope: alternate_scope },
+			}),
+		);
+		alternate_id = context.state.scope.generate('alternate');
+		statements.push(b.var(b.id(alternate_id), b.arrow([b.id('__anchor')], alternate_block)));
+	}
+
+	/** @type {AST.Statement[]} */
+	const callback_body = [];
+
+	callback_body.push(
+		b.if(
+			/** @type {AST.Expression} */ (
+				context.visit(node.test, {
+					...context.state,
+					metadata: { ...context.state.metadata },
+				})
+			),
+			b.stmt(b.call(b.id('__render'), b.id(consequent_id))),
+			alternate_id
+				? b.stmt(
+						b.call(
+							b.id('__render'),
+							b.id(alternate_id),
+							node.alternate ? b.literal(false) : undefined,
+						),
+					)
+				: undefined,
+		),
+	);
+
+	statements.push(
+		b.stmt(
+			b.call(
+				'_$_.if',
+				id,
+				b.arrow([b.id('__render')], b.block(callback_body)),
+				root_controlled ? b.true : undefined,
+			),
+		),
+	);
+
+	context.state.init?.push(b.block(statements));
+};
+
+/**
+ * Shared by the plain statement and the `@`-directive forms.
+ * @type {Visitor<AST.TryStatement | AST.JSXTryExpression, TransformClientState, AST.Node>}
+ */
+const visit_try_statement = (node, context) => {
+	if (context.state.regular_js) {
+		return context.next();
+	}
+
+	if (!is_inside_component(context)) {
+		if (context.state.to_ts) {
+			return transform_ts_child(node, SetContextForOutsideComponent(context));
+		}
+
+		return context.next();
+	}
+
+	if (context.state.to_ts) {
+		return transform_ts_child(node, context);
+	}
+	const root_controlled = node.metadata?.root_controlled === true;
+	if (!root_controlled) {
+		context.state.template?.push('<!>');
+	}
+
+	const id = root_controlled ? b.id('__anchor') : context.state.flush_node?.();
+	const handler = /** @type {AST.CatchClause | null} */ (node.handler);
+	const pending = /** @type {AST.BlockStatement | null} */ (node.pending);
+	let body = transform_body(node.block.body, {
+		...context,
+		state: {
+			...context.state,
+			scope: /** @type {ScopeInterface} */ (context.state.scopes.get(node.block)),
+		},
+	});
+
+	// Strip catch-param type annotations on copies embedded in the output; the
+	// source handler params are never mutated.
+	const handler_param = handler?.param
+		? /** @type {AST.Pattern} */ ({ ...handler.param, typeAnnotation: undefined })
+		: null;
+	const handler_reset_param = handler?.resetParam
+		? /** @type {AST.Pattern} */ ({ ...handler.resetParam, typeAnnotation: undefined })
+		: null;
+
+	const catch_arg =
+		handler === null
+			? b.literal(null)
+			: b.arrow(
+					[
+						b.id('__anchor'),
+						...(handler_param && handler_reset_param
+							? [handler_param, handler_reset_param]
+							: handler_param
+								? [handler_param]
+								: []),
+					],
+					b.block(
+						transform_body(handler.body.body, {
+							...context,
+							state: {
+								...context.state,
+								scope: /** @type {ScopeInterface} */ (context.state.scopes.get(handler.body)),
+							},
+						}),
+					),
+				);
+
+	const pending_arg =
+		pending === null
+			? null
+			: b.arrow(
+					[b.id('__anchor')],
+					b.block(
+						transform_body(pending.body, {
+							...context,
+							state: {
+								...context.state,
+								scope: /** @type {ScopeInterface} */ (context.state.scopes.get(pending)),
+							},
+						}),
+					),
+				);
+
+	const try_args = [id, b.arrow([b.id('__anchor')], b.block(body)), catch_arg];
+	if (root_controlled) {
+		// Keep pending_fn positioned (null when absent) so root_controlled lands
+		// in the 5th slot.
+		try_args.push(pending_arg ?? b.literal(null), b.true);
+	} else if (pending_arg !== null) {
+		try_args.push(pending_arg);
+	}
+
+	context.state.init?.push(b.stmt(b.call('_$_.try', ...try_args)));
+};
+
+/**
+ * Shared by the plain statement and the `@`-directive forms.
+ * @type {Visitor<AST.ForOfStatement | AST.JSXForOfExpression, TransformClientState, AST.Node>}
+ */
+const visit_for_of_statement = (node, context) => {
+	if (context.state.regular_js) {
+		return context.next();
+	}
+
+	if (!is_inside_component(context)) {
+		return context.next();
+	}
+	const is_controlled = node.metadata?.is_controlled;
+	const root_controlled = node.metadata?.root_controlled === true;
+	const index = node.index;
+	const key = node.key;
+	let flags = is_controlled ? IS_CONTROLLED : 0;
+
+	if (root_controlled) {
+		flags |= ROOT_CONTROLLED;
+	}
+
+	if (index != null) {
+		flags |= IS_INDEXED;
+	}
+
+	if (node.metadata?.script_only && !node.metadata?.has_template) {
+		const pattern =
+			node.metadata?.tsrx_for_pattern_id ??
+			/** @type {AST.VariableDeclaration} */ (node.left).declarations[0].id;
+		const body_scope = /** @type {ScopeInterface} */ (context.state.scopes.get(node.body));
+		const body = transform_body(/** @type {AST.BlockStatement} */ (node.body).body, {
+			...context,
+			state: {
+				...context.state,
+				scope: body_scope,
+				namespace: context.state.namespace,
+				flush_node: null,
+			},
+		});
+
+		if (index) {
+			body.push(b.stmt(b.update('++', index)));
+			context.state.init?.push(b.var(index, b.literal(0)));
+		}
+
+		const left = /** @type {AST.VariableDeclaration} */ (
+			context.visit(/** @type {AST.Node} */ (node.left))
+		);
+		context.state.init?.push(
+			b.for_of(
+				// A keyed loop iterates the generated pattern id (see the
+				// analyzer's tsrx_for_pattern_id), not the source destructuring.
+				node.metadata?.tsrx_for_pattern_id
+					? {
+							...left,
+							declarations: [{ ...left.declarations[0], id: node.metadata.tsrx_for_pattern_id }],
+						}
+					: left,
+				/** @type {AST.Expression} */ (context.visit(/** @type {AST.Node} */ (node.right))),
+				b.block(body),
+			),
+		);
+		return;
+	}
+
+	// do only if not controller
+	if (!is_controlled && !root_controlled) {
+		context.state.template?.push('<!>');
+	}
+
+	const id = root_controlled ? b.id('__anchor') : context.state.flush_node?.(false, is_controlled);
+	const pattern =
+		node.metadata?.tsrx_for_pattern_id ??
+		/** @type {AST.VariableDeclaration} */ (node.left).declarations[0].id;
+	const body_scope = /** @type {ScopeInterface} */ (context.state.scopes.get(node.body));
+	const body_nodes = /** @type {AST.BlockStatement} */ (node.body).body;
+	/** @type {AST.Statement[]} */
+	const body = transform_body(body_nodes, {
+		...context,
+		state: {
+			...context.state,
+			scope: body_scope,
+			namespace: context.state.namespace,
+			flush_node: null,
+		},
+	});
+
+	const empty_scope = node.empty
+		? context.state.scopes.get(node.empty) || context.state.scope
+		: null;
+	const empty_renderer = node.empty
+		? b.arrow(
+				[b.id('__anchor')],
+				b.block(
+					transform_body(/** @type {AST.BlockStatement} */ (node.empty).body, {
+						...context,
+						state: {
+							...context.state,
+							scope: /** @type {ScopeInterface} */ (empty_scope),
+							namespace: context.state.namespace,
+							flush_node: null,
+						},
+					}),
+				),
+			)
+		: undefined;
+
+	const for_args = [
+		id,
+		b.thunk(/** @type {AST.Expression} */ (context.visit(/** @type {AST.Node} */ (node.right)))),
+		b.arrow(
+			index ? [b.id('__anchor'), pattern, index] : [b.id('__anchor'), pattern],
+			b.block(body),
+		),
+		b.literal(flags),
+	];
+	if (key != null) {
+		for_args.push(
+			b.arrow(
+				index ? [pattern, index] : [pattern],
+				/** @type {AST.Expression} */ (context.visit(key)),
+			),
+		);
+	}
+	if (empty_renderer) {
+		for_args.push(empty_renderer);
+	}
+
+	context.state.init?.push(
+		b.stmt(
+			b.call(
+				key != null ? '_$_.for_keyed' : '_$_.for',
+				.../** @type {AST.Expression[]} */ (for_args),
+			),
+		),
+	);
+};
 
 /** @type {Visitors<AST.Node, TransformClientState>} */
 const visitors = {
@@ -1544,7 +1973,7 @@ const visitors = {
 		const { state } = context;
 
 		if (get_submodule_import_source_name(node) === 'server') {
-			return /** @type {any} */ (transform_server_module_import(node, state));
+			return transform_server_module_import(node, state);
 		}
 
 		if (!state.to_ts && node.importKind === 'type') {
@@ -1554,21 +1983,21 @@ const visitors = {
 		if (state.to_ts && state.ancestor_server_block) {
 			/** @type {AST.VariableDeclaration[]} */
 			const locals = state.server_block_locals;
-			for (const spec of node.specifiers) {
+			// Rebuild the specifiers with obfuscated locals on copies — the source
+			// import declaration is never mutated.
+			const specifiers = node.specifiers.map((spec) => {
 				const original_name = spec.local.name;
 				const name = obfuscateIdentifier(original_name);
-				if (
+				const local =
 					spec.type !== 'ImportSpecifier' ||
 					(spec.imported && /** @type {AST.Identifier} */ (spec.imported).name !== spec.local.name)
-				) {
-					spec.local.name = name;
-				} else {
-					spec.local = b.id(name);
-				}
-				spec.local.metadata.source_name = original_name;
+						? { ...spec.local, name }
+						: b.id(name);
+				local.metadata = { ...local.metadata, source_name: original_name };
 				locals.push(b.const(original_name, b.id(name)));
-			}
-			state.imports.add(node);
+				return { ...spec, local };
+			});
+			state.imports.add(/** @type {AST.ImportDeclaration} */ ({ ...node, specifiers }));
 			return b.empty;
 		}
 
@@ -1590,9 +2019,6 @@ const visitors = {
 	},
 
 	CallExpression(node, context) {
-		if (!context.state.to_ts) {
-			delete node.typeArguments;
-		}
 		const callee = node.callee;
 		const parent = context.path.at(-1);
 
@@ -1621,6 +2047,7 @@ const visitors = {
 						...(requires_block ? [b.id('__block')] : []),
 						...node.arguments.map((arg) => context.visit(arg)),
 					]),
+					typeArguments: undefined,
 				};
 			}
 		}
@@ -1630,12 +2057,10 @@ const visitors = {
 			const track_method_name = matched_track_call === 'trackAsync' ? 'track_async' : 'track';
 			/** @type {(AST.Expression | AST.SpreadElement)[]} */
 			const call_args = [];
-			if (node.arguments.length === 0) {
-				node.arguments.push(b.void0);
-			}
+			const source_args = node.arguments.length === 0 ? [b.void0] : node.arguments;
 
-			for (let i = 0; i < node.arguments.length; i++) {
-				const arg = node.arguments[i];
+			for (let i = 0; i < source_args.length; i++) {
+				const arg = source_args[i];
 				call_args.push(/** @type {(AST.Expression | AST.SpreadElement)} */ (context.visit(arg)));
 				if (i === 0) {
 					call_args.push(b.id('__block'));
@@ -1647,6 +2072,7 @@ const visitors = {
 				...node,
 				callee: b.member(b.id('_$_'), b.id(track_method_name)),
 				arguments: call_args,
+				typeArguments: undefined,
 			});
 		}
 
@@ -1687,7 +2113,12 @@ const visitors = {
 			!context.path.some((node) => is_native_tsrx_function_node(node)) ||
 			is_declared_function_within_component(callee, context)
 		) {
-			return context.next();
+			if (context.state.to_ts) {
+				return context.next();
+			}
+			// Like `context.next()`, but on a copy without the TypeScript-only type
+			// arguments so they are neither visited nor emitted.
+			return visit_children_without(node, context, ['typeArguments']);
 		}
 
 		// Handle array methods that access the array
@@ -1718,6 +2149,7 @@ const visitors = {
 			arguments: /** @type {(AST.Expression | AST.SpreadElement)[]} */ (
 				node.arguments.map((arg) => context.visit(arg))
 			),
+			typeArguments: undefined,
 		};
 
 		// A generated code-block scope IIFE is already a zero-argument
@@ -1783,7 +2215,9 @@ const visitors = {
 			is_value_static(node)
 		) {
 			if (!context.state.to_ts) {
-				delete node.typeArguments;
+				// Like `context.next()`, but on a copy without the TypeScript-only
+				// type arguments so they are neither visited nor emitted.
+				return visit_children_without(node, context, ['typeArguments']);
 			}
 
 			return context.next();
@@ -1843,21 +2277,23 @@ const visitors = {
 
 	PropertyDefinition(node, context) {
 		if (!context.state.to_ts) {
-			delete node.typeAnnotation;
+			// Like `context.next()`, but on a copy without the TypeScript-only type
+			// annotation so it is neither visited nor emitted.
+			return visit_children_without(node, context, ['typeAnnotation']);
 		}
 		return context.next();
 	},
 
 	ClassDeclaration(node, context) {
 		if (!context.state.to_ts) {
-			strip_class_typescript_syntax(node, context);
+			return strip_class_typescript_syntax(node, context);
 		}
 		return context.next();
 	},
 
 	ClassExpression(node, context) {
 		if (!context.state.to_ts) {
-			strip_class_typescript_syntax(node, context);
+			return strip_class_typescript_syntax(node, context);
 		}
 		return context.next();
 	},
@@ -1873,9 +2309,15 @@ const visitors = {
 		) {
 			if (context.state.to_ts) {
 				// In TypeScript mode, convert to a regular assignment (drop the pattern)
-				node.expression.left.lazy = false;
 				delete node.expression.left.metadata.lazy_id;
-				return context.next();
+				const expression = {
+					...node.expression,
+					left: { ...node.expression.left, lazy: false },
+				};
+				return {
+					...node,
+					expression: /** @type {AST.Expression} */ (context.visit(expression)),
+				};
 			}
 			const right = /** @type {AST.Expression} */ (context.visit(node.expression.right));
 			return b.const(b.id(node.expression.left.metadata.lazy_id), right);
@@ -1884,36 +2326,45 @@ const visitors = {
 	},
 
 	VariableDeclaration(node, context) {
-		for (const declarator of node.declarations) {
-			if (!context.state.to_ts) {
-				delete declarator.id.typeAnnotation;
+		// Rewrite declarator ids on copies (strip type annotations, replace lazy
+		// destructuring patterns) — the source declarators are never mutated.
+		const declarations = node.declarations.map((declarator) => {
+			/** @type {AST.VariableDeclarator['id']} */
+			let id = declarator.id;
 
+			if (!context.state.to_ts) {
 				// Replace lazy destructuring patterns with the generated identifier
 				if (
-					(declarator.id.type === 'ObjectPattern' || declarator.id.type === 'ArrayPattern') &&
-					declarator.id.lazy &&
-					declarator.id.metadata?.lazy_id
+					(id.type === 'ObjectPattern' || id.type === 'ArrayPattern') &&
+					id.lazy &&
+					id.metadata?.lazy_id
 				) {
-					declarator.id = b.id(declarator.id.metadata.lazy_id);
+					id = b.id(id.metadata.lazy_id);
+				} else if (id.typeAnnotation) {
+					id = { ...id, typeAnnotation: undefined };
 				}
-			}
-		}
-
-		if (context.state.to_ts) {
-			for (const declarator of node.declarations) {
-				if (
-					(declarator.id.type === 'ObjectPattern' || declarator.id.type === 'ArrayPattern') &&
-					declarator.id.lazy
-				) {
-					declarator.id.lazy = false;
-					if (declarator.id.metadata?.lazy_id) {
-						delete declarator.id.metadata.lazy_id;
-					}
+			} else if ((id.type === 'ObjectPattern' || id.type === 'ArrayPattern') && id.lazy) {
+				if (id.metadata?.lazy_id) {
+					delete id.metadata.lazy_id;
 				}
+				id = { ...id, lazy: false };
 			}
-		}
 
-		return context.next();
+			if (id === declarator.id) {
+				return declarator;
+			}
+			const copy = { ...declarator, id };
+			const scope = context.state.scopes.get(declarator);
+			if (scope) context.state.scopes.set(copy, scope);
+			return copy;
+		});
+
+		return {
+			...node,
+			declarations: declarations.map(
+				(declarator) => /** @type {AST.VariableDeclarator} */ (context.visit(declarator)),
+			),
+		};
 	},
 
 	VariableDeclarator(node, context) {
@@ -1997,18 +2448,19 @@ const visitors = {
 					body,
 				);
 			}
+			const render = get_code_block_render(node, context.state.scopes);
 			return {
 				...node,
 				body,
-				render: node.render
+				render: render
 					? transform_tsrx_ts_render_node(
-							/** @type {AST.Node} */ (node.render),
+							/** @type {AST.Node} */ (render),
 							/** @type {VisitorClientContext} */ (context),
 						)
 					: null,
 			};
 		}
-		if (node.render != null) {
+		if (get_code_block_render(node, context.state.scopes) != null) {
 			return context.next();
 		}
 		const body = node.body.map(
@@ -2018,27 +2470,19 @@ const visitors = {
 	},
 
 	JSXFragment(node, context) {
-		if (context.state.to_ts) {
-			return context.next();
-		}
-		if (context.state.jsx_to_tsrx_element || is_native_tsrx_value_position(context.path)) {
-			return build_jsx_to_tsrx_element(/** @type {AST.TSRXJSXFragment} */ (node), context);
-		}
-		return context.next();
-	},
-
-	JSXElement(node, context) {
-		if (context.state.to_ts) {
-			return context.next();
-		}
-		if (context.state.jsx_to_tsrx_element || is_native_tsrx_value_position(context.path)) {
-			return build_jsx_to_tsrx_element(/** @type {AST.TSRXJSXElement} */ (node), context);
-		}
-		return context.next();
-	},
-
-	TsrxFragment(node, context) {
 		const { state, visit } = context;
+
+		// A raw (non-template) fragment — an attribute value or other JSX that
+		// never entered the template traversal.
+		if (!is_template_fragment(node)) {
+			if (state.to_ts) {
+				return context.next();
+			}
+			if (state.jsx_to_tsrx_element || is_native_tsrx_value_position(context.path)) {
+				return build_jsx_to_tsrx_element(/** @type {AST.TSRXJSXFragment} */ (node), context);
+			}
+			return context.next();
+		}
 
 		// to_ts mode: produce a JSX fragment from native TSRX children.
 		if (state.to_ts) {
@@ -2061,10 +2505,12 @@ const visitors = {
 				: expression;
 		}
 
-		const children_filtered = node.children.filter((child) => {
+		const children_filtered = lower_code_block_children(
+			/** @type {AST.Node[]} */ (node.children),
+			state.scopes,
+		).filter((child) => {
 			return child != null && child.type !== 'EmptyStatement';
 		});
-		apply_tsrx_css_scoping(children_filtered, state);
 
 		const children_component = create_native_tsrx_render_function([], children_filtered, node);
 
@@ -2100,21 +2546,13 @@ const visitors = {
 		return element;
 	},
 
-	Element(node, context) {
-		const { state, visit } = context;
-
-		// The TS view needs the `<TsrxDynamic is={expr}>` component shape for type
-		// checking; production codegen keeps `node.id` as the dynamic expression
-		// and renders it directly via `_$_.composite` in the component branch.
-		if (state.to_ts && lower_dynamic_element(node)) {
-			state.imports.add(`import { Dynamic as ${dynamic_element_import_local} } from 'ripple'`);
-		}
+	JSXStyleElement(node, context) {
+		const { state } = context;
 
 		if (
-			is_style_element(node) &&
-			(state.regular_js ||
-				is_native_tsrx_value_position(context.path) ||
-				is_regular_js_statement_position(context.path))
+			state.regular_js ||
+			is_native_tsrx_value_position(context.path) ||
+			is_regular_js_statement_position(context.path)
 		) {
 			const expression = build_style_class_map_expression(node, context);
 			if (expression) {
@@ -2126,15 +2564,64 @@ const visitors = {
 		}
 
 		if (state.to_ts) {
-			const fragment = /** @type {AST.TsrxFragment} */ (
+			const fragment = /** @type {ESTreeJSX.JSXFragment} */ (
 				/** @type {unknown} */ ({
-					type: 'TsrxFragment',
+					type: 'JSXFragment',
 					children: [node],
-					openingElement: { type: 'JSXOpeningFragment', metadata: { path: [] } },
-					closingElement: { type: 'JSXClosingFragment', metadata: { path: [] } },
-					selfClosing: false,
-					attributes: [],
-					metadata: { path: [] },
+					openingFragment: { type: 'JSXOpeningFragment', metadata: { path: [] } },
+					closingFragment: { type: 'JSXClosingFragment', metadata: { path: [] } },
+					metadata: { path: [], tsrx_render_fragment: true },
+				})
+			);
+			return build_tsrx_to_ts_expression(fragment, context);
+		}
+
+		if (state.inside_head) {
+			state.template?.push(`<style>${sanitizeTemplateString(get_style_css(node))}</style>`);
+			return;
+		}
+
+		// Component styles render nothing at runtime — their CSS is extracted at
+		// analysis time and injected separately.
+	},
+
+	JSXElement(node, context) {
+		const { state, visit } = context;
+
+		// A raw (non-template) element — an attribute value or other JSX that
+		// never entered the template traversal.
+		if (!is_template_element(node)) {
+			if (state.to_ts) {
+				return context.next();
+			}
+			if (state.jsx_to_tsrx_element || is_native_tsrx_value_position(context.path)) {
+				return build_jsx_to_tsrx_element(/** @type {AST.TSRXJSXElement} */ (node), context);
+			}
+			return context.next();
+		}
+
+		// The TS view needs the `<TsrxDynamic is={expr}>` component shape for type
+		// checking; production codegen keeps `node.id` as the dynamic expression
+		// and renders it directly via `_$_.composite` in the component branch.
+		if (state.to_ts) {
+			const lowered = lower_dynamic_element(node, undefined, state.scopes);
+			if (lowered) {
+				state.imports.add(`import { Dynamic as ${dynamic_element_import_local} } from 'ripple'`);
+				node = lowered;
+			}
+		}
+
+		const element_id = get_element_id(node);
+		const element_attributes = get_element_attributes(node);
+
+		if (state.to_ts) {
+			const fragment = /** @type {ESTreeJSX.JSXFragment} */ (
+				/** @type {unknown} */ ({
+					type: 'JSXFragment',
+					children: [node],
+					openingFragment: { type: 'JSXOpeningFragment', metadata: { path: [] } },
+					closingFragment: { type: 'JSXClosingFragment', metadata: { path: [] } },
+					metadata: { path: [], tsrx_render_fragment: true },
 				})
 			);
 			return build_tsrx_to_ts_expression(fragment, context);
@@ -2162,20 +2649,24 @@ const visitors = {
 		}
 
 		if (context.state.inside_head) {
-			if (node.id.type === 'Identifier' && node.id.name === 'style') {
-				state.template?.push(`<style>${sanitizeTemplateString(node.css)}</style>`);
-				return;
-			}
 			// Inline scripts (`<script>{code}</script>`) are rendered by injecting
 			// the child content as the script's text. Scripts with no inline body
 			// (e.g. `<script src={...} />`) carry their behavior in attributes, so
 			// they fall through to generic element handling instead.
-			if (node.id.type === 'Identifier' && node.id.name === 'script' && node.children.length > 0) {
+			if (
+				element_id.type === 'Identifier' &&
+				element_id.name === 'script' &&
+				node.children.length > 0
+			) {
 				const id = state.flush_node?.();
 				state.template?.push('<!>');
 				context.state.init?.push(
 					b.stmt(
-						b.call('_$_.script', id, /** @type {AST.Literal} */ (visit(node.children[0], state))),
+						b.call(
+							'_$_.script',
+							id,
+							/** @type {AST.Literal} */ (visit(/** @type {AST.Node} */ (node.children[0]), state)),
+						),
 					),
 				);
 				return;
@@ -2183,12 +2674,12 @@ const visitors = {
 		}
 
 		const is_dom_element = is_element_dom_element(node);
-		const is_spreading = node.attributes.some((attr) => attr.type === 'SpreadAttribute');
+		const is_spreading = element_attributes.some((attr) => attr.type === 'JSXSpreadAttribute');
 		/** @type {(AST.Property | AST.SpreadElement)[] | null} */
 		const spread_attributes = is_spreading ? [] : null;
 		const child_namespace = is_dom_element
 			? determine_namespace_for_children(
-					/** @type {AST.Identifier} */ (node.id).name,
+					/** @type {AST.Identifier} */ (element_id).name,
 					state.namespace,
 				)
 			: state.namespace;
@@ -2219,13 +2710,13 @@ const visitors = {
 		};
 
 		if (is_dom_element) {
-			/** @type {AST.Attribute | null} */
+			/** @type {ESTreeJSX.JSXAttribute | null} */
 			let class_attribute = null;
-			/** @type {AST.Attribute | null} */
+			/** @type {ESTreeJSX.JSXAttribute | null} */
 			let style_attribute = null;
 			/** @type {TransformClientState['update']} */
 			const local_updates = [];
-			const element_name = /** @type {AST.Identifier} */ (node.id).name;
+			const element_name = /** @type {AST.Identifier} */ (element_id).name;
 			const is_void = is_void_element(element_name);
 			/** @type {AST.CSS.StyleSheet['hash'] | null} */
 			const scoping_hash =
@@ -2234,17 +2725,18 @@ const visitors = {
 
 			state.template?.push(`<${element_name}`);
 
-			for (const attr of node.attributes) {
-				if (attr.type === 'Attribute') {
-					if (attr.name.type === 'Identifier') {
-						const name = attr.name.name;
+			for (const attr of element_attributes) {
+				if (attr.type === 'JSXAttribute') {
+					const attr_value = get_attribute_value(attr);
+					{
+						const name = get_attribute_name(attr);
 
 						if (name === 'innerHTML') {
 							const metadata = { tracking: false };
 							const expression =
-								attr.value === null
+								attr_value === null
 									? b.literal('')
-									: /** @type {AST.Expression} */ (visit(attr.value, { ...state, metadata }));
+									: /** @type {AST.Expression} */ (visit(attr_value, { ...state, metadata }));
 
 							if (is_spreading) {
 								spread_attributes?.push(b.prop('init', b.literal('innerHTML'), expression));
@@ -2266,7 +2758,7 @@ const visitors = {
 											),
 										),
 									expression,
-									identity: attr.value ?? b.literal(''),
+									identity: attr_value ?? b.literal(''),
 									initial: b.member(/** @type {AST.Identifier} */ (id), 'innerHTML'),
 								});
 							} else {
@@ -2286,7 +2778,7 @@ const visitors = {
 							continue;
 						}
 
-						if (attr.value === null) {
+						if (attr_value === null) {
 							// omit a valueless event attr (analyze errored); `hidden` etc. still emit
 							if (!isEventAttribute(name)) {
 								handle_static_attr(name, true);
@@ -2297,26 +2789,26 @@ const visitors = {
 						if (name === 'ref') {
 							const id = state.flush_node?.();
 							const metadata = { tracking: false };
-							const source = get_ref_source_argument(attr.value);
+							const source = get_ref_source_argument(attr_value);
 							const ref_value =
 								source.type === 'ArrayExpression'
-									? create_ref_value_call(attr.value, context)
-									: /** @type {AST.Expression} */ (visit(attr.value, { ...state, metadata }));
+									? create_ref_value_call(attr_value, context)
+									: /** @type {AST.Expression} */ (visit(attr_value, { ...state, metadata }));
 							const ref_args = [/** @type {AST.Expression} */ (id), b.thunk(ref_value)];
 							if (source.type !== 'ArrayExpression') {
-								add_ref_setter_arg(ref_args, attr.value, ref_value);
+								add_ref_setter_arg(ref_args, attr_value, ref_value);
 							}
 							state.init?.push(b.stmt(b.call('_$_.ref', ...ref_args)));
 							continue;
 						}
 
 						if (
-							attr.value.type === 'Literal' &&
+							attr_value.type === 'Literal' &&
 							name !== 'class' &&
 							name !== 'style' &&
 							!(name === 'value' && element_name === 'option')
 						) {
-							handle_static_attr(name, attr.value.value);
+							handle_static_attr(name, attr_value.value);
 							continue;
 						}
 
@@ -2324,14 +2816,14 @@ const visitors = {
 							const id = state.flush_node?.();
 							const metadata = { tracking: false };
 							const expression = /** @type {AST.Expression} */ (
-								visit(attr.value, { ...state, metadata })
+								visit(attr_value, { ...state, metadata })
 							);
 
 							if (metadata.tracking) {
 								local_updates.push({
 									operation: (key) => b.stmt(b.call('_$_.set_value', id, key)),
 									expression,
-									identity: attr.value,
+									identity: attr_value,
 									initial: b.void0,
 								});
 							} else {
@@ -2357,14 +2849,14 @@ const visitors = {
 							const id = state.flush_node?.();
 							const metadata = { tracking: false };
 							const expression = /** @type {AST.Expression} */ (
-								visit(attr.value, { ...state, metadata })
+								visit(attr_value, { ...state, metadata })
 							);
 
 							if (metadata.tracking) {
 								local_updates.push({
 									operation: (key) => b.stmt(b.call('_$_.set_checked', id, key)),
 									expression,
-									identity: attr.value,
+									identity: attr_value,
 									initial: b.void0,
 								});
 							} else {
@@ -2377,14 +2869,14 @@ const visitors = {
 							const id = state.flush_node?.();
 							const metadata = { tracking: false };
 							const expression = /** @type {AST.Expression} */ (
-								visit(attr.value, { ...state, metadata })
+								visit(attr_value, { ...state, metadata })
 							);
 
 							if (metadata.tracking) {
 								local_updates.push({
 									operation: (key) => b.stmt(b.call('_$_.set_selected', id, key)),
 									expression,
-									identity: attr.value,
+									identity: attr_value,
 									initial: b.void0,
 								});
 							} else {
@@ -2396,7 +2888,7 @@ const visitors = {
 						if (isEventAttribute(name)) {
 							const metadata = { tracking: false };
 							let handler = /** @type {AST.Expression} */ (
-								visit(attr.value, { ...state, metadata })
+								visit(attr_value, { ...state, metadata })
 							);
 							const id = state.flush_node?.();
 
@@ -2433,7 +2925,7 @@ const visitors = {
 						}
 						const metadata = { tracking: false };
 						const expression = /** @type {AST.Expression} */ (
-							visit(attr.value, { ...state, metadata })
+							visit(attr_value, { ...state, metadata })
 						);
 						// All other attributes
 						if (metadata.tracking) {
@@ -2456,7 +2948,7 @@ const visitors = {
 									operation: (key) =>
 										b.stmt(b.call('_$_.set_attribute', id, b.literal(attribute), key)),
 									expression,
-									identity: attr.value,
+									identity: attr_value,
 									initial: b.void0,
 								});
 							}
@@ -2480,7 +2972,7 @@ const visitors = {
 							}
 						}
 					}
-				} else if (attr.type === 'SpreadAttribute') {
+				} else if (attr.type === 'JSXSpreadAttribute') {
 					spread_attributes?.push(
 						b.spread(/** @type {AST.Expression} */ (visit(attr.argument, state))),
 					);
@@ -2488,7 +2980,7 @@ const visitors = {
 			}
 
 			if (class_attribute !== null) {
-				const attr_value = /** @type {AST.Expression} */ (class_attribute.value);
+				const attr_value = /** @type {AST.Expression} */ (get_attribute_value(class_attribute));
 				if (attr_value.type === 'Literal') {
 					let value = attr_value.value;
 
@@ -2496,7 +2988,7 @@ const visitors = {
 						value = `${scoping_hash} ${value}`;
 					}
 
-					handle_static_attr(class_attribute.name.name, value);
+					handle_static_attr('class', value);
 				} else {
 					const id = state.flush_node?.();
 					const metadata = { tracking: false };
@@ -2507,7 +2999,7 @@ const visitors = {
 					const hash_arg = scoping_hash ? b.literal(scoping_hash) : undefined;
 					const is_html =
 						context.state.namespace === 'html' &&
-						/** @type {AST.Identifier} */ (node.id).name !== 'svg';
+						/** @type {AST.Identifier} */ (element_id).name !== 'svg';
 
 					if (metadata.tracking) {
 						local_updates.push({
@@ -2528,9 +3020,9 @@ const visitors = {
 			}
 
 			if (style_attribute !== null) {
-				const attr_value = /** @type {AST.Expression} */ (style_attribute.value);
+				const attr_value = /** @type {AST.Expression} */ (get_attribute_value(style_attribute));
 				if (attr_value.type === 'Literal') {
-					handle_static_attr(style_attribute.name.name, attr_value.value);
+					handle_static_attr('style', attr_value.value);
 				} else {
 					const id = state.flush_node?.();
 					const metadata = { tracking: false };
@@ -2576,8 +3068,12 @@ const visitors = {
 			const update = [];
 
 			if (!is_void) {
-				const element_name = /** @type {AST.Identifier} */ (node.id).name;
-				const render_children = inner_html_attribute === null ? node.children : [];
+				const element_name = /** @type {AST.Identifier} */ (element_id).name;
+				const render_children = /** @type {AST.Node[]} */ (
+					inner_html_attribute === null
+						? lower_code_block_children(node.children, state.scopes)
+						: []
+				);
 				// Special handling for <template> elements
 				if (element_name === 'template' && render_children.length > 0) {
 					transform_template_element(node, state, visit, child_namespace);
@@ -2606,15 +3102,17 @@ const visitors = {
 					element_name !== 'template' &&
 					render_children.some(
 						(child) =>
+							is_template_directive(child) ||
 							child.type === 'IfStatement' ||
 							child.type === 'TryStatement' ||
 							child.type === 'ForOfStatement' ||
 							child.type === 'SwitchStatement' ||
-							child.type === 'TsrxFragment' ||
-							(child.type === 'Element' &&
-								(child.id.type !== 'Identifier' || !is_element_dom_element(child))) ||
-							((child.type === 'TSRXExpression' || child.type === 'Text') &&
-								child.expression.type !== 'Literal'),
+							is_template_fragment(child) ||
+							(is_template_element(child) &&
+								(get_element_id(child).type !== 'Identifier' || !is_element_dom_element(child))) ||
+							// A JSXText child is always a literal; only a `{ … }` container
+							// (including a merged text run) can hold a dynamic expression.
+							(child.type === 'JSXExpressionContainer' && child.expression.type !== 'Literal'),
 					);
 
 				if (needs_pop) {
@@ -2638,11 +3136,11 @@ const visitors = {
 				state.init?.push(b.block(init));
 			}
 		} else {
-			const root_controlled = /** @type {any} */ (node).root_controlled === true;
+			const root_controlled = node.metadata?.root_controlled === true;
 			// `append_into` is a `{ parent }` sentinel set by transform_children when
 			// every sibling is a static component: render directly into the parent,
 			// no `<!>` placeholder and no child()/sibling() navigation.
-			const append_into = node.append_into ?? null;
+			const append_into = node.metadata?.append_into ?? null;
 			const id = root_controlled
 				? b.id('__anchor')
 				: append_into
@@ -2655,26 +3153,28 @@ const visitors = {
 
 			const apply_parent_css_scope = state.applyParentCssScope;
 
-			const is_spreading = node.attributes.some((attr) => attr.type === 'SpreadAttribute');
+			const is_spreading = element_attributes.some((attr) => attr.type === 'JSXSpreadAttribute');
 			/** @type {(AST.Property | AST.SpreadElement)[]} */
 			const props = [];
 			/** @type {AST.Property | null} */
 			let children_prop = null;
 
-			for (const attr of node.attributes) {
-				if (attr.type === 'Attribute') {
-					if (attr.name.type === 'Identifier') {
+			for (const attr of element_attributes) {
+				if (attr.type === 'JSXAttribute') {
+					{
+						const attr_name = get_attribute_name(attr);
+						const attr_value = get_attribute_value(attr);
 						const metadata = { tracking: false };
-						if (attr.name.name === 'ref' && attr.value !== null) {
-							props.push(b.prop('init', b.key('ref'), create_ref_value_call(attr.value, context)));
+						if (attr_name === 'ref' && attr_value !== null) {
+							props.push(b.prop('init', b.key('ref'), create_ref_value_call(attr_value, context)));
 							continue;
 						}
 
 						let property =
-							attr.value === null
+							attr_value === null
 								? b.literal(true)
 								: /** @type {AST.Expression} */ (
-										visit(attr.value, { ...state, flush_node: null, metadata })
+										visit(attr_value, { ...state, flush_node: null, metadata })
 									);
 						if (property.type === 'Identifier') {
 							const binding = state.scope.get(property.name);
@@ -2688,7 +3188,7 @@ const visitors = {
 						}
 
 						const scoped_hash = get_component_css_hash(state);
-						if (attr.name.name === 'class' && node.metadata.scoped && scoped_hash) {
+						if (attr_name === 'class' && node.metadata.scoped && scoped_hash) {
 							if (property.type === 'Literal') {
 								property = b.literal(`${scoped_hash} ${property.value}`);
 							} else {
@@ -2697,7 +3197,7 @@ const visitors = {
 						}
 
 						if (metadata.tracking) {
-							if (attr.name.name === 'children') {
+							if (attr_name === 'children') {
 								children_prop = b.prop(
 									'get',
 									b.id('children'),
@@ -2714,12 +3214,12 @@ const visitors = {
 							props.push(
 								b.prop(
 									'get',
-									b.key(attr.name.name),
+									b.key(attr_name),
 									b.function(null, [], b.block([b.return(property)])),
 								),
 							);
 						} else {
-							if (attr.name.name === 'children') {
+							if (attr_name === 'children') {
 								children_prop = b.prop(
 									'init',
 									b.id('children'),
@@ -2729,20 +3229,10 @@ const visitors = {
 								continue;
 							}
 
-							props.push(b.prop('init', b.key(attr.name.name), property));
+							props.push(b.prop('init', b.key(attr_name), property));
 						}
-					} else {
-						props.push(
-							b.prop(
-								'init',
-								b.key(attr.name.name),
-								/** @type {AST.Expression} */ (
-									visit(/** @type {AST.Node} */ (attr.value), { ...state, flush_node: null })
-								),
-							),
-						);
 					}
-				} else if (attr.type === 'SpreadAttribute') {
+				} else if (attr.type === 'JSXSpreadAttribute') {
 					props.push(
 						b.spread(
 							/** @type {AST.Expression} */
@@ -2761,11 +3251,8 @@ const visitors = {
 			}
 
 			if (node.metadata.scoped && get_component_css(state)) {
-				const hasClassAttr = node.attributes.some(
-					(attr) =>
-						attr.type === 'Attribute' &&
-						attr.name.type === 'Identifier' &&
-						attr.name.name === 'class',
+				const hasClassAttr = element_attributes.some(
+					(attr) => attr.type === 'JSXAttribute' && get_attribute_name(attr) === 'class',
 				);
 				if (!hasClassAttr) {
 					const name = is_spreading ? '#class' : 'class';
@@ -2774,13 +3261,17 @@ const visitors = {
 				}
 			}
 
-			for (const child of node.children) {
+			const element_children = lower_code_block_children(
+				/** @type {AST.Node[]} */ (node.children),
+				state.scopes,
+			);
+			for (const child of element_children) {
 				if (is_native_tsrx_function_node(child)) {
 					state.init?.push(/** @type {AST.Statement} */ (visit(child, state)));
 				}
 			}
 
-			const children_filtered = node.children.filter(
+			const children_filtered = element_children.filter(
 				(child) => child.type !== 'EmptyStatement' && !is_native_tsrx_function_node(child),
 			);
 
@@ -2819,7 +3310,7 @@ const visitors = {
 
 			const metadata = { tracking: false };
 			// We visit, but only to gather metadata
-			b.call(/** @type {AST.Expression} */ (visit(node.id, { ...state, metadata })));
+			b.call(/** @type {AST.Expression} */ (visit(element_id, { ...state, metadata })));
 
 			// We're calling a component from within svg/mathml context
 			const is_with_ns = state.namespace !== DEFAULT_NAMESPACE;
@@ -2862,10 +3353,10 @@ const visitors = {
 			// Dynamic tags (`<{expr}>`) always render through composite: the runtime
 			// resolves the expression value (component function, tag string, or
 			// null) and re-renders when a tracked expression changes.
-			if (metadata.tracking || node.isDynamic === true) {
+			if (metadata.tracking || is_dynamic_element(node)) {
 				const shared = b.call(
 					'_$_.composite',
-					b.thunk(/** @type {AST.Expression} */ (visit(node.id, state))),
+					b.thunk(/** @type {AST.Expression} */ (visit(element_id, state))),
 					id,
 					object_props,
 				);
@@ -2877,7 +3368,7 @@ const visitors = {
 			} else {
 				const shared = b.call(
 					'_$_.render_component',
-					/** @type {AST.Expression} */ (visit(node.id, state)),
+					/** @type {AST.Expression} */ (visit(element_id, state)),
 					id,
 					object_props,
 				);
@@ -2998,338 +3489,26 @@ const visitors = {
 		context.next();
 	},
 
-	ForOfStatement(node, context) {
-		if (context.state.regular_js) {
-			return context.next();
-		}
-
-		if (!is_inside_component(context)) {
-			return context.next();
-		}
-		const is_controlled = node.is_controlled;
-		const root_controlled = /** @type {any} */ (node).root_controlled === true;
-		const index = node.index;
-		const key = node.key;
-		let flags = is_controlled ? IS_CONTROLLED : 0;
-
-		if (root_controlled) {
-			flags |= ROOT_CONTROLLED;
-		}
-
-		if (index != null) {
-			flags |= IS_INDEXED;
-		}
-
-		if (node.metadata?.script_only && !node.metadata?.has_template) {
-			const pattern = /** @type {AST.VariableDeclaration} */ (node.left).declarations[0].id;
-			const body_scope = /** @type {ScopeInterface} */ (context.state.scopes.get(node.body));
-			const body = transform_body(/** @type {AST.BlockStatement} */ (node.body).body, {
-				...context,
-				state: {
-					...context.state,
-					scope: body_scope,
-					namespace: context.state.namespace,
-					flush_node: null,
-				},
-			});
-
-			if (index) {
-				body.push(b.stmt(b.update('++', index)));
-				context.state.init?.push(b.var(index, b.literal(0)));
+	ForOfStatement: visit_for_of_statement,
+	// `@for` covers for-of / for-in / for(;;): non-for-of forms have no
+	// dedicated visitor and keep the default traversal, as before.
+	JSXForExpression(node, context) {
+		return visit_directive_wrapping_values(node, context, (node, context) => {
+			if (node.statementType === 'ForOfStatement') {
+				return visit_for_of_statement(node, context);
 			}
-
-			context.state.init?.push(
-				b.for_of(
-					/** @type {AST.VariableDeclaration} */ (context.visit(node.left)),
-					/** @type {AST.Expression} */ (context.visit(node.right)),
-					b.block(body),
-				),
-			);
-			return;
-		}
-
-		// do only if not controller
-		if (!is_controlled && !root_controlled) {
-			context.state.template?.push('<!>');
-		}
-
-		const id = root_controlled
-			? b.id('__anchor')
-			: context.state.flush_node?.(false, is_controlled);
-		const pattern = /** @type {AST.VariableDeclaration} */ (node.left).declarations[0].id;
-		const body_scope = /** @type {ScopeInterface} */ (context.state.scopes.get(node.body));
-		const body_nodes = /** @type {AST.BlockStatement} */ (node.body).body;
-		/** @type {AST.Statement[]} */
-		const body = transform_body(body_nodes, {
-			...context,
-			state: {
-				...context.state,
-				scope: body_scope,
-				namespace: context.state.namespace,
-				flush_node: null,
-			},
+			return context.next();
 		});
-
-		const empty_scope = node.empty
-			? context.state.scopes.get(node.empty) || context.state.scope
-			: null;
-		const empty_renderer = node.empty
-			? b.arrow(
-					[b.id('__anchor')],
-					b.block(
-						transform_body(/** @type {AST.BlockStatement} */ (node.empty).body, {
-							...context,
-							state: {
-								...context.state,
-								scope: /** @type {ScopeInterface} */ (empty_scope),
-								namespace: context.state.namespace,
-								flush_node: null,
-							},
-						}),
-					),
-				)
-			: undefined;
-
-		const for_args = [
-			id,
-			b.thunk(/** @type {AST.Expression} */ (context.visit(node.right))),
-			b.arrow(
-				index ? [b.id('__anchor'), pattern, index] : [b.id('__anchor'), pattern],
-				b.block(body),
-			),
-			b.literal(flags),
-		];
-		if (key != null) {
-			for_args.push(
-				b.arrow(
-					index ? [pattern, index] : [pattern],
-					/** @type {AST.Expression} */ (context.visit(key)),
-				),
-			);
-		}
-		if (empty_renderer) {
-			for_args.push(empty_renderer);
-		}
-
-		context.state.init?.push(
-			b.stmt(
-				b.call(
-					key != null ? '_$_.for_keyed' : '_$_.for',
-					.../** @type {AST.Expression[]} */ (for_args),
-				),
-			),
-		);
 	},
 
-	SwitchStatement(node, context) {
-		if (context.state.regular_js) {
-			return context.next();
-		}
-
-		if (!is_inside_component(context)) {
-			if (context.state.to_ts) {
-				return transform_ts_child(node, SetContextForOutsideComponent(context));
-			}
-
-			return context.next();
-		}
-
-		const root_controlled = /** @type {any} */ (node).root_controlled === true;
-		if (!root_controlled) {
-			context.state.template?.push('<!>');
-		}
-
-		const id = root_controlled ? b.id('__anchor') : context.state.flush_node?.();
-		const statements = [];
-		const cases = [];
-
-		let id_gen = 0;
-		let counter = 0;
-		for (const switch_case of node.cases) {
-			const case_body = [];
-			const consequent = switch_case.consequent;
-
-			if (consequent.length !== 0) {
-				const flattened_consequent = flatten_switch_consequent(consequent);
-				const consequent_scope = context.state.scopes.get(consequent) || context.state.scope;
-
-				const block = transform_body(flattened_consequent, {
-					...context,
-					state: { ...context.state, scope: consequent_scope, flush_node: null },
-				});
-				const is_default = switch_case.test == null;
-				const consequent_id = context.state.scope.generate(
-					'switch_case_' + (is_default ? 'default' : id_gen),
-				);
-
-				statements.push(b.var(b.id(consequent_id), b.arrow([b.id('__anchor')], b.block(block))));
-				case_body.push(
-					b.stmt(b.call(b.member(b.id('result'), b.id('push'), false), b.id(consequent_id))),
-				);
-				id_gen++;
-			}
-			case_body.push(b.return(b.id('result')));
-
-			counter++;
-
-			cases.push(
-				b.switch_case(
-					switch_case.test ? /** @type {AST.Expression} */ (context.visit(switch_case.test)) : null,
-					case_body,
-				),
-			);
-		}
-
-		statements.push(
-			b.stmt(
-				b.call(
-					'_$_.switch',
-					id,
-					b.thunk(
-						b.block([
-							b.var(b.id('result'), b.array([])),
-							b.switch(/** @type {AST.Expression} */ (context.visit(node.discriminant)), cases),
-						]),
-					),
-					root_controlled ? b.true : undefined,
-				),
-			),
-		);
-
-		context.state.init?.push(b.block(statements));
+	SwitchStatement: visit_switch_statement,
+	JSXSwitchExpression(node, context) {
+		return visit_directive_wrapping_values(node, context, visit_switch_statement);
 	},
 
-	IfStatement(node, context) {
-		if (context.state.regular_js || node.metadata?.regular_js) {
-			return context.next({ ...context.state, regular_js: true });
-		}
-
-		if (context.state.to_ts) {
-			return transform_ts_child(node, context);
-		}
-
-		if (!is_inside_component(context)) {
-			return context.next();
-		}
-
-		if (
-			(node.metadata?.script_only || node.metadata?.has_continue) &&
-			!node.metadata?.has_template &&
-			!node.alternate
-		) {
-			const consequent_scope =
-				/** @type {ScopeInterface} */ (context.state.scopes.get(node.consequent)) ||
-				context.state.scope;
-			const consequent_body =
-				node.consequent.type === 'BlockStatement' ? node.consequent.body : [node.consequent];
-			const continue_index = find_top_level_continue_index(consequent_body);
-			const consequent_statements =
-				continue_index === -1
-					? transform_body(consequent_body, {
-							...context,
-							state: { ...context.state, flush_node: null, scope: consequent_scope },
-						})
-					: transform_continue_consequent_body(consequent_body, {
-							...context,
-							state: { ...context.state, flush_node: null, scope: consequent_scope },
-						});
-			const consequent = b.block(consequent_statements);
-
-			context.state.init?.push(
-				b.if(
-					/** @type {AST.Expression} */ (
-						context.visit(node.test, {
-							...context.state,
-							metadata: { ...context.state.metadata },
-						})
-					),
-					consequent,
-				),
-			);
-			return;
-		}
-
-		const root_controlled = /** @type {any} */ (node).root_controlled === true;
-		if (!root_controlled) {
-			context.state.template?.push('<!>');
-		}
-
-		const id = root_controlled ? b.id('__anchor') : context.state.flush_node?.();
-		const statements = [];
-
-		const consequent_scope =
-			/** @type {ScopeInterface} */ (context.state.scopes.get(node.consequent)) ||
-			context.state.scope;
-		const consequent_body =
-			node.consequent.type === 'BlockStatement' ? node.consequent.body : [node.consequent];
-		const consequent = b.block(
-			transform_body(consequent_body, {
-				...context,
-				state: { ...context.state, flush_node: null, scope: consequent_scope },
-			}),
-		);
-		const consequent_id = context.state.scope.generate('consequent');
-
-		statements.push(b.var(b.id(consequent_id), b.arrow([b.id('__anchor')], consequent)));
-
-		let alternate_id;
-
-		if (node.alternate !== null) {
-			const alternate = /** @type {AST.Statement} */ (node.alternate);
-			const alternate_scope = context.state.scopes.get(alternate) || context.state.scope;
-			/** @type {AST.Node[]} */
-			let alternate_body =
-				alternate.type === 'IfStatement'
-					? [alternate]
-					: alternate.type === 'BlockStatement'
-						? alternate.body
-						: [alternate];
-			const alternate_block = b.block(
-				transform_body(alternate_body, {
-					...context,
-					state: { ...context.state, flush_node: null, scope: alternate_scope },
-				}),
-			);
-			alternate_id = context.state.scope.generate('alternate');
-			statements.push(b.var(b.id(alternate_id), b.arrow([b.id('__anchor')], alternate_block)));
-		}
-
-		/** @type {AST.Statement[]} */
-		const callback_body = [];
-
-		callback_body.push(
-			b.if(
-				/** @type {AST.Expression} */ (
-					context.visit(node.test, {
-						...context.state,
-						metadata: { ...context.state.metadata },
-					})
-				),
-				b.stmt(b.call(b.id('__render'), b.id(consequent_id))),
-				alternate_id
-					? b.stmt(
-							b.call(
-								b.id('__render'),
-								b.id(alternate_id),
-								node.alternate ? b.literal(false) : undefined,
-							),
-						)
-					: undefined,
-			),
-		);
-
-		statements.push(
-			b.stmt(
-				b.call(
-					'_$_.if',
-					id,
-					b.arrow([b.id('__render')], b.block(callback_body)),
-					root_controlled ? b.true : undefined,
-				),
-			),
-		);
-
-		context.state.init?.push(b.block(statements));
+	IfStatement: visit_if_statement,
+	JSXIfExpression(node, context) {
+		return visit_directive_wrapping_values(node, context, visit_if_statement);
 	},
 
 	ReturnStatement(node, context) {
@@ -3423,94 +3602,9 @@ const visitors = {
 		return context.next();
 	},
 
-	TryStatement(node, context) {
-		if (context.state.regular_js) {
-			return context.next();
-		}
-
-		if (!is_inside_component(context)) {
-			if (context.state.to_ts) {
-				return transform_ts_child(node, SetContextForOutsideComponent(context));
-			}
-
-			return context.next();
-		}
-
-		if (context.state.to_ts) {
-			return transform_ts_child(node, context);
-		}
-		const root_controlled = /** @type {any} */ (node).root_controlled === true;
-		if (!root_controlled) {
-			context.state.template?.push('<!>');
-		}
-
-		const id = root_controlled ? b.id('__anchor') : context.state.flush_node?.();
-		const handler = /** @type {AST.CatchClause | null} */ (node.handler);
-		const pending = /** @type {AST.BlockStatement | null} */ (node.pending);
-		let body = transform_body(node.block.body, {
-			...context,
-			state: {
-				...context.state,
-				scope: /** @type {ScopeInterface} */ (context.state.scopes.get(node.block)),
-			},
-		});
-
-		if (handler?.param) {
-			delete handler.param.typeAnnotation;
-		}
-		if (handler?.resetParam) {
-			delete handler.resetParam.typeAnnotation;
-		}
-
-		const catch_arg =
-			handler === null
-				? b.literal(null)
-				: b.arrow(
-						[
-							b.id('__anchor'),
-							...(handler.param && handler.resetParam
-								? [handler.param, handler.resetParam]
-								: handler.param
-									? [handler.param]
-									: []),
-						],
-						b.block(
-							transform_body(handler.body.body, {
-								...context,
-								state: {
-									...context.state,
-									scope: /** @type {ScopeInterface} */ (context.state.scopes.get(handler.body)),
-								},
-							}),
-						),
-					);
-
-		const pending_arg =
-			pending === null
-				? null
-				: b.arrow(
-						[b.id('__anchor')],
-						b.block(
-							transform_body(pending.body, {
-								...context,
-								state: {
-									...context.state,
-									scope: /** @type {ScopeInterface} */ (context.state.scopes.get(pending)),
-								},
-							}),
-						),
-					);
-
-		const try_args = [id, b.arrow([b.id('__anchor')], b.block(body)), catch_arg];
-		if (root_controlled) {
-			// Keep pending_fn positioned (null when absent) so root_controlled lands
-			// in the 5th slot.
-			try_args.push(pending_arg ?? b.literal(null), b.true);
-		} else if (pending_arg !== null) {
-			try_args.push(pending_arg);
-		}
-
-		context.state.init?.push(b.stmt(b.call('_$_.try', ...try_args)));
+	TryStatement: visit_try_statement,
+	JSXTryExpression(node, context) {
+		return visit_directive_wrapping_values(node, context, visit_try_statement);
 	},
 
 	BinaryExpression(node, context) {
@@ -3681,9 +3775,9 @@ function join_template(items) {
 }
 
 /**
- * @typedef {AST.Statement | ESTreeJSX.JSXElement | ESTreeJSX.JSXFragment} TsrxTsStatement
- * @typedef {AST.Expression | ESTreeJSX.JSXElement | ESTreeJSX.JSXFragment} TsrxTsExpression
- * @typedef {ESTreeJSX.JSXElement['children'][number]} TsrxTsxChild
+ * @typedef {AST.Statement | ESTreeJSX.JSXElement | AST.TSRXJSXFragment} TsrxTsStatement
+ * @typedef {AST.Expression | ESTreeJSX.JSXElement | AST.TSRXJSXFragment} TsrxTsExpression
+ * @typedef {ESTreeJSX.JSXText | ESTreeJSX.JSXExpressionContainer | ESTreeJSX.JSXElement | AST.TSRXJSXElement | AST.TSRXJSXFragment} TsrxTsxChild
  * @typedef {TsrxTsExpression | ESTreeJSX.JSXText | ESTreeJSX.JSXExpressionContainer} TsrxTsViewNode
  */
 
@@ -3747,7 +3841,7 @@ function transform_tsrx_ts_children(children, context) {
 	const init = [];
 	const ts_state = { ...state, init };
 
-	for (const child of children) {
+	for (const child of lower_code_block_children(children, state.scopes)) {
 		if (child == null || child.type === 'EmptyStatement') continue;
 		// Spread `context` (not just `visit`/`state`) so flags like `value_position`
 		// reach nested fragment/element children — see transform_tsrx_tsx_child.
@@ -3765,7 +3859,7 @@ function transform_tsrx_ts_children(children, context) {
  * remain inline JSX; fragments with setup statements need an IIFE so declarations
  * stay in statement position.
  *
- * @param {AST.TsrxFragment} node
+ * @param {ESTreeJSX.JSXFragment | AST.TSRXJSXFragment} node
  * @param {VisitorClientContext} context
  * @param {boolean} [in_jsx_child]
  * @returns {TsrxTsViewNode}
@@ -3777,10 +3871,10 @@ function build_tsrx_to_ts_expression(node, context, in_jsx_child = false) {
 	// emit. Render position never sets `tsrx_generated_wrapper`, so it is unaffected;
 	// authored `<> … </>` (no wrapper flag) keeps flowing through the normal path.
 	if (node.metadata?.tsrx_generated_wrapper === true) {
-		const only = (node.children || []).find(
-			(/** @type {any} */ child) => child && child.type !== 'EmptyStatement',
+		const only = /** @type {AST.Node | undefined} */ (
+			(node.children || []).find((child) => child && child.type !== 'EmptyStatement')
 		);
-		if (only && /** @type {any} */ (only).metadata?.tsrxDirective) {
+		if (only && is_template_directive(only)) {
 			const value = build_tsrx_ts_directive_value(only, context);
 			return in_jsx_child ? b.jsx_expression_container(value) : value;
 		}
@@ -3794,14 +3888,14 @@ function build_tsrx_to_ts_expression(node, context, in_jsx_child = false) {
 }
 
 /**
- * @param {AST.TSRXExpression | AST.Text} node
+ * @param {ESTreeJSX.JSXExpressionContainer | ESTreeJSX.JSXText} node
  * @returns {AST.NodeWithLocation | undefined}
  */
 function get_tsrx_expression_container_location(node) {
 	if (node.loc) return /** @type {AST.NodeWithLocation} */ (node);
 
 	const expression = /** @type {AST.Expression & Partial<AST.NodeWithLocation>} */ (
-		node.expression
+		/** @type {ESTreeJSX.JSXExpressionContainer} */ (node).expression
 	);
 	if (!expression.loc || node.start == null || node.end == null) {
 		return undefined;
@@ -3844,7 +3938,7 @@ function transform_tsrx_tsx_children(children, context) {
 		pending_statement_children = [];
 	};
 
-	for (const child of children) {
+	for (const child of lower_code_block_children(children, context.state.scopes)) {
 		const transformed = transform_tsrx_tsx_child(child, context);
 		if (transformed === undefined) {
 			pending_statement_children.push(child);
@@ -3871,13 +3965,16 @@ function transform_tsrx_tsx_child(node, context) {
 		return null;
 	}
 
-	if (node.type === 'Text') {
-		const expression = /** @type {AST.Literal} */ (node.expression);
-		const value = String(expression.value ?? '');
+	if (node.type === 'JSXText') {
+		const value = get_template_text_value(node, true);
 		return setLocation(b.jsx_text(value, value), /** @type {AST.NodeWithLocation} */ (node));
 	}
 
-	if (node.type === 'TSRXExpression') {
+	if (node.type === 'JSXExpressionContainer') {
+		// A `{/* comment */}` container renders nothing.
+		if (is_empty_expression_container(node)) {
+			return null;
+		}
 		// An EMPTY fragment that is the container's expression (`<b>{<></>}</b>`) must
 		// stay `<></>`: the `{}` already supplies the wrapper, so the default
 		// `in_jsx_child = false` lowering to a bare `null` drops the source fragment.
@@ -3885,16 +3982,22 @@ function transform_tsrx_tsx_child(node, context) {
 		// lowering (e.g. `{<>{a}</>}` still unwraps to `{a}`). This matches the JSX
 		// targets and how the same fragment survives in an attribute value.
 		const expr = node.expression;
+		// Both fragment shapes carry AST.Node children (the strict estree-jsx
+		// children are a subset).
+		const fragment_children =
+			expr.type === 'JSXFragment' && is_template_fragment(expr)
+				? /** @type {AST.Node[]} */ (expr.children || [])
+				: null;
 		const is_empty_fragment =
-			expr?.type === 'TsrxFragment' &&
-			!(expr.children || []).some(
-				(/** @type {any} */ child) =>
+			fragment_children !== null &&
+			!fragment_children.some(
+				(child) =>
 					child &&
 					child.type !== 'EmptyStatement' &&
-					(child.type !== 'Text' || String(child.expression?.value ?? '') !== ''),
+					(child.type !== 'JSXText' || get_template_text_value(child, true) !== ''),
 			);
 		const expression = is_empty_fragment
-			? build_tsrx_to_ts_expression(/** @type {AST.TsrxFragment} */ (expr), context, true)
+			? build_tsrx_to_ts_expression(/** @type {ESTreeJSX.JSXFragment} */ (expr), context, true)
 			: /** @type {AST.Expression} */ (context.visit(node.expression, context.state));
 		return b.jsx_expression_container(
 			/** @type {AST.Expression} */ (expression),
@@ -3902,7 +4005,7 @@ function transform_tsrx_tsx_child(node, context) {
 		);
 	}
 
-	if (node.type === 'Element') {
+	if (is_template_element(node) || node.type === 'JSXStyleElement') {
 		const expression = transform_ts_child(node, {
 			...context,
 			state: { ...context.state, init: null },
@@ -3912,11 +4015,15 @@ function transform_tsrx_tsx_child(node, context) {
 			: undefined;
 	}
 
-	if (node.type === 'TsrxFragment') {
+	if (is_template_fragment(node)) {
 		// `in_jsx_child` mode already returns a valid JSX child (a fragment, or a
 		// `{expr}` container kept for type visibility), so use it as-is. Only a bare
 		// expression (which can happen in other positions) needs wrapping.
-		const expression = build_tsrx_to_ts_expression(node, context, true);
+		const expression = build_tsrx_to_ts_expression(
+			/** @type {ESTreeJSX.JSXFragment} */ (node),
+			context,
+			true,
+		);
 		if (
 			expression.type === 'JSXElement' ||
 			expression.type === 'JSXFragment' ||
@@ -3939,7 +4046,10 @@ function transform_tsrx_tsx_child(node, context) {
 	// as "Fallthrough case in switch" (7029). Its value form already returns from every case
 	// (with a trailing `return null`), so lower a `@switch` child to its value in render
 	// position too — it renders the matched case's output all the same.
-	if (node.metadata?.tsrxDirective && (context.value_position || node.type === 'SwitchStatement')) {
+	if (
+		is_template_directive(node) &&
+		(context.value_position || node.type === 'JSXSwitchExpression')
+	) {
 		return b.jsx_expression_container(build_tsrx_ts_directive_value(node, context));
 	}
 
@@ -3975,11 +4085,12 @@ function transform_tsrx_ts_render_children(children, context) {
 	/** @type {AST.Statement[]} */
 	const body = [];
 
-	for (const child of children) {
+	for (const child of lower_code_block_children(children, context.state.scopes)) {
 		if (child == null || child.type === 'EmptyStatement') continue;
 
 		if (is_template_or_control_flow(child)) {
 			if (
+				is_template_directive(child) ||
 				child.type === 'IfStatement' ||
 				child.type === 'ForOfStatement' ||
 				child.type === 'SwitchStatement' ||
@@ -4044,12 +4155,12 @@ function statement_definitely_returns(statement) {
 }
 
 /**
- * @param {AST.IfStatement | AST.ForOfStatement | AST.SwitchStatement | AST.TryStatement} node
+ * @param {AST.JSXIfExpression | AST.JSXForExpression | AST.JSXSwitchExpression | AST.JSXTryExpression | AST.IfStatement | AST.ForOfStatement | AST.SwitchStatement | AST.TryStatement} node
  * @param {VisitorClientContext} context
  * @returns {AST.Statement}
  */
 function transform_tsrx_ts_render_control_flow_statement(node, context) {
-	if (node.type === 'IfStatement') {
+	if (node.type === 'JSXIfExpression' || node.type === 'IfStatement') {
 		const consequent_scope =
 			/** @type {ScopeInterface} */ (context.state.scopes.get(node.consequent)) ||
 			context.state.scope;
@@ -4093,7 +4204,10 @@ function transform_tsrx_ts_render_control_flow_statement(node, context) {
 		);
 	}
 
-	if (node.type === 'ForOfStatement') {
+	if (
+		node.type === 'ForOfStatement' ||
+		(node.type === 'JSXForExpression' && node.statementType === 'ForOfStatement')
+	) {
 		const body_scope = /** @type {ScopeInterface} */ (context.state.scopes.get(node.body));
 		const block_body = transform_tsrx_ts_render_children(
 			/** @type {AST.BlockStatement} */ (node.body).body,
@@ -4125,8 +4239,8 @@ function transform_tsrx_ts_render_control_flow_statement(node, context) {
 				: null;
 
 		const result = b.for_of(
-			/** @type {AST.Pattern} */ (context.visit(node.left)),
-			/** @type {AST.Expression} */ (context.visit(node.right)),
+			/** @type {AST.Pattern} */ (context.visit(/** @type {AST.Node} */ (node.left))),
+			/** @type {AST.Expression} */ (context.visit(/** @type {AST.Node} */ (node.right))),
 			b.block(block_body),
 			node.await,
 			/** @type {AST.NodeWithLocation} */ (node),
@@ -4135,7 +4249,7 @@ function transform_tsrx_ts_render_control_flow_statement(node, context) {
 		return result;
 	}
 
-	if (node.type === 'SwitchStatement') {
+	if (node.type === 'SwitchStatement' || node.type === 'JSXSwitchExpression') {
 		const cases = node.cases.map((switch_case) => {
 			const consequent_scope =
 				context.state.scopes.get(switch_case.consequent) || context.state.scope;
@@ -4170,54 +4284,57 @@ function transform_tsrx_ts_render_control_flow_statement(node, context) {
 		);
 	}
 
-	const try_scope = /** @type {ScopeInterface} */ (context.state.scopes.get(node.block));
+	const try_node = /** @type {AST.TryStatement | AST.JSXTryExpression} */ (node);
+	const try_scope = /** @type {ScopeInterface} */ (context.state.scopes.get(try_node.block));
 	const try_body = b.block(
-		transform_tsrx_ts_render_children(node.block.body, {
+		transform_tsrx_ts_render_children(try_node.block.body, {
 			...context,
 			state: { ...context.state, scope: try_scope },
 		}),
-		/** @type {AST.NodeWithLocation} */ (node.block),
+		/** @type {AST.NodeWithLocation} */ (try_node.block),
 	);
 
 	let catch_handler = null;
-	if (node.handler) {
-		const catch_scope = /** @type {ScopeInterface} */ (context.state.scopes.get(node.handler.body));
+	if (try_node.handler) {
+		const catch_scope = /** @type {ScopeInterface} */ (
+			context.state.scopes.get(try_node.handler.body)
+		);
 		catch_handler = b.catch_clause(
-			node.handler.param || null,
-			node.handler.resetParam || null,
+			try_node.handler.param || null,
+			try_node.handler.resetParam || null,
 			b.block(
-				transform_tsrx_ts_render_children(node.handler.body.body, {
+				transform_tsrx_ts_render_children(try_node.handler.body.body, {
 					...context,
 					state: { ...context.state, scope: catch_scope },
 				}),
-				/** @type {AST.NodeWithLocation} */ (node.handler.body),
+				/** @type {AST.NodeWithLocation} */ (try_node.handler.body),
 			),
-			/** @type {AST.NodeWithLocation} */ (node.handler),
+			/** @type {AST.NodeWithLocation} */ (try_node.handler),
 		);
 	}
 
-	const pending = node.pending
+	const pending = try_node.pending
 		? b.block(
-				transform_tsrx_ts_render_children(node.pending.body, {
+				transform_tsrx_ts_render_children(try_node.pending.body, {
 					...context,
 					state: {
 						...context.state,
-						scope: /** @type {ScopeInterface} */ (context.state.scopes.get(node.pending)),
+						scope: /** @type {ScopeInterface} */ (context.state.scopes.get(try_node.pending)),
 					},
 				}),
-				/** @type {AST.NodeWithLocation} */ (node.pending),
+				/** @type {AST.NodeWithLocation} */ (try_node.pending),
 			)
 		: null;
-	const finalizer = node.finalizer
+	const finalizer = try_node.finalizer
 		? b.block(
-				transform_body(node.finalizer.body, {
+				transform_body(try_node.finalizer.body, {
 					...context,
 					state: {
 						...context.state,
-						scope: /** @type {ScopeInterface} */ (context.state.scopes.get(node.finalizer)),
+						scope: /** @type {ScopeInterface} */ (context.state.scopes.get(try_node.finalizer)),
 					},
 				}),
-				/** @type {AST.NodeWithLocation} */ (node.finalizer),
+				/** @type {AST.NodeWithLocation} */ (try_node.finalizer),
 			)
 		: null;
 
@@ -4232,12 +4349,13 @@ function transform_tsrx_ts_render_control_flow_statement(node, context) {
  * LEAF is returned, so the value is not a void IIFE. Render position never reaches
  * here — only the generated value-wrapper fragment does (see
  * `build_tsrx_to_ts_expression`).
- * @param {any} node
+ * @param {AST.JSXTemplateDirective | AST.IfStatement} node — a directive, or a
+ * plain `IfStatement` link of an `@else if` chain (the recursion below)
  * @param {VisitorClientContext} context
  * @returns {AST.Expression}
  */
 function build_tsrx_ts_directive_value(node, context) {
-	const scoped = (/** @type {AST.Node} */ scope_node) => ({
+	const scoped = (/** @type {AST.Node | AST.Node[]} */ scope_node) => ({
 		...context,
 		// Everything lowered as a directive's branch/case value is value content, so a
 		// directive nested in a fragment here lowers to a value (see transform_tsrx_tsx_child).
@@ -4250,7 +4368,7 @@ function build_tsrx_ts_directive_value(node, context) {
 	});
 	// Combine a render expression into a JSX child so multiple siblings can be
 	// merged into one fragment.
-	const to_fragment_child = (/** @type {any} */ expr) =>
+	const to_fragment_child = (/** @type {TsrxTsViewNode} */ expr) =>
 		expr?.type === 'JSXElement' ||
 		expr?.type === 'JSXFragment' ||
 		expr?.type === 'JSXText' ||
@@ -4266,16 +4384,16 @@ function build_tsrx_ts_directive_value(node, context) {
 	// kept before the return so they share the IIFE scope.
 	const branch_returning_body = (
 		/** @type {AST.Node[]} */ body,
-		/** @type {AST.Node} */ scope_node,
+		/** @type {AST.Node | AST.Node[]} */ scope_node,
 	) => {
 		const ctx = scoped(scope_node);
 		/** @type {AST.Statement[]} */
 		const setup = [];
 		/** @type {any[]} */
 		const renders = [];
-		for (const stmt of body) {
+		for (const stmt of lower_code_block_children(body, context.state.scopes)) {
 			if (stmt == null || stmt.type === 'EmptyStatement') continue;
-			if (/** @type {any} */ (stmt).metadata?.tsrxDirective) {
+			if (is_template_directive(stmt)) {
 				// A nested directive is render content here — lower it to its own value.
 				renders.push(to_fragment_child(build_tsrx_ts_directive_value(stmt, scoped(stmt))));
 				continue;
@@ -4306,13 +4424,15 @@ function build_tsrx_ts_directive_value(node, context) {
 		return b.call(b.thunk(b.block(stmts)));
 	};
 
-	if (node.type === 'IfStatement') {
+	// An `@else if` chain link recurses here as a plain `IfStatement` — it
+	// lowers exactly like the rooting `@if`, to the ternary's next arm.
+	if (node.type === 'JSXIfExpression' || node.type === 'IfStatement') {
 		const cons_body =
 			node.consequent.type === 'BlockStatement' ? node.consequent.body : [node.consequent];
 		const consequent = branch_value(cons_body, node.consequent);
 		let alternate = /** @type {AST.Expression} */ (b.literal(null));
 		if (node.alternate) {
-			const alt = /** @type {any} */ (node.alternate);
+			const alt = node.alternate;
 			alternate =
 				alt.type === 'IfStatement'
 					? build_tsrx_ts_directive_value(alt, scoped(alt))
@@ -4325,13 +4445,16 @@ function build_tsrx_ts_directive_value(node, context) {
 		);
 	}
 
-	if (node.type === 'ForOfStatement') {
+	if (
+		node.type === 'JSXForExpression' &&
+		(node.statementType === 'ForOfStatement' || node.statementType === 'ForInStatement')
+	) {
 		// `@for await` iterates an AsyncIterable, which `Array.from` does NOT accept.
 		// Accumulate with a real `for await` loop instead (the runtime renders via
 		// `_$_.for`; this is the to_ts type view only). Await the async IIFE so the
 		// binding types as the item array, not a `Promise` — the enclosing component is
 		// async, since `for await` requires it.
-		if (node.await) {
+		if (node.statementType === 'ForOfStatement' && node.await) {
 			const items_id = b.id('$$items');
 			/** @type {AST.Statement[]} */
 			const loop_body = [];
@@ -4389,7 +4512,7 @@ function build_tsrx_ts_directive_value(node, context) {
 		// `node.left` is a `const x` VariableDeclaration; the `.map` callback needs the
 		// bare pattern (`x`), not the declaration statement. `; index i` becomes the
 		// callback's second parameter (`(x, i)`), not a dropped reference.
-		const left = /** @type {any} */ (node.left);
+		const left = node.left;
 		const param = left.type === 'VariableDeclaration' ? left.declarations[0].id : left;
 		const params = [/** @type {AST.Pattern} */ (context.visit(param))];
 		if (node.index) {
@@ -4428,8 +4551,8 @@ function build_tsrx_ts_directive_value(node, context) {
 		return b.call(b.member(items(), b.id('map')), map_arrow);
 	}
 
-	if (node.type === 'SwitchStatement') {
-		const cases = node.cases.map((/** @type {any} */ sc) =>
+	if (node.type === 'JSXSwitchExpression') {
+		const cases = node.cases.map((sc) =>
 			b.switch_case(
 				sc.test ? /** @type {AST.Expression} */ (context.visit(sc.test)) : null,
 				branch_returning_body(flatten_switch_consequent(sc.consequent), sc.consequent),
@@ -4443,36 +4566,43 @@ function build_tsrx_ts_directive_value(node, context) {
 		return b.call(b.thunk(b.block([switch_stmt, b.return(b.literal(null))])));
 	}
 
-	// TryStatement: try/catch/pending leaves return; a `finally` must not.
-	const try_body = b.block(
-		branch_returning_body(node.block.body, node.block),
-		/** @type {AST.NodeWithLocation} */ (node.block),
-	);
-	let catch_handler = null;
-	if (node.handler) {
-		catch_handler = b.catch_clause(
-			node.handler.param || null,
-			node.handler.resetParam || null,
-			b.block(
-				branch_returning_body(node.handler.body.body, node.handler.body),
-				/** @type {AST.NodeWithLocation} */ (node.handler.body),
-			),
-			/** @type {AST.NodeWithLocation} */ (node.handler),
+	if (node.type === 'JSXTryExpression') {
+		// TryStatement: try/catch/pending leaves return; a `finally` must not.
+		const try_body = b.block(
+			branch_returning_body(node.block.body, node.block),
+			/** @type {AST.NodeWithLocation} */ (node.block),
 		);
+		let catch_handler = null;
+		if (node.handler) {
+			catch_handler = b.catch_clause(
+				node.handler.param || null,
+				node.handler.resetParam || null,
+				b.block(
+					branch_returning_body(node.handler.body.body, node.handler.body),
+					/** @type {AST.NodeWithLocation} */ (node.handler.body),
+				),
+				/** @type {AST.NodeWithLocation} */ (node.handler),
+			);
+		}
+		const pending = node.pending
+			? b.block(
+					branch_returning_body(node.pending.body, node.pending),
+					/** @type {AST.NodeWithLocation} */ (node.pending),
+				)
+			: null;
+		const finalizer = node.finalizer
+			? b.block(
+					transform_body(node.finalizer.body, scoped(node.finalizer)),
+					/** @type {AST.NodeWithLocation} */ (node.finalizer),
+				)
+			: null;
+		return b.call(b.thunk(b.block([b.try(try_body, catch_handler, finalizer, pending)])));
 	}
-	const pending = node.pending
-		? b.block(
-				branch_returning_body(node.pending.body, node.pending),
-				/** @type {AST.NodeWithLocation} */ (node.pending),
-			)
-		: null;
-	const finalizer = node.finalizer
-		? b.block(
-				transform_body(node.finalizer.body, scoped(node.finalizer)),
-				/** @type {AST.NodeWithLocation} */ (node.finalizer),
-			)
-		: null;
-	return b.call(b.thunk(b.block([b.try(try_body, catch_handler, finalizer, pending)])));
+
+	// Only `@for (;;)` remains — it renders repeatedly with no item binding, so
+	// it has no value form (previously this fell into the `@try` lowering and
+	// crashed on the missing `block`).
+	throw new Error('A `@for (;;)` directive cannot be used as a value.');
 }
 
 /**
@@ -4482,31 +4612,53 @@ function build_tsrx_ts_directive_value(node, context) {
 function transform_ts_child(node, context) {
 	const { state, visit } = context;
 
-	if (node.type === 'TSRXExpression' || node.type === 'Text') {
-		state.init?.push(b.stmt(/** @type {AST.Expression} */ (visit(node.expression, { ...state }))));
-	} else if (node.type === 'Element') {
-		if (lower_dynamic_element(node)) {
+	if (is_template_text_or_expression(node)) {
+		if (is_empty_expression_container(node)) {
+			return;
+		}
+		state.init?.push(
+			b.stmt(
+				/** @type {AST.Expression} */ (visit(get_template_expression(node, true), { ...state })),
+			),
+		);
+	} else if (node.type === 'JSXStyleElement') {
+		// to_ts: emit an empty `<style>` element for type-only mappings. The CSS
+		// children are TSRX stylesheet AST, never printed as TSX children, and
+		// style attributes were never carried over.
+		const jsxElement = b.jsx_element(node, [], []);
+		disable_style_anchor_verification(jsxElement);
+		if (!state.init) {
+			return jsxElement;
+		}
+		if (node.unclosed) {
+			state.init?.push(/** @type {AST.Statement} */ (/** @type {unknown} */ (jsxElement)));
+		} else {
+			state.init?.push(b.stmt(jsxElement));
+		}
+	} else if (is_template_element(node)) {
+		// is_template_element stays a boolean predicate — narrow the element once.
+		let element = /** @type {AST.TSRXJSXElement} */ (node);
+		const lowered = lower_dynamic_element(element, undefined, state.scopes);
+		if (lowered) {
 			state.imports.add(`import { Dynamic as ${dynamic_element_import_local} } from 'ripple'`);
+			element = lowered;
 		}
 
-		/** @type {ESTreeJSX.JSXElement['children']} */
+		/** @type {TsrxTsxChild[]} */
 		const children = [];
 		let has_children_props = false;
-		const is_dom_element = is_element_dom_element(node);
-		const element_name =
-			/** @type {AST.Node} */ (node.id).type === 'Identifier'
-				? /** @type {AST.Identifier} */ (node.id).name
-				: null;
+		const is_dom_element = is_element_dom_element(element);
+		const element_name = get_element_identifier(element)?.name ?? null;
 		const child_namespace =
 			is_dom_element && element_name !== null
 				? determine_namespace_for_children(element_name, state.namespace)
 				: state.namespace;
 
-		const attributes = node.attributes.map((attr) => {
-			if (attr.type === 'Attribute') {
-				const name = visit(attr.name, state);
+		const attributes = get_element_attributes(element).map((attr) => {
+			if (attr.type === 'JSXAttribute') {
+				const name = visit(get_attribute_name_node(attr), state);
 				const attr_value = /** @type { AST.Expression & AST.NodeWithLocation | null} */ (
-					attr.value
+					get_attribute_value(attr)
 				);
 				/** @type {string} */
 				let prop_name;
@@ -4516,11 +4668,11 @@ function transform_ts_child(node, context) {
 					name_node = name;
 					prop_name = name.name;
 				} else {
-					name_node = attr.name;
-					prop_name = attr.name.name || 'unknown';
+					name_node = get_attribute_name_node(attr);
+					prop_name = get_attribute_name(attr) || 'unknown';
 				}
 				const ref_target_type =
-					prop_name === 'ref' ? create_element_ref_target_type(node, state) : null;
+					prop_name === 'ref' ? create_element_ref_target_type(element, state) : null;
 				const value =
 					attr_value === null
 						? // <div attr>, not adding `name` for loc because `jsx_name` below
@@ -4544,7 +4696,7 @@ function transform_ts_child(node, context) {
 					jsx_name,
 					// match the source code usage of expressions for literals
 					// for proper source mapping to avoid turning strings into expressions
-					attr_value?.type === 'Literal' && !attr_value.was_expression
+					attr_value?.type === 'Literal' && !is_expression_attribute(attr)
 						? /** @type {AST.Literal} */ (value)
 						: b.jsx_expression_container(
 								/** @type {AST.Expression} */ (value),
@@ -4570,7 +4722,7 @@ function transform_ts_child(node, context) {
 					/** @type {AST.NodeWithLocation} */ (attr),
 				);
 				return jsx_attr;
-			} else if (attr.type === 'SpreadAttribute') {
+			} else if (attr.type === 'JSXSpreadAttribute') {
 				const argument = visit(attr.argument, state);
 				return b.jsx_spread_attribute(
 					/** @type {AST.Expression} */ (argument),
@@ -4578,12 +4730,17 @@ function transform_ts_child(node, context) {
 				);
 			} else {
 				// Should not happen
-				throw new Error(`Unexpected attribute type: ${/** @type {AST.Attribute} */ (attr).type}`);
+				throw new Error(`Unexpected attribute type: ${/** @type {AST.Node} */ (attr).type}`);
 			}
 		});
 
-		if (!node.selfClosing && !node.unclosed && !has_children_props && node.children.length > 0) {
-			const component_scope = /** @type {ScopeInterface} */ (context.state.scopes.get(node));
+		if (
+			!is_self_closing(element) &&
+			!element.unclosed &&
+			!has_children_props &&
+			element.children.length > 0
+		) {
+			const component_scope = /** @type {ScopeInterface} */ (context.state.scopes.get(element));
 			const child_context = {
 				...context,
 				state: {
@@ -4597,7 +4754,7 @@ function transform_ts_child(node, context) {
 			const thunk =
 				element_name === 'style' || is_dom_element
 					? null
-					: b.thunk(b.block(transform_body(node.children, child_context)));
+					: b.thunk(b.block(transform_body(element.children, child_context)));
 
 			if (element_name === 'style') {
 				// CSS children are TSRX stylesheet AST, not TSX children. Keep the
@@ -4605,7 +4762,7 @@ function transform_ts_child(node, context) {
 			} else if (is_dom_element) {
 				children.push(
 					...transform_tsrx_tsx_children(
-						/** @type {AST.Node[]} */ (node.children),
+						/** @type {AST.Node[]} */ (element.children),
 						/** @type {VisitorClientContext} */ (child_context),
 					),
 				);
@@ -4614,26 +4771,33 @@ function transform_ts_child(node, context) {
 			}
 		}
 
-		if (node.id.type === 'MemberExpression') {
-			const member = /** @type {AST.MemberExpression} */ (visit(node.id, { ...state }));
+		let element_source = element;
 
-			node.id = member;
-			/** @type {ESTreeJSX.TSRXJSXOpeningElement} */ (node.openingElement).name = member;
-			if (node.closingElement) {
-				/** @type {ESTreeJSX.TSRXJSXClosingElement} */ (node.closingElement).name = setLocation(
-					{ ...member },
-					/** @type {AST.NodeWithLocation} */ (node.closingElement.name),
-					true,
-				);
-			}
+		if (get_element_id(element).type === 'MemberExpression') {
+			const member = /** @type {AST.MemberExpression} */ (
+				visit(get_element_id(element), { ...state })
+			);
+
+			// Plant the visited member tag on local copies for the printer — the
+			// source element is never mutated.
+			const opening = /** @type {ESTreeJSX.TSRXJSXOpeningElement} */ ({
+				...element.openingElement,
+				name: member,
+			});
+			const closing = element.closingElement
+				? /** @type {ESTreeJSX.TSRXJSXClosingElement} */ ({
+						...element.closingElement,
+						name: setLocation(
+							{ ...member },
+							/** @type {AST.NodeWithLocation} */ (element.closingElement.name),
+							true,
+						),
+					})
+				: null;
+			element_source = { ...element, openingElement: opening, closingElement: closing };
 		}
 
-		/** @type {ESTreeJSX.JSXElement} */
-		const jsxElement = b.jsx_element(
-			/** @type {ESTreeJSX.JSXElement} */ (/** @type {unknown} */ (node)),
-			attributes,
-			children,
-		);
+		const jsxElement = b.jsx_element(element_source, attributes, children);
 		if (element_name === 'style') {
 			disable_style_anchor_verification(jsxElement);
 		}
@@ -4644,12 +4808,12 @@ function transform_ts_child(node, context) {
 
 		// For unclosed elements, push the JSXElement directly without wrapping in ExpressionStatement
 		// This keeps it in the AST for mappings but avoids adding a semicolon
-		if (node.unclosed) {
+		if (element.unclosed) {
 			state.init?.push(/** @type {AST.Statement} */ (/** @type {unknown} */ (jsxElement)));
 		} else {
 			state.init?.push(b.stmt(jsxElement));
 		}
-	} else if (node.type === 'IfStatement') {
+	} else if (node.type === 'IfStatement' || node.type === 'JSXIfExpression') {
 		const consequent_scope =
 			/** @type {ScopeInterface} */ (context.state.scopes.get(node.consequent)) ||
 			context.state.scope;
@@ -4693,7 +4857,7 @@ function transform_ts_child(node, context) {
 			return result;
 		}
 		state.init.push(result);
-	} else if (node.type === 'SwitchStatement') {
+	} else if (node.type === 'SwitchStatement' || node.type === 'JSXSwitchExpression') {
 		const cases = [];
 
 		for (const switch_case of node.cases) {
@@ -4729,7 +4893,10 @@ function transform_ts_child(node, context) {
 			return result;
 		}
 		state.init.push(result);
-	} else if (node.type === 'ForOfStatement') {
+	} else if (
+		node.type === 'ForOfStatement' ||
+		(node.type === 'JSXForExpression' && node.statementType === 'ForOfStatement')
+	) {
 		const body_scope = /** @type {ScopeInterface} */ (context.state.scopes.get(node.body));
 		const block_body = transform_body(/** @type {AST.BlockStatement} */ (node.body).body, {
 			...context,
@@ -4769,7 +4936,7 @@ function transform_ts_child(node, context) {
 			return result;
 		}
 		state.init.push(result);
-	} else if (node.type === 'TryStatement') {
+	} else if (node.type === 'TryStatement' || node.type === 'JSXTryExpression') {
 		const try_scope = /** @type {ScopeInterface} */ (context.state.scopes.get(node.block));
 		const try_body = b.block(
 			transform_body(node.block.body, {
@@ -4847,29 +5014,21 @@ function transform_ts_child(node, context) {
 			return result;
 		}
 		state.init.push(/** @type {AST.Statement} */ (result));
-	} else if (node.type === 'TsrxFragment') {
-		let result = build_tsrx_to_ts_expression(node, context);
+	} else if (is_template_fragment(node)) {
+		// is_template_fragment stays a boolean predicate — narrow once.
+		const fragment = /** @type {AST.TSRXJSXFragment} */ (node);
+		let result = build_tsrx_to_ts_expression(fragment, context);
 		// Keep an AUTHORED `<> … </>` here too (a render-output / control-flow branch
 		// body, e.g. the `<>{[1,2,3]}</>` branch of an `@if`), so it is not unwrapped to
 		// a bare `[1,2,3]`. The fragment's contents (including any `<style>`) are already
 		// lowered by `build_tsrx_to_ts_expression`; this only re-adds the `<> … </>`.
-		if (is_authored_native_fragment(node)) {
-			result = wrap_to_ts_value_in_fragment(result, node);
+		if (is_authored_native_fragment(fragment)) {
+			result = wrap_to_ts_value_in_fragment(result, fragment);
 		}
 		if (!state.init) {
 			return result;
 		}
 		state.init.push(b.stmt(/** @type {AST.Expression} */ (result)));
-	} else if (node.type === 'JSXExpressionContainer') {
-		// JSX comments {/* ... */} are JSXExpressionContainer with JSXEmptyExpression
-		// These should be preserved in the output as-is for prettier to handle
-		const result = b.jsx_expression_container(
-			/** @type {AST.Expression} */ (visit(node.expression, state)),
-		);
-		if (!state.init) {
-			return result;
-		}
-		state.init.push(/** @type {AST.Statement} */ (/** @type {unknown} */ (result)));
 	} else if (node.type === 'ReturnStatement') {
 		const result = b.return(
 			node.argument ? /** @type {AST.Expression} */ (visit(node.argument, state)) : undefined,
@@ -4906,10 +5065,12 @@ function is_template_or_control_flow(node) {
 	}
 
 	return (
-		node.type === 'Element' ||
-		node.type === 'TSRXExpression' ||
-		node.type === 'Text' ||
-		node.type === 'TsrxFragment' ||
+		is_template_element(node) ||
+		node.type === 'JSXStyleElement' ||
+		node.type === 'JSXExpressionContainer' ||
+		node.type === 'JSXText' ||
+		is_template_fragment(node) ||
+		is_template_directive(node) ||
 		node.type === 'IfStatement' ||
 		node.type === 'ForOfStatement' ||
 		node.type === 'TryStatement' ||
@@ -4957,7 +5118,8 @@ function is_native_tsrx_statement_position(path) {
 		parent?.type === 'DoWhileStatement' ||
 		parent?.type === 'TryStatement' ||
 		parent?.type === 'SwitchStatement' ||
-		parent?.type === 'LabeledStatement'
+		parent?.type === 'LabeledStatement' ||
+		is_template_directive(parent)
 	);
 }
 
@@ -4969,8 +5131,8 @@ function is_native_tsrx_value_position(path) {
 	const parent = path.at(-1);
 	return !(
 		is_native_tsrx_statement_position(path) ||
-		parent?.type === 'Element' ||
-		parent?.type === 'TsrxFragment'
+		is_template_element(parent) ||
+		is_template_fragment(parent)
 	);
 }
 
@@ -4989,12 +5151,12 @@ function is_native_tsrx_value_position(path) {
  * An AUTHORED `<> … </>` fragment (not a compiler-generated wrapper around a
  * directive, nor a code-block-chain wrapper). These are kept verbatim in the
  * to_ts output instead of being unwrapped to their single child.
- * @param {any} node
+ * @param {AST.Node | null | undefined} node
  * @returns {boolean}
  */
 function is_authored_native_fragment(node) {
 	return (
-		node?.type === 'TsrxFragment' &&
+		node?.type === 'JSXFragment' &&
 		node.metadata?.native_tsrx === true &&
 		node.metadata?.tsrx_generated_wrapper !== true &&
 		node.metadata?.tsrx_code_block_chain !== true
@@ -5007,17 +5169,25 @@ function is_authored_native_fragment(node) {
  * @returns {boolean}
  */
 function is_combined_expression_position(path, node) {
-	const parent = /** @type {any} */ (path.at(-1));
-	if (!parent || !isTemplateValuePosition(parent, node)) return false;
+	let parent = path.at(-1);
+	let slot_node = node;
+	// A generated value wrapper is visited FROM its directive's visitor, so the
+	// directive sits atop the path — the wrapper stands in the directive's
+	// slot, so judge the position against the directive's own parent.
+	if (parent?.metadata?.tsrx_value_wrapper === node) {
+		slot_node = parent;
+		parent = path.at(-2);
+	}
+	if (!parent || !isTemplateValuePosition(parent, slot_node)) return false;
 	switch (parent.type) {
 		// Sole-value render-output slots: the collapse is invisible, keep it.
 		case 'VariableDeclarator':
-			return parent.init !== node;
+			return parent.init !== slot_node;
 		case 'AssignmentExpression':
-			return parent.right !== node;
+			return parent.right !== slot_node;
 		case 'CallExpression':
 		case 'NewExpression':
-			return !(Array.isArray(parent.arguments) && parent.arguments.includes(node));
+			return !parent.arguments.some((argument) => argument === slot_node);
 		default:
 			return true;
 	}
@@ -5029,9 +5199,9 @@ function is_combined_expression_position(path, node) {
  * `is_combined_expression_position`). A value that is already a fragment is left
  * as-is; a JSX element/text/container nests directly; any other expression goes in
  * a `{ … }` container.
- * @param {any} expression
+ * @param {TsrxTsViewNode} expression
  * @param {AST.Node} source
- * @returns {any}
+ * @returns {TsrxTsViewNode}
  */
 function wrap_to_ts_value_in_fragment(expression, source) {
 	if (expression?.type === 'JSXFragment') return expression;
@@ -5062,7 +5232,6 @@ function build_native_tsrx_value_expression(children, source_node, context) {
 			delete metadata.regular_js;
 			return { ...child, metadata };
 		});
-	apply_tsrx_css_scoping(children_filtered, state);
 
 	const children_component = create_native_tsrx_render_function([], children_filtered, source_node);
 
@@ -5090,53 +5259,52 @@ function build_native_tsrx_value_expression(children, source_node, context) {
  * - Dynamic text children (non-Literal Text nodes)
  * - Non-DOM element children (components)
  * - Dynamic descendants (recursive)
- * @param {AST.Element} element
+ * @param {ESTreeJSX.JSXElement} element
  * @returns {boolean}
  */
 function element_has_dynamic_content(element) {
 	// Check for dynamic attributes
-	for (const attr of element.attributes) {
-		if (attr.type === 'Attribute') {
+	for (const attr of get_element_attributes(element)) {
+		if (attr.type === 'JSXAttribute') {
+			const attr_value = get_attribute_value(attr);
 			// Dynamic value expression (not null, not Literal)
-			if (attr.value !== null && attr.value.type !== 'Literal') {
+			if (attr_value !== null && attr_value.type !== 'Literal') {
 				return true;
 			}
-		} else if (attr.type === 'SpreadAttribute') {
+		} else if (attr.type === 'JSXSpreadAttribute') {
 			return true;
 		}
 	}
 
 	// Check children for dynamic content
-	for (const child of element.children) {
+	for (const child of lower_code_block_children(/** @type {AST.Node[]} */ (element.children))) {
 		if (
+			is_template_directive(child) ||
 			child.type === 'IfStatement' ||
 			child.type === 'TryStatement' ||
 			child.type === 'ForOfStatement' ||
 			child.type === 'SwitchStatement' ||
-			child.type === 'TsrxFragment'
+			is_template_fragment(child)
 		) {
 			return true;
 		}
-		if (
-			(child.type === 'TSRXExpression' || child.type === 'Text') &&
-			child.expression.type !== 'Literal'
-		) {
+		if (child.type === 'JSXExpressionContainer' && child.expression.type !== 'Literal') {
 			return true;
 		}
 		// Non-DOM element (component)
 		if (
-			child.type === 'Element' &&
-			(child.id.type !== 'Identifier' || !is_element_dom_element(child))
+			is_template_element(child) &&
+			(get_element_id(child).type !== 'Identifier' || !is_element_dom_element(child))
 		) {
 			return true;
 		}
 		// Recursively check DOM element children
 		if (
-			child.type === 'Element' &&
-			child.id.type === 'Identifier' &&
+			is_template_element(child) &&
+			get_element_id(child).type === 'Identifier' &&
 			is_element_dom_element(child)
 		) {
-			if (element_has_dynamic_content(child)) {
+			if (element_has_dynamic_content(/** @type {ESTreeJSX.JSXElement} */ (child))) {
 				return true;
 			}
 		}
@@ -5151,7 +5319,7 @@ function element_has_dynamic_content(element) {
  * goes into template.content (a DocumentFragment). We handle them like textarea
  * elements where children become innerHTML content.
  *
- * @param {AST.Element} node - The template element node
+ * @param {ESTreeJSX.JSXElement | AST.TSRXJSXElement} node - The template element node
  * @param {TransformClientState} state - The transform state
  * @param {(node: AST.Node, state?: TransformClientState) => AST.Node} visit - The visitor function
  * @param {'html' | 'svg' | 'mathml'} child_namespace - The namespace for child elements
@@ -5167,7 +5335,7 @@ function transform_template_element(node, state, visit, child_namespace) {
 	});
 
 	transform_children(
-		node.children,
+		/** @type {AST.Node[]} */ (node.children),
 		/** @type {VisitorClientContext} */ ({
 			visit,
 			state: child_state,
@@ -5198,33 +5366,38 @@ function transform_template_element(node, state, visit, child_namespace) {
 function transform_children(children, context) {
 	const { visit, state, root } = context;
 	if (state.to_ts) {
-		for (const child of children) {
-			if (child.type === 'Element' && lower_dynamic_element(child)) {
+		children = children.map((child) => {
+			const lowered = is_template_element(child)
+				? lower_dynamic_element(/** @type {AST.TSRXJSXElement} */ (child), undefined, state.scopes)
+				: null;
+			if (lowered) {
 				state.imports.add(`import { Dynamic as ${dynamic_element_import_local} } from 'ripple'`);
 			}
-		}
+			return lowered ?? child;
+		});
 	}
 	const normalized = normalize_children(children, {
 		...context,
 		state: { ...state, keep_component_style: state.to_ts ? true : state.keep_component_style },
 	});
 
-	const head_elements = /** @type {AST.Element[]} */ (
+	const head_elements = /** @type {ESTreeJSX.JSXElement[]} */ (
 		children.filter(
-			(node) => node.type === 'Element' && node.id.type === 'Identifier' && node.id.name === 'head',
+			(node) => is_template_element(node) && get_element_identifier(node)?.name === 'head',
 		)
 	);
 
 	const is_fragment =
 		normalized.some(
 			(node) =>
+				is_template_directive(node) ||
 				node.type === 'IfStatement' ||
 				node.type === 'TryStatement' ||
 				node.type === 'ForOfStatement' ||
 				node.type === 'SwitchStatement' ||
-				node.type === 'TsrxFragment' ||
-				(node.type === 'Element' &&
-					(node.id.type !== 'Identifier' || !is_element_dom_element(node))),
+				is_template_fragment(node) ||
+				(is_template_element(node) &&
+					(get_element_id(node).type !== 'Identifier' || !is_element_dom_element(node))),
 		) ||
 		(normalized.filter(
 			(node) =>
@@ -5234,8 +5407,11 @@ function transform_children(children, context) {
 		).length === 1 &&
 			normalized.some(
 				(node) =>
-					node.type === 'TSRXExpression' &&
-					is_children_template_expression(node.expression, state.scope),
+					is_template_expression(node) &&
+					is_children_template_expression(
+						/** @type {ESTreeJSX.JSXExpressionContainer} */ (node).expression,
+						state.scope,
+					),
 			)) ||
 		// At root level, non-literal expressions need a fragment template so the
 		// anchor has a parent node. Without a parent, expression()'s .before() call
@@ -5243,8 +5419,8 @@ function transform_children(children, context) {
 		(root &&
 			normalized.some(
 				(node) =>
-					node.type === 'TSRXExpression' &&
-					/** @type {AST.TSRXExpression} */ (node).expression.type !== 'Literal',
+					is_template_expression(node) &&
+					/** @type {ESTreeJSX.JSXExpressionContainer} */ (node).expression.type !== 'Literal',
 			)) ||
 		normalized.filter(
 			(node) =>
@@ -5267,22 +5443,26 @@ function transform_children(children, context) {
 	const single_output = root_output.length === 1 ? root_output[0] : null;
 	const root_controlled =
 		single_output !== null &&
-		(single_output.type === 'IfStatement' ||
+		(is_template_directive(single_output) ||
+			single_output.type === 'IfStatement' ||
 			single_output.type === 'SwitchStatement' ||
 			single_output.type === 'ForOfStatement' ||
 			single_output.type === 'TryStatement' ||
 			// A single static component child (`render_component`, not a dynamic/
 			// composite tag, DOM element, or ripple `Fragment`) renders before
 			// __anchor too.
-			(single_output.type === 'Element' &&
-				single_output.isDynamic !== true &&
-				single_output.id.type === 'Identifier' &&
-				!(/** @type {any} */ (single_output.id).tracked) &&
-				single_output.id.name !== 'children' &&
+			(is_template_element(single_output) &&
+				!is_dynamic_element(single_output) &&
+				get_element_identifier(single_output) !== null &&
+				!get_element_identifier(single_output)?.tracked &&
+				get_element_identifier(single_output)?.name !== 'children' &&
 				!is_element_dom_element(single_output) &&
 				!is_ripple_fragment_element(single_output, context)));
 	if (root_controlled) {
-		/** @type {any} */ (single_output).root_controlled = true;
+		/** @type {AST.Node} */ (single_output).metadata = {
+			.../** @type {AST.Node} */ (single_output).metadata,
+			root_controlled: true,
+		};
 	}
 
 	// All-component children can append directly into the parent element instead of
@@ -5290,14 +5470,17 @@ function transform_children(children, context) {
 	// sentinel as the anchor; append() detects it (no nodeType) and appendChild()s
 	// the component's root, dropping the placeholder comment nodes from the template.
 	/** @param {AST.Node} n */
-	const is_static_component_child = (n) =>
-		n.type === 'Element' &&
-		/** @type {any} */ (n).isDynamic !== true &&
-		n.id.type === 'Identifier' &&
-		!n.id.tracked &&
-		n.id.name !== 'children' &&
-		!is_element_dom_element(n) &&
-		!is_ripple_fragment_element(n, context);
+	const is_static_component_child = (n) => {
+		if (!is_template_element(n) || is_dynamic_element(n)) return false;
+		const id = get_element_identifier(n);
+		return (
+			id !== null &&
+			!id.tracked &&
+			id.name !== 'children' &&
+			!is_element_dom_element(n) &&
+			!is_ripple_fragment_element(n, context)
+		);
+	};
 	const all_component_append =
 		!root &&
 		!root_controlled &&
@@ -5309,21 +5492,25 @@ function transform_children(children, context) {
 		const append_anchor_id = b.id(state.scope.generate('append_anchor'));
 		state.init?.push(b.var(append_anchor_id, b.call('_$_.append_into', parent_id)));
 		for (const child of normalized) {
-			child.append_into = append_anchor_id;
+			child.metadata = { ...child.metadata, append_into: append_anchor_id };
 		}
 	}
 
 	/** @param {AST.Node} node */
 	const get_id = (node) => {
 		return b.id(
-			node.type == 'Element' && is_element_dom_element(node)
-				? state.scope.generate(/** @type {AST.Identifier} */ (node.id).name)
-				: node.type == 'TSRXExpression'
-					? state.scope.generate('expression')
-					: node.type == 'Text'
+			is_template_element(node) && is_element_dom_element(node)
+				? state.scope.generate(/** @type {AST.Identifier} */ (get_element_id(node)).name)
+				: node.type === 'JSXStyleElement'
+					? state.scope.generate('style')
+					: is_template_text(node)
 						? state.scope.generate('text')
-						: state.scope.generate('node'),
-			/** @type {AST.NodeWithLocation} */ (node.type === 'Element' ? node.openingElement : node),
+						: is_template_expression(node)
+							? state.scope.generate('expression')
+							: state.scope.generate('node'),
+			/** @type {AST.NodeWithLocation} */ (
+				is_template_element(node) ? /** @type {AST.TSRXJSXElement} */ (node).openingElement : node
+			),
 		);
 	};
 
@@ -5333,7 +5520,9 @@ function transform_children(children, context) {
 			? b.id(
 					state.scope.generate('fragment'),
 					/** @type {AST.NodeWithLocation} */ (
-						node.type === 'Element' ? node.openingElement : node
+						is_template_element(node)
+							? /** @type {AST.TSRXJSXElement} */ (node).openingElement
+							: node
 					),
 				)
 			: get_id(node);
@@ -5397,10 +5586,14 @@ function transform_children(children, context) {
 			/** @type {AST.Expression | undefined} */
 			let expression = undefined;
 			let is_create_text_only = false;
-			if (node.type === 'TSRXExpression' || node.type === 'Text') {
+			if (is_template_text_or_expression(node)) {
 				metadata = { tracking: false };
 				expression = /** @type {AST.Expression} */ (
-					visit(node.expression, { ...state, flush_node: null, metadata })
+					visit(get_template_expression(node, false), {
+						...state,
+						flush_node: null,
+						metadata,
+					})
 				);
 				is_create_text_only = normalized.length === 1 && expression.type === 'Literal';
 			}
@@ -5508,7 +5701,7 @@ function transform_children(children, context) {
 				}
 			};
 
-			if (node.type === 'Element') {
+			if (is_template_element(node)) {
 				if (is_element_dom_element(node)) {
 					skipped++;
 				} else {
@@ -5534,28 +5727,31 @@ function transform_children(children, context) {
 				// and component (non-DOM element) children. We need to ALSO add pop()
 				// when there are DOM element children, which the Element visitor doesn't cover.
 				const next_node = normalized[node_idx + 1];
-				if (next_node && is_element_dom_element(node) && node.children.length > 0) {
+				const element_children = is_template_element(node)
+					? /** @type {AST.TSRXJSXElement} */ (node).children
+					: [];
+				if (next_node && is_element_dom_element(node) && element_children.length > 0) {
 					// Check if any child is a DOM element - this causes navigation but
 					// the Element visitor doesn't add pop() for it
-					const has_dom_element_children = node.children.some(
+					const has_dom_element_children = element_children.some(
 						(child) =>
-							child.type === 'Element' &&
-							child.id.type === 'Identifier' &&
+							is_template_element(child) &&
+							get_element_identifier(child) !== null &&
 							is_element_dom_element(child),
 					);
 
 					// Check if the Element visitor already added pop()
-					const element_visitor_adds_pop = node.children.some(
+					const element_visitor_adds_pop = element_children.some(
 						(child) =>
+							is_template_directive(child) ||
 							child.type === 'IfStatement' ||
 							child.type === 'TryStatement' ||
 							child.type === 'ForOfStatement' ||
 							child.type === 'SwitchStatement' ||
-							child.type === 'TsrxFragment' ||
-							(child.type === 'Element' &&
-								(child.id.type !== 'Identifier' || !is_element_dom_element(child))) ||
-							((child.type === 'TSRXExpression' || child.type === 'Text') &&
-								child.expression.type !== 'Literal'),
+							is_template_fragment(child) ||
+							(is_template_element(child) &&
+								(get_element_id(child).type !== 'Identifier' || !is_element_dom_element(child))) ||
+							(child.type === 'JSXExpressionContainer' && child.expression.type !== 'Literal'),
 					);
 
 					const has_following_renderable_sibling = normalized
@@ -5577,7 +5773,17 @@ function transform_children(children, context) {
 						state.init?.push(b.stmt(b.call('_$_.pop', id)));
 					}
 				}
-			} else if (node.type === 'TsrxFragment') {
+			} else if (node.type === 'JSXStyleElement') {
+				// A `<style>` in `<head>` renders as a static template element; the
+				// visitor pushes its markup (or nothing outside head).
+				skipped++;
+
+				visit(node, {
+					...state,
+					flush_node: /** @type {TransformClientState['flush_node']} */ (flush_node),
+					namespace: state.namespace,
+				});
+			} else if (is_template_fragment(node)) {
 				skipped = 0;
 
 				visit(node, {
@@ -5585,10 +5791,14 @@ function transform_children(children, context) {
 					flush_node: /** @type {TransformClientState['flush_node']} */ (flush_node),
 					namespace: state.namespace,
 				});
-			} else if (node.type === 'TSRXExpression') {
+			} else if (is_template_expression(node)) {
+				// is_template_expression stays a boolean (its negative would lie
+				// about merged-text containers), so narrow the container once here.
+				const container = /** @type {ESTreeJSX.JSXExpressionContainer} */ (node);
+				const container_expression = /** @type {AST.Expression} */ (container.expression);
 				const expr = /** @type {AST.Expression} */ (expression);
 				const is_static_native_tsrx_call = is_static_native_tsrx_function_call(
-					/** @type {AST.Expression} */ (node.expression),
+					container_expression,
 					/** @type {VisitorClientContext} */ ({ ...context, state }),
 				);
 
@@ -5620,13 +5830,13 @@ function transform_children(children, context) {
 							: b.stmt(call),
 					);
 				} else if (
-					!is_children_template_expression(node.expression, state.scope) &&
-					is_stringish_expression(node.expression, state)
+					!is_children_template_expression(container_expression, state.scope) &&
+					is_stringish_expression(container_expression, state)
 				) {
-					render_text_expression(node.expression, expr);
+					render_text_expression(container_expression, expr);
 				} else if (
 					normalized.length === 1 &&
-					!is_children_template_expression(node.expression, state.scope)
+					!is_children_template_expression(container_expression, state.scope)
 				) {
 					skipped++;
 					state.template?.push(' ');
@@ -5648,35 +5858,44 @@ function transform_children(children, context) {
 							: b.stmt(call),
 					);
 				}
-			} else if (node.type === 'Text') {
-				render_text_expression(node.expression, /** @type {AST.Expression} */ (expression));
-			} else if (node.type === 'ForOfStatement') {
+			} else if (is_template_text(node)) {
+				render_text_expression(
+					get_template_expression(
+						/** @type {ESTreeJSX.JSXText | ESTreeJSX.JSXExpressionContainer} */ (node),
+						false,
+					),
+					/** @type {AST.Expression} */ (expression),
+				);
+			} else if (
+				node.type === 'ForOfStatement' ||
+				(node.type === 'JSXForExpression' && node.statementType === 'ForOfStatement')
+			) {
 				skipped = 0;
-				node.is_controlled = is_controlled;
+				node.metadata = { ...node.metadata, is_controlled };
 				visit(node, {
 					...state,
 					flush_node: /** @type {TransformClientState['flush_node']} */ (flush_node),
 					namespace: state.namespace,
 				});
-			} else if (node.type === 'IfStatement') {
+			} else if (node.type === 'IfStatement' || node.type === 'JSXIfExpression') {
 				skipped = 0;
-				node.is_controlled = is_controlled;
+				node.metadata = { ...node.metadata, is_controlled };
 				visit(node, {
 					...state,
 					flush_node: /** @type {TransformClientState['flush_node']} */ (flush_node),
 					namespace: state.namespace,
 				});
-			} else if (node.type === 'TryStatement') {
+			} else if (node.type === 'TryStatement' || node.type === 'JSXTryExpression') {
 				skipped = 0;
-				node.is_controlled = is_controlled;
+				node.metadata = { ...node.metadata, is_controlled };
 				visit(node, {
 					...state,
 					flush_node: /** @type {TransformClientState['flush_node']} */ (flush_node),
 					namespace: state.namespace,
 				});
-			} else if (node.type === 'SwitchStatement') {
+			} else if (node.type === 'SwitchStatement' || node.type === 'JSXSwitchExpression') {
 				skipped = 0;
-				node.is_controlled = is_controlled;
+				node.metadata = { ...node.metadata, is_controlled };
 				visit(node, {
 					...state,
 					flush_node: /** @type {TransformClientState['flush_node']} */ (flush_node),
@@ -5702,10 +5921,9 @@ function transform_children(children, context) {
 	}
 
 	if (context.state.inside_head) {
-		const title_element = /** @type {AST.Element} */ (
+		const title_element = /** @type {ESTreeJSX.JSXElement} */ (
 			children.find(
-				(node) =>
-					node.type === 'Element' && node.id.type === 'Identifier' && node.id.name === 'title',
+				(node) => is_template_element(node) && get_element_identifier(node)?.name === 'title',
 			)
 		);
 

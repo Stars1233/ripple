@@ -5,6 +5,7 @@
 @import {
 	TransformServerContext,
 	TransformServerState,
+	Visitor,
 	Visitors,
 	AnalysisResult,
 	ScopeInterface,
@@ -19,7 +20,6 @@ import {
 	renderCssResult,
 	renderStylesheets,
 	prepareStylesheetForRender,
-	pruneCss,
 	collectStyleRefAttributes,
 	createStyleClassMap,
 	createStyleClassMapFromStylesheet,
@@ -64,7 +64,7 @@ import {
 	get_ripple_namespace_call_name,
 	strip_class_typescript_syntax,
 	strip_typescript_expression_wrappers,
-	jsx_to_ripple_node,
+	adopt_raw_template_jsx,
 	build_index_read,
 	build_index_write,
 	build_index_update,
@@ -74,8 +74,28 @@ import {
 	strip_tsrx_style_elements,
 	unwrap_single_return_iife,
 	wrap_code_block_in_iife,
+	visit_directive_wrapping_values,
+	get_code_block_render,
+	get_code_block_template_child,
+	lower_code_block_children,
 	is_code_block_function_body,
 } from '../../utils.js';
+import {
+	get_attribute_name,
+	get_attribute_value,
+	get_element_attributes,
+	get_element_id,
+	get_element_identifier,
+	get_template_text_value,
+	is_droppable_template_text,
+	is_empty_expression_container,
+	is_self_closing,
+	is_template_element,
+	is_template_directive,
+	is_template_fragment,
+	is_template_text,
+	rendered_template_children,
+} from '../../template-ast.js';
 
 /**
  * @param {unknown} value
@@ -92,118 +112,11 @@ function is_traversable_ast_node(value) {
 }
 
 /**
- * Re-run CSS pruning on JSX converted into Ripple template nodes so server
- * output applies the same scoped metadata as regular Ripple template elements.
- *
- * @param {AST.Node[]} nodes
- * @param {TransformServerState} state
- * @returns {void}
- */
-function apply_tsrx_css_scoping(nodes, state) {
-	const component = state.component;
-	const css = get_component_css(state);
-	if (!component || !css) {
-		return;
-	}
-	const stylesheet = /** @type {AST.CSS.StyleSheet} */ (css);
-
-	const style_classes = /** @type {any} */ (component.metadata).styleClasses ?? new Map();
-	const top_scoped_classes = /** @type {any} */ (component.metadata).topScopedClasses ?? new Map();
-
-	const restore_nodes = prepare_legacy_nodes_for_css_pruning(nodes);
-
-	/**
-	 * @param {AST.Node} node
-	 * @returns {void}
-	 */
-	function visit_node(node) {
-		if (node.type === 'Element') {
-			pruneCss(stylesheet, node, style_classes, top_scoped_classes);
-			for (const child of node.children) {
-				visit_node(child);
-			}
-			return;
-		}
-
-		if ('children' in node && Array.isArray(node.children)) {
-			for (const child of node.children) {
-				visit_node(/** @type {AST.Node} */ (child));
-			}
-		}
-	}
-
-	try {
-		for (const node of nodes) {
-			visit_node(node);
-		}
-	} finally {
-		restore_nodes();
-	}
-}
-
-/**
- * Ripple still lowers JSX-shaped TSRX into internal Element nodes before its
- * renderer runs. Keep that compatibility local by presenting those nodes to the
- * shared CSS pruner as native JSX only during pruning.
- *
- * @param {AST.Node[]} nodes
- * @returns {() => void}
- */
-function prepare_legacy_nodes_for_css_pruning(nodes) {
-	/** @type {{ node: any, type: string, native_tsrx: unknown, had_native_tsrx: boolean }[]} */
-	const changed = [];
-	const seen = new Set();
-
-	/** @param {any} node */
-	function visit(node) {
-		if (!node || typeof node !== 'object' || seen.has(node)) {
-			return;
-		}
-		seen.add(node);
-
-		if (node.type === 'Element') {
-			node.metadata ??= { path: [] };
-			changed.push({
-				node,
-				type: node.type,
-				native_tsrx: node.metadata.native_tsrx,
-				had_native_tsrx: Object.prototype.hasOwnProperty.call(node.metadata, 'native_tsrx'),
-			});
-			node.type = 'JSXElement';
-			node.metadata.native_tsrx = true;
-		}
-
-		if (Array.isArray(node.children)) {
-			for (const child of node.children) {
-				visit(child);
-			}
-		}
-	}
-
-	for (const node of nodes) {
-		visit(node);
-	}
-
-	return () => {
-		for (let i = changed.length - 1; i >= 0; i--) {
-			const entry = changed[i];
-			entry.node.type = entry.type;
-			if (entry.had_native_tsrx) {
-				entry.node.metadata.native_tsrx = entry.native_tsrx;
-			} else {
-				delete entry.node.metadata.native_tsrx;
-			}
-		}
-	};
-}
-
-/**
  * @param {TransformServerState} state
  * @returns {AST.CSS.StyleSheet | null}
  */
 function get_component_css(state) {
-	const component = /** @type {any} */ (state.component);
-	return component?.css ?? component?.metadata?.css ?? null;
+	return state.component?.metadata.component_css ?? null;
 }
 
 /**
@@ -215,7 +128,7 @@ function get_component_css_hash(state) {
 }
 
 /**
- * @param {AST.Element} node
+ * @param {AST.JSXStyleElement} node
  * @param {TransformServerContext} context
  * @returns {AST.ObjectExpression | null}
  */
@@ -261,14 +174,30 @@ function create_server_style_class_map_expression(stylesheet) {
 /**
  * @param {AST.Node[]} body
  * @param {AST.Statement[]} setup
+ * @param {Map<AST.Node[] | AST.Node, ScopeInterface>} [scopes]
  * @returns {AST.Node[]}
  */
-function insert_style_ref_setup_statements(body, setup) {
+function insert_style_ref_setup_statements(body, setup, scopes) {
 	if (setup.length === 0) {
 		return body;
 	}
 
 	let inserted = false;
+
+	/**
+	 * Copy-on-write helper: rebuilt spine nodes inherit the original's scope
+	 * mapping so transform-time lookups keep working.
+	 * @template {AST.Node} T
+	 * @param {T} original
+	 * @param {Partial<T>} updates
+	 * @returns {T}
+	 */
+	const rebuild = (original, updates) => {
+		const copy = { ...original, ...updates };
+		const scope = scopes?.get(original);
+		if (scope) scopes?.set(copy, scope);
+		return copy;
+	};
 
 	/** @param {AST.Node[]} nodes */
 	const insert_in_list = (nodes) => {
@@ -285,40 +214,44 @@ function insert_style_ref_setup_statements(body, setup) {
 		return nodes.map(insert_in_statement);
 	};
 
-	/** @param {AST.Node} node */
+	/** @param {AST.Node} node @returns {AST.Node} */
 	const insert_in_statement = (node) => {
 		if (node.type === 'FunctionDeclaration' || node.type === 'ClassDeclaration') {
 			return node;
 		}
 		if (node.type === 'BlockStatement') {
-			node.body = /** @type {AST.Statement[]} */ (insert_in_list(node.body || []));
-			return node;
+			const block_body = /** @type {AST.Statement[]} */ (insert_in_list(node.body || []));
+			return rebuild(node, { body: block_body });
 		}
 		if (node.type === 'IfStatement') {
-			node.consequent = /** @type {AST.Statement} */ (insert_in_statement(node.consequent));
-			if (node.alternate) {
-				node.alternate = /** @type {AST.Statement} */ (insert_in_statement(node.alternate));
-			}
-			return node;
+			const consequent = /** @type {AST.Statement} */ (insert_in_statement(node.consequent));
+			const alternate = node.alternate
+				? /** @type {AST.Statement} */ (insert_in_statement(node.alternate))
+				: node.alternate;
+			return rebuild(node, { consequent, alternate });
 		}
 		if (node.type === 'SwitchStatement') {
-			for (const switch_case of node.cases || []) {
-				switch_case.consequent = /** @type {AST.Statement[]} */ (
-					insert_in_list(switch_case.consequent || [])
-				);
-			}
-			return node;
+			const cases = (node.cases || []).map((switch_case) =>
+				rebuild(switch_case, {
+					consequent: /** @type {AST.Statement[]} */ (insert_in_list(switch_case.consequent || [])),
+				}),
+			);
+			return rebuild(node, { cases });
 		}
 		if (node.type === 'TryStatement') {
-			node.block = /** @type {AST.BlockStatement} */ (insert_in_statement(node.block));
+			/** @type {Partial<AST.TryStatement>} */
+			const updates = {
+				block: /** @type {AST.BlockStatement} */ (insert_in_statement(node.block)),
+			};
 			if (node.handler?.body) {
-				node.handler.body = /** @type {AST.BlockStatement} */ (
-					insert_in_statement(node.handler.body)
-				);
+				updates.handler = rebuild(node.handler, {
+					body: /** @type {AST.BlockStatement} */ (insert_in_statement(node.handler.body)),
+				});
 			}
 			if (node.finalizer) {
-				node.finalizer = /** @type {AST.BlockStatement} */ (insert_in_statement(node.finalizer));
+				updates.finalizer = /** @type {AST.BlockStatement} */ (insert_in_statement(node.finalizer));
 			}
+			return rebuild(node, updates);
 		}
 		return node;
 	};
@@ -337,12 +270,10 @@ function insert_style_ref_setup_statements(body, setup) {
  */
 function build_jsx_to_tsrx_element(node, context) {
 	const { visit, state, path } = context;
-	const result = jsx_to_ripple_node(/** @type {AST.Node} */ (node), path);
+	const result = adopt_raw_template_jsx(/** @type {AST.Node} */ (node));
 	const converted = Array.isArray(result) ? result : [result];
 	/** @type {AST.Node[]} */
 	const children = converted.filter((child) => child != null && child.type !== 'EmptyStatement');
-
-	apply_tsrx_css_scoping(children, state);
 
 	/** @type {AST.Statement[]} */
 	const init = [];
@@ -363,26 +294,25 @@ function build_jsx_to_tsrx_element(node, context) {
 }
 
 /**
- * @param {AST.Element | AST.TsrxFragment} node
+ * @param {AST.TSRXJSXElement | AST.TSRXJSXFragment} node
  * @param {TransformServerContext} context
  * @returns {AST.CallExpression}
  */
 function build_template_node_to_tsrx_element(node, context) {
 	const { visit, state, path } = context;
-	const children =
-		node.type === 'TsrxFragment'
-			? node.children.filter((child) => child != null && child.type !== 'EmptyStatement')
-			: [
-					{
-						...node,
-						metadata: {
-							...node.metadata,
-							regular_js: undefined,
-						},
+	const children = is_template_fragment(node)
+		? /** @type {AST.Node[]} */ (node.children).filter(
+				(child) => child != null && child.type !== 'EmptyStatement',
+			)
+		: [
+				{
+					...node,
+					metadata: {
+						...node.metadata,
+						regular_js: undefined,
 					},
-				];
-
-	apply_tsrx_css_scoping(children, state);
+				},
+			];
 
 	/** @type {AST.Statement[]} */
 	const init = [];
@@ -416,10 +346,10 @@ function contains_template_value_node(node) {
 				return;
 			}
 			if (
-				node.type === 'Element' ||
+				is_template_element(node) ||
 				node.type === 'JSXElement' ||
 				node.type === 'JSXFragment' ||
-				node.type === 'TsrxFragment' ||
+				node.type === 'JSXStyleElement' ||
 				(node.type === 'CallExpression' &&
 					node.callee.type === 'Identifier' &&
 					node.callee.name === '_$_.tsrx_element')
@@ -556,8 +486,9 @@ function is_template_value_binding(expression, scope) {
 	const initial = /** @type {AST.Node | null | undefined} */ (binding?.initial);
 	return (
 		binding?.metadata?.is_template_value === true ||
-		initial?.type === 'Element' ||
-		initial?.type === 'TsrxFragment'
+		is_template_element(initial) ||
+		initial?.type === 'JSXStyleElement' ||
+		is_template_fragment(initial)
 	);
 }
 
@@ -738,10 +669,12 @@ function is_template_or_control_flow(node) {
 	}
 
 	return (
-		node.type === 'Element' ||
-		node.type === 'TSRXExpression' ||
-		node.type === 'Text' ||
-		node.type === 'TsrxFragment' ||
+		is_template_element(node) ||
+		node.type === 'JSXStyleElement' ||
+		node.type === 'JSXExpressionContainer' ||
+		node.type === 'JSXText' ||
+		is_template_fragment(node) ||
+		is_template_directive(node) ||
 		node.type === 'IfStatement' ||
 		node.type === 'ForOfStatement' ||
 		node.type === 'TryStatement' ||
@@ -753,9 +686,9 @@ function is_template_or_control_flow(node) {
  * Whether a `{ … }` expression child is lowered to `_$_.render_expression(…)`,
  * which (unlike `render_tsrx_element` or plain text output) brackets its output
  * in a `<!--[-->`…`<!--]-->` hydration boundary. Mirrors the routing in the
- * `TSRXExpression` server visitor. A `@{ … }` block in template position reaches
- * here as a `TSRXExpression` wrapping its IIFE call.
- * @param {AST.TSRXExpression} node
+ * `JSXExpressionContainer` server visitor. A `@{ … }` block in template position
+ * reaches here as a `JSXExpressionContainer` wrapping its IIFE call.
+ * @param {ESTreeJSX.JSXExpressionContainer} node
  * @param {TransformServerContext} context
  * @returns {boolean}
  */
@@ -796,25 +729,48 @@ function tsrx_expression_emits_marker(node, context) {
  */
 function node_leads_with_control_flow(node, context) {
 	switch (node.type) {
+		case 'JSXIfExpression':
+		case 'JSXForExpression':
+		case 'JSXSwitchExpression':
+		case 'JSXTryExpression':
+			return true;
 		case 'IfStatement':
 		case 'ForOfStatement':
 		case 'SwitchStatement':
 		case 'TryStatement':
 			return node.metadata?.regular_js ? null : true;
-		case 'Element':
-		case 'Text':
+		case 'JSXElement':
+		case 'JSXStyleElement':
 			return false;
-		case 'TSRXExpression':
-			return tsrx_expression_emits_marker(/** @type {AST.TSRXExpression} */ (node), context);
-		case 'TsrxFragment':
-			return fragment_leads_with_control_flow(
-				node.children.filter((c) => c != null && c.type !== 'EmptyStatement'),
+		case 'JSXText':
+			// Insignificant whitespace renders nothing — keep scanning.
+			return is_droppable_template_text(node, false) ? null : false;
+		case 'JSXExpressionContainer':
+			// Comment containers render nothing; merged text runs render as text.
+			if (is_empty_expression_container(node)) {
+				return null;
+			}
+			if (is_template_text(node)) {
+				return false;
+			}
+			return tsrx_expression_emits_marker(
+				/** @type {ESTreeJSX.JSXExpressionContainer} */ (node),
 				context,
 			);
-		case 'JSXCodeBlock':
-			// A `@{ … }` block renders only its `render` output (the body is setup);
-			// a code-only block (no render) contributes no DOM.
-			return node.render != null ? node_leads_with_control_flow(node.render, context) : null;
+		case 'JSXFragment':
+			return fragment_leads_with_control_flow(
+				rendered_template_children(/** @type {AST.Node[]} */ (node.children), false),
+				context,
+			);
+		case 'JSXCodeBlock': {
+			// A `@{ … }` block renders only what its lowered template form emits
+			// (the body is setup); a code-only block contributes no DOM.
+			const child = get_code_block_template_child(
+				/** @type {AST.JSXCodeBlock} */ (node),
+				context.state.scopes,
+			);
+			return child != null && child !== node ? node_leads_with_control_flow(child, context) : null;
+		}
 		default:
 			// Non-renderable setup statement — keep scanning for the first node.
 			return null;
@@ -872,7 +828,8 @@ function is_native_tsrx_statement_position(path) {
 		parent?.type === 'DoWhileStatement' ||
 		parent?.type === 'TryStatement' ||
 		parent?.type === 'SwitchStatement' ||
-		parent?.type === 'LabeledStatement'
+		parent?.type === 'LabeledStatement' ||
+		is_template_directive(parent)
 	);
 }
 
@@ -884,8 +841,8 @@ function is_native_tsrx_value_position(path) {
 	const parent = path.at(-1);
 	return !(
 		is_native_tsrx_statement_position(path) ||
-		parent?.type === 'Element' ||
-		parent?.type === 'TsrxFragment'
+		is_template_element(parent) ||
+		is_template_fragment(parent)
 	);
 }
 
@@ -894,7 +851,11 @@ function is_native_tsrx_value_position(path) {
  * @returns {boolean}
  */
 function should_wrap_node_in_regular_block(node) {
-	return is_template_or_control_flow(node) && node.type !== 'TryStatement';
+	return (
+		is_template_or_control_flow(node) &&
+		node.type !== 'TryStatement' &&
+		node.type !== 'JSXTryExpression'
+	);
 }
 
 /**
@@ -902,38 +863,35 @@ function should_wrap_node_in_regular_block(node) {
  * @returns {boolean}
  */
 function is_head_element(node) {
-	return node.type === 'Element' && node.id.type === 'Identifier' && node.id.name === 'head';
+	return is_template_element(node) && get_element_identifier(node)?.name === 'head';
 }
 
 /**
- * @param {AST.Element} node
+ * @param {AST.TSRXJSXElement} node
  * @param {TransformServerContext} context
  * @returns {boolean}
  */
 function is_ripple_fragment_element(node, context) {
-	if (node.id.type === 'Identifier') {
-		return node.id.name === 'Fragment' && is_ripple_import(node.id, context);
+	const id = get_element_id(node);
+	if (id.type === 'Identifier') {
+		return id.name === 'Fragment' && is_ripple_import(id, context);
 	}
 
 	return (
-		node.id.type === 'MemberExpression' &&
-		node.id.property.type === 'Identifier' &&
-		node.id.property.name === 'Fragment' &&
-		is_ripple_import(node.id, context)
+		id.type === 'MemberExpression' &&
+		id.property.type === 'Identifier' &&
+		id.property.name === 'Fragment' &&
+		is_ripple_import(id, context)
 	);
 }
 
 /**
- * @param {AST.Element} node
- * @returns {AST.Attribute | null}
+ * @param {AST.TSRXJSXElement} node
+ * @returns {ESTreeJSX.JSXAttribute | null}
  */
 function get_inner_html_attribute(node) {
-	for (const attr of node.attributes) {
-		if (
-			attr.type === 'Attribute' &&
-			attr.name.type === 'Identifier' &&
-			attr.name.name === 'innerHTML'
-		) {
+	for (const attr of get_element_attributes(node)) {
+		if (attr.type === 'JSXAttribute' && get_attribute_name(attr) === 'innerHTML') {
 			return attr;
 		}
 	}
@@ -942,16 +900,17 @@ function get_inner_html_attribute(node) {
 }
 
 /**
- * @param {AST.Attribute} attr
+ * @param {ESTreeJSX.JSXAttribute} attr
  * @param {TransformServerContext} context
  * @returns {AST.Expression}
  */
 function get_attribute_value_expression(attr, context) {
-	if (attr.value === null) {
+	const value = get_attribute_value(attr);
+	if (value === null) {
 		return b.literal('');
 	}
 
-	return /** @type {AST.Expression} */ (context.visit(attr.value, context.state));
+	return /** @type {AST.Expression} */ (context.visit(value, context.state));
 }
 
 /**
@@ -1017,7 +976,7 @@ function push_inner_html_expression(expression, state) {
 }
 
 /**
- * @param {AST.Element} node
+ * @param {AST.TSRXJSXElement} node
  * @param {TransformServerContext} context
  * @returns {void}
  */
@@ -1029,7 +988,7 @@ function visit_ripple_fragment_element(node, context) {
 		return;
 	}
 
-	transform_children(node.children, context);
+	transform_children(/** @type {AST.Node[]} */ (node.children), context);
 }
 
 /**
@@ -1051,29 +1010,35 @@ function is_dead_native_tsrx_expression_statement(node) {
 function transform_variable_declaration(node, context) {
 	/** @type {Map<AST.VariableDeclarator, AST.Expression | null>} */
 	const transformed_inits = new Map();
+	/** @type {Map<AST.VariableDeclarator, AST.Pattern>} */
+	const transformed_ids = new Map();
 
 	for (const declarator of node.declarations) {
+		let declarator_id = declarator.id;
 		if (!context.state.to_ts) {
-			delete declarator.id.typeAnnotation;
-
 			if (
-				(declarator.id.type === 'ObjectPattern' || declarator.id.type === 'ArrayPattern') &&
-				declarator.id.lazy &&
-				declarator.id.metadata?.lazy_id
+				(declarator_id.type === 'ObjectPattern' || declarator_id.type === 'ArrayPattern') &&
+				declarator_id.lazy &&
+				declarator_id.metadata?.lazy_id
 			) {
-				declarator.id = b.id(declarator.id.metadata.lazy_id);
+				declarator_id = b.id(declarator_id.metadata.lazy_id);
+			} else if (declarator_id.typeAnnotation) {
+				declarator_id = { ...declarator_id, typeAnnotation: undefined };
 			}
 		}
+		transformed_ids.set(declarator, declarator_id);
 
 		const declarator_init = /** @type {AST.Node | null | undefined} */ (declarator.init);
-		const init =
-			declarator_init?.type === 'TsrxFragment'
-				? build_template_node_to_tsrx_element(declarator_init, context)
-				: declarator_init
-					? /** @type {AST.Expression} */ (
-							context.visit(declarator_init, { ...context.state, template_child: false })
-						)
-					: null;
+		const init = is_template_fragment(declarator_init)
+			? build_template_node_to_tsrx_element(
+					/** @type {AST.TSRXJSXFragment} */ (declarator_init),
+					context,
+				)
+			: declarator_init
+				? /** @type {AST.Expression} */ (
+						context.visit(declarator_init, { ...context.state, template_child: false })
+					)
+				: null;
 		transformed_inits.set(declarator, init);
 	}
 
@@ -1081,7 +1046,9 @@ function transform_variable_declaration(node, context) {
 		...node,
 		declarations: node.declarations.map((declarator) => ({
 			...declarator,
-			id: /** @type {AST.Pattern} */ (context.visit(declarator.id)),
+			id: /** @type {AST.Pattern} */ (
+				context.visit(transformed_ids.get(declarator) ?? declarator.id)
+			),
 			init: transformed_inits.get(declarator) ?? null,
 		})),
 	};
@@ -1195,7 +1162,7 @@ function transform_children(children, context) {
 		}
 	}
 
-	const head_elements = /** @type {AST.Element[]} */ (
+	const head_elements = /** @type {ESTreeJSX.JSXElement[]} */ (
 		children.filter((node) => is_head_element(node))
 	);
 
@@ -1211,7 +1178,7 @@ function transform_children(children, context) {
 			// Emit hydration marker comment with hash
 			state.init?.push(b.stmt(b.call(b.id('_$_.output_push'), b.literal(`<!--${hash_value}-->`))));
 
-			transform_children(head_element.children, {
+			transform_children(/** @type {AST.Node[]} */ (head_element.children), {
 				...context,
 				state: { ...state, skip_regular_blocks: true },
 			});
@@ -1245,18 +1212,27 @@ function transform_body(body, context) {
 /**
  * @param {AST.Node | null | undefined} node
  * @param {boolean} [allow_direct_template]
- * @returns {AST.Element | AST.TsrxFragment | null}
+ * @returns {ESTreeJSX.JSXElement | ESTreeJSX.JSXFragment | null}
  */
 function get_native_tsrx_return_template_node(node, allow_direct_template = false) {
 	if (!node) return null;
 	if (allow_direct_template && is_native_tsrx_template_node(node)) {
-		return /** @type {AST.Element | AST.TsrxFragment} */ (/** @type {unknown} */ (node));
+		return /** @type {ESTreeJSX.JSXElement | ESTreeJSX.JSXFragment} */ (
+			/** @type {unknown} */ (node)
+		);
 	}
 	if (node.type === 'ReturnStatement' && is_native_tsrx_template_node(node.argument)) {
-		return /** @type {AST.Element | AST.TsrxFragment} */ (/** @type {unknown} */ (node.argument));
+		return /** @type {ESTreeJSX.JSXElement | ESTreeJSX.JSXFragment} */ (
+			/** @type {unknown} */ (node.argument)
+		);
 	}
-	if (node.type === 'JSXCodeBlock' && is_native_tsrx_template_node(node.render)) {
-		return /** @type {AST.Element | AST.TsrxFragment} */ (/** @type {unknown} */ (node.render));
+	if (node.type === 'JSXCodeBlock') {
+		const render = get_code_block_render(node);
+		if (is_native_tsrx_template_node(render)) {
+			return /** @type {ESTreeJSX.JSXElement | ESTreeJSX.JSXFragment} */ (
+				/** @type {unknown} */ (render)
+			);
+		}
 	}
 	if (
 		node.type === 'FunctionDeclaration' ||
@@ -1294,17 +1270,19 @@ function transform_native_tsrx_function(node, context) {
 	let props_param_output = null;
 
 	if (node.params.length > 0) {
-		let props_param = node.params[0];
+		const props_param = node.params[0];
 
 		if (props_param.type === 'Identifier') {
-			delete props_param.typeAnnotation;
-			props_param_output = props_param;
+			props_param_output = props_param.typeAnnotation
+				? { ...props_param, typeAnnotation: undefined }
+				: props_param;
 		} else if (props_param.type === 'ObjectPattern' || props_param.type === 'ArrayPattern') {
-			delete props_param.typeAnnotation;
 			if (props_param.lazy) {
 				props_param_output = b.id('__props');
 			} else {
-				props_param_output = replace_lazy_param_pattern(props_param);
+				props_param_output = replace_lazy_param_pattern(
+					props_param.typeAnnotation ? { ...props_param, typeAnnotation: undefined } : props_param,
+				);
 			}
 		} else {
 			props_param_output = props_param;
@@ -1321,7 +1299,7 @@ function transform_native_tsrx_function(node, context) {
 		body_statements.push(hash, b.stmt(b.call(b.id('_$_.output_register_css'), hash_id)));
 	}
 
-	const raw_render_body = get_native_tsrx_function_body(node);
+	const raw_render_body = get_native_tsrx_function_body(node, context.state.scopes);
 	const node_id = node.type !== 'ArrowFunctionExpression' ? (node.id ?? null) : null;
 	const render_scope_node = get_native_tsrx_return_template_node(
 		node.body,
@@ -1342,7 +1320,8 @@ function transform_native_tsrx_function(node, context) {
 			)
 		: [];
 	const render_body = strip_tsrx_style_elements(
-		insert_style_ref_setup_statements(raw_render_body, style_ref_setup),
+		insert_style_ref_setup_statements(raw_render_body, style_ref_setup, context.state.scopes),
+		context.state.scopes,
 	);
 	body_statements.push(
 		...transform_body(render_body, {
@@ -1386,6 +1365,355 @@ function transform_native_tsrx_function(node, context) {
 	fn.metadata.native_tsrx_function = true;
 	return fn;
 }
+
+/**
+ * Returns the function's params with TypeScript annotations stripped and lazy
+ * destructuring patterns replaced by their generated identifiers, without
+ * mutating the original nodes.
+ * @param {AST.Pattern[]} params
+ * @returns {AST.Pattern[]}
+ */
+function strip_function_params(params) {
+	return params.map((param) => {
+		let stripped = param.typeAnnotation ? { ...param, typeAnnotation: undefined } : param;
+		// Handle AssignmentPattern (parameters with default values)
+		if (stripped.type === 'AssignmentPattern' && stripped.left?.typeAnnotation) {
+			stripped = { ...stripped, left: { ...stripped.left, typeAnnotation: undefined } };
+		}
+		// Replace lazy destructuring params with generated identifiers
+		const pattern = stripped.type === 'AssignmentPattern' ? stripped.left : stripped;
+		if (pattern.type === 'ObjectPattern' || pattern.type === 'ArrayPattern') {
+			const transformed_pattern = replace_lazy_param_pattern(pattern);
+			return stripped.type === 'AssignmentPattern'
+				? /** @type {AST.AssignmentPattern} */ ({ ...stripped, left: transformed_pattern })
+				: transformed_pattern;
+		}
+		return stripped;
+	});
+}
+
+/**
+ * Shared by the plain statement and the `@`-directive forms.
+ * @type {Visitor<AST.SwitchStatement | AST.JSXSwitchExpression, TransformServerState, AST.Node>}
+ */
+const visit_switch_statement = (node, context) => {
+	if (context.state.regular_js) {
+		return context.next();
+	}
+
+	if (!is_inside_component(context)) {
+		return context.next();
+	}
+
+	const cases = [];
+
+	for (const switch_case of node.cases) {
+		const case_body = [];
+
+		if (switch_case.consequent.length !== 0) {
+			const flattened_consequent = flatten_switch_consequent(switch_case.consequent);
+			const consequent_scope =
+				context.state.scopes.get(switch_case.consequent) || context.state.scope;
+			const consequent = b.block(
+				transform_body(flattened_consequent, {
+					...context,
+					state: {
+						...context.state,
+						scope: consequent_scope,
+						control_flow_branch_body: true,
+					},
+				}),
+			);
+			case_body.push(...consequent.body);
+		}
+		case_body.push(b.break);
+
+		cases.push(
+			b.switch_case(
+				switch_case.test ? /** @type {AST.Expression} */ (context.visit(switch_case.test)) : null,
+				case_body,
+			),
+		);
+	}
+
+	context.state.init?.push(b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_OPEN))));
+
+	context.state.init?.push(
+		b.switch(/** @type {AST.Expression} */ (context.visit(node.discriminant)), cases),
+	);
+
+	context.state.init?.push(b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_CLOSE))));
+};
+
+/**
+ * Shared by the plain statement and the `@`-directive forms.
+ * @type {Visitor<AST.IfStatement | AST.JSXIfExpression, TransformServerState, AST.Node>}
+ */
+const visit_if_statement = (node, context) => {
+	if (context.state.regular_js || node.metadata?.regular_js) {
+		return context.next({ ...context.state, regular_js: true });
+	}
+
+	if (!is_inside_component(context)) {
+		context.next();
+		return;
+	}
+
+	const consequent_body =
+		node.consequent.type === 'BlockStatement' ? node.consequent.body : [node.consequent];
+	const consequent_scope = context.state.scopes.get(node.consequent) || context.state.scope;
+
+	if (
+		(node.metadata?.script_only || node.metadata?.has_continue) &&
+		!node.metadata?.has_template &&
+		!node.alternate
+	) {
+		context.state.init?.push(
+			b.if(
+				/** @type {AST.Expression} */ (context.visit(node.test)),
+				b.block(
+					transform_body(consequent_body, {
+						...context,
+						state: { ...context.state, scope: consequent_scope },
+					}),
+				),
+			),
+		);
+		return;
+	}
+
+	const consequent = b.block(
+		transform_body(consequent_body, {
+			...context,
+			state: {
+				...context.state,
+				scope: /** @type {ScopeInterface} */ (consequent_scope),
+				control_flow_branch_body: true,
+			},
+		}),
+	);
+
+	context.state.init?.push(b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_OPEN))));
+
+	/** @type {AST.BlockStatement | AST.IfStatement | null} */
+	let alternate = null;
+	if (node.alternate) {
+		const alternate_scope = context.state.scopes.get(node.alternate) || context.state.scope;
+		const alternate_body_nodes =
+			node.alternate.type === 'IfStatement'
+				? [node.alternate]
+				: node.alternate.type === 'BlockStatement'
+					? node.alternate.body
+					: [node.alternate];
+
+		alternate = b.block(
+			transform_body(alternate_body_nodes, {
+				...context,
+				state: {
+					...context.state,
+					scope: alternate_scope,
+					control_flow_branch_body: node.alternate.type !== 'IfStatement',
+				},
+			}),
+		);
+	}
+
+	context.state.init?.push(
+		b.if(/** @type {AST.Expression} */ (context.visit(node.test)), consequent, alternate),
+	);
+
+	context.state.init?.push(b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_CLOSE))));
+};
+
+/**
+ * Shared by the plain statement and the `@`-directive forms.
+ * @type {Visitor<AST.TryStatement | AST.JSXTryExpression, TransformServerState, AST.Node>}
+ */
+const visit_try_statement = (node, context) => {
+	if (context.state.regular_js) {
+		return context.next();
+	}
+
+	if (!is_inside_component(context)) {
+		return context.next();
+	}
+
+	const has_pending = node.pending !== null;
+	const has_catch = node.handler !== null;
+
+	const body = transform_body(node.block.body, {
+		...context,
+		state: {
+			...context.state,
+			scope: /** @type {ScopeInterface} */ (context.state.scopes.get(node.block)),
+		},
+	});
+
+	// Wrap try_fn body with hydration markers when pending or catch is present
+	const try_fn = b.arrow(
+		[],
+		b.block(
+			has_pending || has_catch
+				? [
+						b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_OPEN))),
+						...body,
+						b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_CLOSE))),
+					]
+				: body,
+		),
+	);
+
+	/** @type {AST.Expression} */
+	let catch_fn = b.literal(null);
+
+	const handler = node.handler;
+	if (handler) {
+		const handler_param = handler.param
+			? handler.param.typeAnnotation
+				? /** @type {AST.Pattern} */ ({ ...handler.param, typeAnnotation: undefined })
+				: handler.param
+			: null;
+
+		/** @type {AST.Statement | null} */
+		let reset = null;
+		if (handler.resetParam) {
+			// `resetParam` never reaches the output (only its name is read below),
+			// so its type annotation needs no stripping.
+			reset = b.const(
+				handler.resetParam.type === 'AssignmentPattern'
+					? /** @type {AST.Identifier} */ (handler.resetParam.left).name
+					: /** @type {AST.Identifier} */ (handler.resetParam).name,
+				b.id('_$_.noop'),
+			);
+		}
+
+		catch_fn = b.arrow(
+			[handler_param || b.id('error')],
+			b.block([
+				b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_OPEN))),
+				...(reset ? [reset] : []),
+				...transform_body(handler.body.body, {
+					...context,
+					state: {
+						...context.state,
+						scope: /** @type {ScopeInterface} */ (context.state.scopes.get(handler.body)),
+					},
+				}),
+				b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_CLOSE))),
+			]),
+		);
+	}
+
+	const pending_body = node.pending
+		? transform_body(node.pending.body, {
+				...context,
+				state: {
+					...context.state,
+					scope: /** @type {ScopeInterface} */ (context.state.scopes.get(node.pending)),
+				},
+			})
+		: null;
+
+	// Wrap pending_fn body with hydration markers
+	const pending_fn =
+		pending_body !== null
+			? b.arrow(
+					[],
+					b.block([
+						b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_OPEN))),
+						...pending_body,
+						b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_CLOSE))),
+					]),
+				)
+			: b.literal(null);
+
+	context.state.init?.push(b.stmt(b.call('_$_.try_block', try_fn, catch_fn, pending_fn)));
+};
+
+/**
+ * Shared by the plain statement and the `@`-directive forms.
+ * @type {Visitor<AST.ForOfStatement | AST.JSXForOfExpression, TransformServerState, AST.Node>}
+ */
+const visit_for_of_statement = (node, context) => {
+	if (context.state.regular_js) {
+		return context.next();
+	}
+
+	if (!is_inside_component(context)) {
+		context.next();
+		return;
+	}
+	const body_scope = context.state.scopes.get(node.body);
+
+	if (node.metadata?.script_only && !node.metadata?.has_template) {
+		const body = transform_body(/** @type {AST.BlockStatement} */ (node.body).body, {
+			...context,
+			state: { ...context.state, scope: /** @type {ScopeInterface} */ (body_scope) },
+		});
+
+		if (node.index) {
+			context.state.init?.push(b.var(node.index, b.literal(0)));
+			body.push(b.stmt(b.update('++', node.index)));
+		}
+
+		context.state.init?.push(
+			b.for_of(
+				/** @type {AST.VariableDeclaration} */ (context.visit(/** @type {AST.Node} */ (node.left))),
+				/** @type {AST.Expression} */
+				(context.visit(/** @type {AST.Node} */ (node.right))),
+				b.block(body),
+			),
+		);
+		return;
+	}
+
+	context.state.init?.push(b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_OPEN))));
+
+	const body = transform_body(/** @type {AST.BlockStatement} */ (node.body).body, {
+		...context,
+		state: {
+			...context.state,
+			scope: /** @type {ScopeInterface} */ (body_scope),
+			control_flow_branch_body: true,
+		},
+	});
+	const empty_id = node.empty ? b.id(context.state.scope.generate('for_empty')) : null;
+
+	if (node.index) {
+		context.state.init?.push(b.var(node.index, b.literal(0)));
+		body.push(b.stmt(b.update('++', node.index)));
+	}
+	if (empty_id) {
+		context.state.init?.push(b.var(empty_id, b.true));
+		body.unshift(b.stmt(b.assignment('=', empty_id, b.false)));
+	}
+
+	context.state.init?.push(
+		b.for_of(
+			/** @type {AST.VariableDeclaration} */ (context.visit(/** @type {AST.Node} */ (node.left))),
+			/** @type {AST.Expression} */
+			(context.visit(/** @type {AST.Node} */ (node.right))),
+			b.block(body),
+		),
+	);
+
+	if (empty_id && node.empty) {
+		const empty_scope = context.state.scopes.get(node.empty) || context.state.scope;
+		context.state.init?.push(
+			b.if(
+				empty_id,
+				b.block(
+					transform_body(/** @type {AST.BlockStatement} */ (node.empty).body, {
+						...context,
+						state: { ...context.state, scope: /** @type {ScopeInterface} */ (empty_scope) },
+					}),
+				),
+			),
+		);
+	}
+
+	context.state.init?.push(b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_CLOSE))));
+};
 
 /** @type {Visitors<AST.Node, TransformServerState>} */
 const visitors = {
@@ -1434,9 +1762,9 @@ const visitors = {
 	CallExpression(node, context) {
 		const { state } = context;
 
-		if (!state.to_ts) {
-			delete node.typeArguments;
-		}
+		// When lowering to JS the call's type arguments are dropped; the rebuilt
+		// nodes below override `typeArguments` instead of mutating `node`.
+		const type_arguments = state.to_ts ? node.typeArguments : undefined;
 
 		const callee = node.callee;
 
@@ -1454,6 +1782,7 @@ const visitors = {
 			if (ripple_runtime_method !== null) {
 				return {
 					...node,
+					typeArguments: type_arguments,
 					callee: b.member(b.id('_$_'), b.id(ripple_runtime_method)),
 					arguments: /** @type {(AST.Expression | AST.SpreadElement)[]} */ ([
 						...node.arguments.map((arg) => context.visit(arg)),
@@ -1468,12 +1797,10 @@ const visitors = {
 
 			/** @type {AST.BaseCallExpression['arguments']} */
 			const call_args = [];
-			if (node.arguments.length === 0) {
-				node.arguments.push(b.void0);
-			}
+			const track_args = node.arguments.length === 0 ? [b.void0] : node.arguments;
 
-			for (let i = 0; i < node.arguments.length; i++) {
-				const arg = node.arguments[i];
+			for (let i = 0; i < track_args.length; i++) {
+				const arg = track_args[i];
 				call_args.push(/** @type {(AST.Expression | AST.SpreadElement)} */ (context.visit(arg)));
 				if (i === 0) {
 					call_args.push(b.literal(node.metadata.hash));
@@ -1482,6 +1809,7 @@ const visitors = {
 
 			return {
 				...node,
+				typeArguments: type_arguments,
 				callee: b.member(b.id('_$_'), b.id(track_method_name)),
 				arguments: call_args,
 			};
@@ -1513,7 +1841,12 @@ const visitors = {
 			}
 		}
 
-		return context.next();
+		const walked = /** @type {AST.CallExpression | undefined} */ (context.next());
+		const result = walked ?? node;
+		if (!state.to_ts && result.typeArguments) {
+			return { ...result, typeArguments: undefined };
+		}
+		return walked;
 	},
 
 	JSXCodeBlock(node, context) {
@@ -1535,7 +1868,7 @@ const visitors = {
 		// `transform_native_tsrx_function`. Everywhere else, lower it to a plain
 		// BlockStatement so the JS printer (which has no JSXCodeBlock visitor) can
 		// emit it.
-		if (node.render != null) {
+		if (get_code_block_render(node, context.state.scopes) != null) {
 			return context.next();
 		}
 		/** @type {AST.Statement[]} */
@@ -1549,26 +1882,75 @@ const visitors = {
 		return b.block(statements);
 	},
 
-	JSXElement(node, context) {
-		if (context.state.jsx_to_tsrx_element || is_native_tsrx_value_position(context.path)) {
-			return build_jsx_to_tsrx_element(/** @type {AST.TSRXJSXElement} */ (node), context);
-		}
-		return context.next();
-	},
-
 	JSXFragment(node, context) {
-		if (context.state.jsx_to_tsrx_element || is_native_tsrx_value_position(context.path)) {
-			return build_jsx_to_tsrx_element(/** @type {AST.TSRXJSXFragment} */ (node), context);
+		// A raw (non-template) fragment — an attribute value or other JSX that
+		// never entered the template traversal.
+		if (!is_template_fragment(node)) {
+			if (context.state.jsx_to_tsrx_element || is_native_tsrx_value_position(context.path)) {
+				return build_jsx_to_tsrx_element(/** @type {AST.TSRXJSXFragment} */ (node), context);
+			}
+			return context.next();
 		}
-		return context.next();
+
+		const { visit, state } = context;
+		const children = /** @type {AST.Node[]} */ (node.children).filter(
+			(child) => child != null && child.type !== 'EmptyStatement',
+		);
+
+		/** @type {AST.Statement[]} */
+		const init = [];
+		transform_children(
+			children,
+			/** @type {TransformServerContext} */ ({
+				visit,
+				state: {
+					...state,
+					init,
+					regular_js: false,
+					jsx_to_tsrx_element: true,
+					// The fragment's own children are no longer the direct body of the
+					// enclosing control-flow branch, so they must not inherit the marker.
+					control_flow_branch_body: false,
+				},
+			}),
+		);
+
+		if (state.template_child) {
+			// In template position the client lowers `<>…</>` to a `<!>` placeholder +
+			// `_$_.expression(() => _$_.tsrx_element(…))`. During hydration that
+			// expression() needs a matching `<!--[-->`…`<!--]-->` boundary whenever it
+			// would otherwise borrow a nested control-flow's start marker as its own and
+			// advance the cursor past that child's content (desyncing hydration). That
+			// happens in two situations:
+			//   - the fragment is the direct body of a control-flow branch (or nested in
+			//     an element within one): the enclosing block already consumed its own
+			//     marker via hydrate_next before the branch body runs, leaving none for
+			//     the fragment — `control_flow_branch_body`;
+			//   - the fragment leads with control flow (e.g. a component body
+			//     `<> @for … </>`): its first child's marker would be mistaken for the
+			//     fragment's own.
+			// A fragment that leads with a component/element instead reuses its host
+			// boundary (or adopts real nodes) and must NOT be bracketed, or the extra
+			// markers desync the static-cursor (`next()` + skip_advance) client path.
+			const needs_boundary =
+				state.control_flow_branch_body || fragment_leads_with_control_flow(children, context);
+			if (needs_boundary && init.length > 0) {
+				state.init?.push(b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_OPEN))));
+				state.init?.push(b.block(init));
+				state.init?.push(b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_CLOSE))));
+			} else if (init.length > 0) {
+				// Template body: push children statements inline
+				state.init?.push(b.block(init));
+			}
+		} else {
+			// Expression context: return tsrx_element(render_fn)
+			const render_fn = b.arrow([], b.block(init));
+			return b.call('_$_.tsrx_element', render_fn);
+		}
 	},
 
 	NewExpression(node, context) {
 		const callee = node.callee;
-
-		if (!context.state.to_ts) {
-			delete node.typeArguments;
-		}
 
 		// Transform `new RippleArray(...)`, `new RippleMap(...)`, etc. imported from 'ripple'
 		if (callee.type === 'Identifier' && is_ripple_import(callee, context)) {
@@ -1583,26 +1965,37 @@ const visitors = {
 			}
 		}
 
-		return context.next();
+		const walked = /** @type {AST.NewExpression | undefined} */ (context.next());
+		const result = walked ?? node;
+		if (!context.state.to_ts && result.typeArguments) {
+			return { ...result, typeArguments: undefined };
+		}
+		return walked;
 	},
 
 	PropertyDefinition(node, context) {
-		if (!context.state.to_ts) {
-			delete node.typeAnnotation;
+		const walked = /** @type {AST.PropertyDefinition | undefined} */ (context.next());
+		const result = walked ?? node;
+		if (!context.state.to_ts && result.typeAnnotation) {
+			return { ...result, typeAnnotation: undefined };
 		}
-		return context.next();
+		return walked;
 	},
 
 	ClassDeclaration(node, context) {
 		if (!context.state.to_ts) {
-			strip_class_typescript_syntax(node, context);
+			// Returns a stripped copy with visited children — the source node is
+			// never mutated.
+			return strip_class_typescript_syntax(node, context);
 		}
 		return context.next();
 	},
 
 	ClassExpression(node, context) {
 		if (!context.state.to_ts) {
-			strip_class_typescript_syntax(node, context);
+			// Returns a stripped copy with visited children — the source node is
+			// never mutated.
+			return strip_class_typescript_syntax(node, context);
 		}
 		return context.next();
 	},
@@ -1621,25 +2014,15 @@ const visitors = {
 			return transform_native_tsrx_function(node, context);
 		}
 		if (!context.state.to_ts) {
-			delete node.returnType;
-			delete node.typeParameters;
-			for (let i = 0; i < node.params.length; i++) {
-				const param = node.params[i];
-				delete param.typeAnnotation;
-				// Handle AssignmentPattern (parameters with default values)
-				if (param.type === 'AssignmentPattern' && param.left) {
-					delete param.left.typeAnnotation;
-				}
-				// Replace lazy destructuring params with generated identifiers
-				const pattern = param.type === 'AssignmentPattern' ? param.left : param;
-				if (pattern.type === 'ObjectPattern' || pattern.type === 'ArrayPattern') {
-					const transformed_pattern = replace_lazy_param_pattern(pattern);
-					node.params[i] =
-						param.type === 'AssignmentPattern'
-							? /** @type {AST.AssignmentPattern} */ ({ ...param, left: transformed_pattern })
-							: transformed_pattern;
-				}
-			}
+			const params = strip_function_params(node.params);
+			return {
+				...node,
+				returnType: undefined,
+				typeParameters: undefined,
+				id: node.id ? /** @type {AST.Identifier} */ (context.visit(node.id)) : node.id,
+				params: params.map((param) => /** @type {AST.Pattern} */ (context.visit(param))),
+				body: /** @type {AST.BlockStatement} */ (context.visit(node.body)),
+			};
 		}
 		return context.next();
 	},
@@ -1649,25 +2032,15 @@ const visitors = {
 			return transform_native_tsrx_function(node, context);
 		}
 		if (!context.state.to_ts) {
-			delete node.returnType;
-			delete node.typeParameters;
-			for (let i = 0; i < node.params.length; i++) {
-				const param = node.params[i];
-				delete param.typeAnnotation;
-				// Handle AssignmentPattern (parameters with default values)
-				if (param.type === 'AssignmentPattern' && param.left) {
-					delete param.left.typeAnnotation;
-				}
-				// Replace lazy destructuring params with generated identifiers
-				const pattern = param.type === 'AssignmentPattern' ? param.left : param;
-				if (pattern.type === 'ObjectPattern' || pattern.type === 'ArrayPattern') {
-					const transformed_pattern = replace_lazy_param_pattern(pattern);
-					node.params[i] =
-						param.type === 'AssignmentPattern'
-							? /** @type {AST.AssignmentPattern} */ ({ ...param, left: transformed_pattern })
-							: transformed_pattern;
-				}
-			}
+			const params = strip_function_params(node.params);
+			return {
+				...node,
+				returnType: undefined,
+				typeParameters: undefined,
+				id: node.id ? /** @type {AST.Identifier} */ (context.visit(node.id)) : node.id,
+				params: params.map((param) => /** @type {AST.Pattern} */ (context.visit(param))),
+				body: /** @type {AST.BlockStatement} */ (context.visit(node.body)),
+			};
 		}
 		return context.next();
 	},
@@ -1690,27 +2063,12 @@ const visitors = {
 		if (is_tsrx_component_function(node)) {
 			return transform_native_tsrx_function(node, context);
 		}
-		delete node.returnType;
-		delete node.typeParameters;
-		const params = node.params.map((param) => {
-			delete param.typeAnnotation;
-			// Handle AssignmentPattern (parameters with default values)
-			if (param.type === 'AssignmentPattern' && param.left) {
-				delete param.left.typeAnnotation;
-			}
-			// Replace lazy destructuring params with generated identifiers
-			const pattern = param.type === 'AssignmentPattern' ? param.left : param;
-			if (pattern.type === 'ObjectPattern' || pattern.type === 'ArrayPattern') {
-				const transformed_pattern = replace_lazy_param_pattern(pattern);
-				return param.type === 'AssignmentPattern'
-					? /** @type {AST.AssignmentPattern} */ ({ ...param, left: transformed_pattern })
-					: transformed_pattern;
-			}
-			return param;
-		});
+		const params = strip_function_params(node.params);
 
 		return {
 			...node,
+			returnType: undefined,
+			typeParameters: undefined,
 			params: params.map((param) => /** @type {AST.Pattern} */ (context.visit(param))),
 			body:
 				node.body.type === 'BlockStatement'
@@ -1877,16 +2235,13 @@ const visitors = {
 		return transform_variable_declaration(node, context);
 	},
 
-	Element(node, context) {
-		const { state, visit } = context;
-
-		lower_dynamic_element(node, b.member(b.id('_$_'), 'dynamic_element'));
+	JSXStyleElement(node, context) {
+		const { state } = context;
 
 		if (
-			is_style_element(node) &&
-			(state.regular_js ||
-				is_native_tsrx_value_position(context.path) ||
-				is_regular_js_statement_position(context.path))
+			state.regular_js ||
+			is_native_tsrx_value_position(context.path) ||
+			is_regular_js_statement_position(context.path)
 		) {
 			const expression = build_style_class_map_expression(node, context);
 			if (expression) {
@@ -1896,6 +2251,28 @@ const visitors = {
 				return expression;
 			}
 		}
+
+		// Component styles render nothing on the server — their CSS is extracted
+		// at analysis time and injected separately.
+	},
+
+	JSXElement(node, context) {
+		const { state, visit } = context;
+
+		// A raw (non-template) element — an attribute value or other JSX that
+		// never entered the template traversal.
+		if (!is_template_element(node)) {
+			if (state.jsx_to_tsrx_element || is_native_tsrx_value_position(context.path)) {
+				return build_jsx_to_tsrx_element(/** @type {AST.TSRXJSXElement} */ (node), context);
+			}
+			return context.next();
+		}
+
+		node =
+			lower_dynamic_element(node, b.member(b.id('_$_'), 'dynamic_element'), state.scopes) ?? node;
+
+		const element_id = get_element_id(node);
+		const element_attributes = get_element_attributes(node);
 
 		if (
 			state.regular_js ||
@@ -1918,20 +2295,20 @@ const visitors = {
 		}
 
 		const is_dom_element = is_element_dom_element(node);
-		const is_spreading = node.attributes.some((attr) => attr.type === 'SpreadAttribute');
+		const is_spreading = element_attributes.some((attr) => attr.type === 'JSXSpreadAttribute');
 		/** @type {(AST.Property | AST.SpreadElement)[] | null} */
 		const spread_attributes = is_spreading ? [] : null;
 		const child_namespace = is_dom_element
 			? determine_namespace_for_children(
-					/** @type {AST.Identifier} */ (node.id).name,
+					/** @type {AST.Identifier} */ (element_id).name,
 					state.namespace,
 				)
 			: state.namespace;
 
 		if (is_dom_element) {
-			const is_void = is_void_element(/** @type {AST.Identifier} */ (node.id).name);
-			const use_self_closing_syntax = node.selfClosing && is_void;
-			const tag_name = b.literal(/** @type {AST.Identifier} */ (node.id).name);
+			const is_void = is_void_element(/** @type {AST.Identifier} */ (element_id).name);
+			const use_self_closing_syntax = is_self_closing(node) && is_void;
+			const tag_name = b.literal(/** @type {AST.Identifier} */ (element_id).name);
 			/** @type {AST.CSS.StyleSheet['hash'] | null} */
 			const scoping_hash =
 				state.applyParentCssScope ?? (node.metadata.scoped ? get_component_css_hash(state) : null);
@@ -1978,14 +2355,15 @@ const visitors = {
 				}
 			};
 
-			for (const attr of node.attributes) {
-				if (attr.type === 'Attribute') {
-					if (attr.name.type === 'Identifier') {
-						const name = attr.name.name;
+			for (const attr of element_attributes) {
+				if (attr.type === 'JSXAttribute') {
+					{
+						const name = get_attribute_name(attr);
+						const attr_value = get_attribute_value(attr);
 
 						if (name === 'innerHTML') {
 							const expression =
-								attr.value === null ? b.literal('') : get_attribute_value_expression(attr, context);
+								attr_value === null ? b.literal('') : get_attribute_value_expression(attr, context);
 							if (is_spreading) {
 								spread_attributes?.push(b.prop('init', b.literal('innerHTML'), expression));
 							} else {
@@ -1994,7 +2372,7 @@ const visitors = {
 							continue;
 						}
 
-						if (attr.value === null) {
+						if (attr_value === null) {
 							// omit a valueless event attr (analyze errored); `hidden` etc. still emit
 							if (!isEventAttribute(name)) {
 								handle_static_attr(name, true);
@@ -2006,8 +2384,8 @@ const visitors = {
 							continue;
 						}
 
-						if (attr.value.type === 'Literal' && name !== 'class') {
-							handle_static_attr(name, attr.value.value);
+						if (attr_value.type === 'Literal' && name !== 'class') {
+							handle_static_attr(name, attr_value.value);
 							continue;
 						}
 
@@ -2022,7 +2400,7 @@ const visitors = {
 						}
 						const metadata = { tracking: false };
 						const expression = /** @type {AST.Expression} */ (
-							visit(attr.value, { ...state, metadata })
+							visit(attr_value, { ...state, metadata })
 						);
 
 						state.init?.push(
@@ -2039,7 +2417,7 @@ const visitors = {
 							),
 						);
 					}
-				} else if (attr.type === 'SpreadAttribute') {
+				} else if (attr.type === 'JSXSpreadAttribute') {
 					spread_attributes?.push(
 						b.spread(/** @type {AST.Expression} */ (visit(attr.argument, state))),
 					);
@@ -2047,7 +2425,7 @@ const visitors = {
 			}
 
 			if (class_attribute !== null) {
-				const attr_value = /** @type {AST.Expression} */ (class_attribute.value);
+				const attr_value = /** @type {AST.Expression} */ (get_attribute_value(class_attribute));
 				if (attr_value.type === 'Literal') {
 					let value = attr_value.value;
 
@@ -2055,7 +2433,7 @@ const visitors = {
 						value = `${scoping_hash} ${value}`;
 					}
 
-					handle_static_attr(class_attribute.name.name, value);
+					handle_static_attr('class', value);
 				} else {
 					const metadata = { tracking: false };
 					let expression = /** @type {AST.Expression} */ (
@@ -2100,7 +2478,7 @@ const visitors = {
 
 			// In dev mode, emit push_element for runtime nesting validation
 			if (state.dev) {
-				const element_name = /** @type {AST.Identifier} */ (node.id).name;
+				const element_name = /** @type {AST.Identifier} */ (element_id).name;
 				const loc = node.loc;
 				state.init?.push(
 					b.stmt(
@@ -2199,22 +2577,24 @@ const visitors = {
 
 			const apply_parent_css_scope = state.applyParentCssScope;
 
-			for (const attr of node.attributes) {
-				if (attr.type === 'Attribute') {
-					if (attr.name.type === 'Identifier') {
+			for (const attr of element_attributes) {
+				if (attr.type === 'JSXAttribute') {
+					{
+						const attr_name = get_attribute_name(attr);
+						const attr_value = get_attribute_value(attr);
 						const metadata = { tracking: false };
 						let property =
-							attr.value === null
+							attr_value === null
 								? b.literal(true)
 								: /** @type {AST.Expression} */ (
-										visit(/** @type {AST.Expression} */ (attr.value), {
+										visit(/** @type {AST.Expression} */ (attr_value), {
 											...state,
 											metadata,
 										})
 									);
 
 						const scoped_hash = get_component_css_hash(state);
-						if (attr.name.name === 'class' && node.metadata.scoped && scoped_hash) {
+						if (attr_name === 'class' && node.metadata.scoped && scoped_hash) {
 							if (property.type === 'Literal') {
 								property = b.literal(`${scoped_hash} ${property.value}`);
 							} else {
@@ -2222,7 +2602,7 @@ const visitors = {
 							}
 						}
 
-						if (attr.name.name === 'children') {
+						if (attr_name === 'children') {
 							children_prop = b.prop(
 								'init',
 								b.id('children'),
@@ -2232,9 +2612,9 @@ const visitors = {
 							continue;
 						}
 
-						props.push(b.prop('init', b.key(attr.name.name), property));
+						props.push(b.prop('init', b.key(attr_name), property));
 					}
-				} else if (attr.type === 'SpreadAttribute') {
+				} else if (attr.type === 'JSXSpreadAttribute') {
 					props.push(
 						b.spread(
 							/** @type {AST.Expression} */ (
@@ -2246,11 +2626,8 @@ const visitors = {
 			}
 
 			if (node.metadata.scoped && get_component_css(state)) {
-				const hasClassAttr = node.attributes.some(
-					(attr) =>
-						attr.type === 'Attribute' &&
-						attr.name.type === 'Identifier' &&
-						attr.name.name === 'class',
+				const hasClassAttr = element_attributes.some(
+					(attr) => attr.type === 'JSXAttribute' && get_attribute_name(attr) === 'class',
 				);
 				if (!hasClassAttr) {
 					const name = is_spreading ? '#class' : 'class';
@@ -2259,13 +2636,17 @@ const visitors = {
 				}
 			}
 
-			for (const child of node.children) {
+			const element_children = lower_code_block_children(
+				/** @type {AST.Node[]} */ (node.children),
+				context.state.scopes,
+			);
+			for (const child of element_children) {
 				if (is_native_tsrx_function_node(child)) {
 					state.init?.push(/** @type {AST.Statement} */ (visit(child, state)));
 				}
 			}
 
-			const children_filtered = node.children.filter(
+			const children_filtered = element_children.filter(
 				(child) => child.type !== 'EmptyStatement' && !is_native_tsrx_function_node(child),
 			);
 
@@ -2302,7 +2683,8 @@ const visitors = {
 			const args = [b.object(props)];
 
 			// Check if this is a locally defined component
-			const component_name = node.id.type === 'Identifier' ? node.id.name : null;
+			const component_name =
+				element_id.type === 'Identifier' ? /** @type {AST.Identifier} */ (element_id).name : null;
 			const local_metadata = component_name
 				? state.component_metadata.find((m) => m.id === component_name)
 				: null;
@@ -2311,7 +2693,7 @@ const visitors = {
 			const comp_call = b.call('_$_.render_component', comp_id, b.spread(args_id));
 			const comp_call_statement = b.stmt(comp_call);
 
-			const visited_id = /** @type {AST.Expression} */ (visit(node.id, state));
+			const visited_id = /** @type {AST.Expression} */ (visit(element_id, state));
 			/** @type {AST.Statement[]} */
 			const statements = [b.const(comp_id, visited_id), b.const(args_id, b.array(args))];
 
@@ -2331,210 +2713,26 @@ const visitors = {
 		}
 	},
 
-	SwitchStatement(node, context) {
-		if (context.state.regular_js) {
-			return context.next();
-		}
-
-		if (!is_inside_component(context)) {
-			return context.next();
-		}
-
-		const cases = [];
-
-		for (const switch_case of node.cases) {
-			const case_body = [];
-
-			if (switch_case.consequent.length !== 0) {
-				const flattened_consequent = flatten_switch_consequent(switch_case.consequent);
-				const consequent_scope =
-					context.state.scopes.get(switch_case.consequent) || context.state.scope;
-				const consequent = b.block(
-					transform_body(flattened_consequent, {
-						...context,
-						state: {
-							...context.state,
-							scope: consequent_scope,
-							control_flow_branch_body: true,
-						},
-					}),
-				);
-				case_body.push(...consequent.body);
-			}
-			case_body.push(b.break);
-
-			cases.push(
-				b.switch_case(
-					switch_case.test ? /** @type {AST.Expression} */ (context.visit(switch_case.test)) : null,
-					case_body,
-				),
-			);
-		}
-
-		context.state.init?.push(b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_OPEN))));
-
-		context.state.init?.push(
-			b.switch(/** @type {AST.Expression} */ (context.visit(node.discriminant)), cases),
-		);
-
-		context.state.init?.push(b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_CLOSE))));
+	SwitchStatement: visit_switch_statement,
+	JSXSwitchExpression(node, context) {
+		return visit_directive_wrapping_values(node, context, visit_switch_statement);
 	},
 
-	ForOfStatement(node, context) {
-		if (context.state.regular_js) {
-			return context.next();
-		}
-
-		if (!is_inside_component(context)) {
-			context.next();
-			return;
-		}
-		const body_scope = context.state.scopes.get(node.body);
-
-		if (node.metadata?.script_only && !node.metadata?.has_template) {
-			const body = transform_body(/** @type {AST.BlockStatement} */ (node.body).body, {
-				...context,
-				state: { ...context.state, scope: /** @type {ScopeInterface} */ (body_scope) },
-			});
-
-			if (node.index) {
-				context.state.init?.push(b.var(node.index, b.literal(0)));
-				body.push(b.stmt(b.update('++', node.index)));
+	ForOfStatement: visit_for_of_statement,
+	// `@for` covers for-of / for-in / for(;;): non-for-of forms have no
+	// dedicated visitor and keep the default traversal, as before.
+	JSXForExpression(node, context) {
+		return visit_directive_wrapping_values(node, context, (node, context) => {
+			if (node.statementType === 'ForOfStatement') {
+				return visit_for_of_statement(node, context);
 			}
-
-			context.state.init?.push(
-				b.for_of(
-					/** @type {AST.VariableDeclaration} */ (context.visit(node.left)),
-					/** @type {AST.Expression} */
-					(context.visit(node.right)),
-					b.block(body),
-				),
-			);
-			return;
-		}
-
-		context.state.init?.push(b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_OPEN))));
-
-		const body = transform_body(/** @type {AST.BlockStatement} */ (node.body).body, {
-			...context,
-			state: {
-				...context.state,
-				scope: /** @type {ScopeInterface} */ (body_scope),
-				control_flow_branch_body: true,
-			},
+			return context.next();
 		});
-		const empty_id = node.empty ? b.id(context.state.scope.generate('for_empty')) : null;
-
-		if (node.index) {
-			context.state.init?.push(b.var(node.index, b.literal(0)));
-			body.push(b.stmt(b.update('++', node.index)));
-		}
-		if (empty_id) {
-			context.state.init?.push(b.var(empty_id, b.true));
-			body.unshift(b.stmt(b.assignment('=', empty_id, b.false)));
-		}
-
-		context.state.init?.push(
-			b.for_of(
-				/** @type {AST.VariableDeclaration} */ (context.visit(node.left)),
-				/** @type {AST.Expression} */
-				(context.visit(node.right)),
-				b.block(body),
-			),
-		);
-
-		if (empty_id && node.empty) {
-			const empty_scope = context.state.scopes.get(node.empty) || context.state.scope;
-			context.state.init?.push(
-				b.if(
-					empty_id,
-					b.block(
-						transform_body(/** @type {AST.BlockStatement} */ (node.empty).body, {
-							...context,
-							state: { ...context.state, scope: /** @type {ScopeInterface} */ (empty_scope) },
-						}),
-					),
-				),
-			);
-		}
-
-		context.state.init?.push(b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_CLOSE))));
 	},
 
-	IfStatement(node, context) {
-		if (context.state.regular_js || node.metadata?.regular_js) {
-			return context.next({ ...context.state, regular_js: true });
-		}
-
-		if (!is_inside_component(context)) {
-			context.next();
-			return;
-		}
-
-		const consequent_body =
-			node.consequent.type === 'BlockStatement' ? node.consequent.body : [node.consequent];
-		const consequent_scope = context.state.scopes.get(node.consequent) || context.state.scope;
-
-		if (
-			(node.metadata?.script_only || node.metadata?.has_continue) &&
-			!node.metadata?.has_template &&
-			!node.alternate
-		) {
-			context.state.init?.push(
-				b.if(
-					/** @type {AST.Expression} */ (context.visit(node.test)),
-					b.block(
-						transform_body(consequent_body, {
-							...context,
-							state: { ...context.state, scope: consequent_scope },
-						}),
-					),
-				),
-			);
-			return;
-		}
-
-		const consequent = b.block(
-			transform_body(consequent_body, {
-				...context,
-				state: {
-					...context.state,
-					scope: /** @type {ScopeInterface} */ (consequent_scope),
-					control_flow_branch_body: true,
-				},
-			}),
-		);
-
-		context.state.init?.push(b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_OPEN))));
-
-		/** @type {AST.BlockStatement | AST.IfStatement | null} */
-		let alternate = null;
-		if (node.alternate) {
-			const alternate_scope = context.state.scopes.get(node.alternate) || context.state.scope;
-			const alternate_body_nodes =
-				node.alternate.type === 'IfStatement'
-					? [node.alternate]
-					: node.alternate.type === 'BlockStatement'
-						? node.alternate.body
-						: [node.alternate];
-
-			alternate = b.block(
-				transform_body(alternate_body_nodes, {
-					...context,
-					state: {
-						...context.state,
-						scope: alternate_scope,
-						control_flow_branch_body: node.alternate.type !== 'IfStatement',
-					},
-				}),
-			);
-		}
-
-		context.state.init?.push(
-			b.if(/** @type {AST.Expression} */ (context.visit(node.test)), consequent, alternate),
-		);
-
-		context.state.init?.push(b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_CLOSE))));
+	IfStatement: visit_if_statement,
+	JSXIfExpression(node, context) {
+		return visit_directive_wrapping_values(node, context, visit_if_statement);
 	},
 
 	ReturnStatement(node, context) {
@@ -2545,7 +2743,9 @@ const visitors = {
 		if (!context.state.to_ts && is_native_tsrx_template_node(node.argument)) {
 			return b.return(
 				build_template_node_to_tsrx_element(
-					/** @type {AST.Element | AST.TsrxFragment} */ (/** @type {unknown} */ (node.argument)),
+					/** @type {AST.TSRXJSXElement | AST.TSRXJSXFragment} */ (
+						/** @type {unknown} */ (node.argument)
+					),
 					context,
 				),
 				/** @type {AST.NodeWithLocation} */ (node),
@@ -2575,7 +2775,9 @@ const visitors = {
 		if (left.type === 'MemberExpression') {
 			const target = get_indexed_reactive_target(left, context);
 			if (target !== null) {
-				const right = /** @type {AST.Expression} */ (context.visit(node.right));
+				const right = /** @type {AST.Expression} */ (
+					context.visit(/** @type {AST.Node} */ (node.right))
+				);
 				let value = right;
 				if (node.operator !== '=') {
 					const operator = /** @type {AST.BinaryOperator} */ (node.operator.slice(0, -1));
@@ -2600,7 +2802,9 @@ const visitors = {
 							context,
 						)
 					),
-					right: /** @type {AST.Expression} */ (context.visit(node.right)),
+					right: /** @type {AST.Expression} */ (
+						context.visit(/** @type {AST.Node} */ (node.right))
+					),
 				};
 			}
 		}
@@ -2609,7 +2813,9 @@ const visitors = {
 		if (left.type === 'Identifier') {
 			const binding = context.state.scope?.get(left.name);
 			if (binding?.transform?.assign && binding.node !== left) {
-				let value = /** @type {AST.Expression} */ (context.visit(node.right));
+				let value = /** @type {AST.Expression} */ (
+					context.visit(/** @type {AST.Node} */ (node.right))
+				);
 
 				// For compound operators (+=, -=, *=, /=), expand to read + operation
 				if (node.operator !== '=') {
@@ -2625,7 +2831,7 @@ const visitors = {
 		return {
 			...node,
 			left: /** @type {AST.Pattern} */ (strip_typescript_expression_wrappers(node.left, context)),
-			right: /** @type {AST.Expression} */ (context.visit(node.right)),
+			right: /** @type {AST.Expression} */ (context.visit(/** @type {AST.Node} */ (node.right))),
 		};
 	},
 
@@ -2666,7 +2872,7 @@ const visitors = {
 		const { state } = context;
 
 		if (get_submodule_import_source_name(node) === 'server') {
-			return /** @type {any} */ (transform_server_module_import(node));
+			return transform_server_module_import(node);
 		}
 
 		if (!state.to_ts && node.importKind === 'type') {
@@ -2680,13 +2886,13 @@ const visitors = {
 
 			/** @type {AST.VariableDeclaration[]} */
 			const locals = state.server_block_locals;
-			for (const spec of node.specifiers) {
+			const specifiers = node.specifiers.map((spec) => {
 				const original_name = spec.local.name;
 				const name = obfuscateIdentifier(original_name);
-				spec.local = b.id(name);
 				locals.push(b.const(original_name, b.id(name)));
-			}
-			state.imports.add(node);
+				return { ...spec, local: b.id(name) };
+			});
+			state.imports.add(/** @type {AST.ImportDeclaration} */ ({ ...node, specifiers }));
 			return b.empty;
 		}
 
@@ -2698,107 +2904,34 @@ const visitors = {
 		});
 	},
 
-	TryStatement(node, context) {
-		if (context.state.regular_js) {
-			return context.next();
-		}
-
-		if (!is_inside_component(context)) {
-			return context.next();
-		}
-
-		const has_pending = node.pending !== null;
-		const has_catch = node.handler !== null;
-
-		const body = transform_body(node.block.body, {
-			...context,
-			state: {
-				...context.state,
-				scope: /** @type {ScopeInterface} */ (context.state.scopes.get(node.block)),
-			},
-		});
-
-		// Wrap try_fn body with hydration markers when pending or catch is present
-		const try_fn = b.arrow(
-			[],
-			b.block(
-				has_pending || has_catch
-					? [
-							b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_OPEN))),
-							...body,
-							b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_CLOSE))),
-						]
-					: body,
-			),
-		);
-
-		/** @type {AST.Expression} */
-		let catch_fn = b.literal(null);
-
-		const handler = node.handler;
-		if (handler) {
-			if (handler.param) {
-				delete handler.param.typeAnnotation;
-			}
-
-			/** @type {AST.Statement | null} */
-			let reset = null;
-			if (handler.resetParam) {
-				delete handler.resetParam.typeAnnotation;
-
-				reset = b.const(
-					handler.resetParam.type === 'AssignmentPattern'
-						? /** @type {AST.Identifier} */ (handler.resetParam.left).name
-						: /** @type {AST.Identifier} */ (handler.resetParam).name,
-					b.id('_$_.noop'),
-				);
-			}
-
-			catch_fn = b.arrow(
-				[handler.param || b.id('error')],
-				b.block([
-					b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_OPEN))),
-					...(reset ? [reset] : []),
-					...transform_body(handler.body.body, {
-						...context,
-						state: {
-							...context.state,
-							scope: /** @type {ScopeInterface} */ (context.state.scopes.get(handler.body)),
-						},
-					}),
-					b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_CLOSE))),
-				]),
-			);
-		}
-
-		const pending_body = node.pending
-			? transform_body(node.pending.body, {
-					...context,
-					state: {
-						...context.state,
-						scope: /** @type {ScopeInterface} */ (context.state.scopes.get(node.pending)),
-					},
-				})
-			: null;
-
-		// Wrap pending_fn body with hydration markers
-		const pending_fn =
-			pending_body !== null
-				? b.arrow(
-						[],
-						b.block([
-							b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_OPEN))),
-							...pending_body,
-							b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_CLOSE))),
-						]),
-					)
-				: b.literal(null);
-
-		context.state.init?.push(b.stmt(b.call('_$_.try_block', try_fn, catch_fn, pending_fn)));
+	TryStatement: visit_try_statement,
+	JSXTryExpression(node, context) {
+		return visit_directive_wrapping_values(node, context, visit_try_statement);
 	},
 
-	TSRXExpression(node, context) {
+	JSXExpressionContainer(node, context) {
 		const { visit, state } = context;
+
+		// A `{/* comment */}` container renders nothing.
+		if (is_empty_expression_container(node)) {
+			return;
+		}
+
+		// A merged text run (adjacent text/expression children collapsed by
+		// `normalize_children`) renders through the plain text path.
+		if (is_template_text(node)) {
+			const expression = /** @type {AST.Expression} */ (visit(node.expression, state));
+
+			if (expression.type === 'Literal') {
+				state.init?.push(
+					b.stmt(b.call(b.id('_$_.output_push'), b.literal(escape(expression.value)))),
+				);
+			} else {
+				state.init?.push(b.stmt(b.call(b.id('_$_.output_push'), b.call('_$_.escape', expression))));
+			}
+			return;
+		}
+
 		const is_static_native_tsrx_call = is_static_native_tsrx_function_call(
 			/** @type {AST.Expression} */ (node.expression),
 			context,
@@ -2836,75 +2969,15 @@ const visitors = {
 		}
 	},
 
-	Text(node, { visit, state }) {
-		let expression = /** @type {AST.Expression} */ (visit(node.expression, state));
+	JSXText(node, { state }) {
+		const value = get_template_text_value(node, false);
 
-		if (expression.type === 'Literal') {
-			state.init?.push(
-				b.stmt(b.call(b.id('_$_.output_push'), b.literal(escape(expression.value)))),
-			);
-		} else {
-			state.init?.push(b.stmt(b.call(b.id('_$_.output_push'), b.call('_$_.escape', expression))));
+		// Insignificant whitespace collapses to nothing.
+		if (value === '') {
+			return;
 		}
-	},
 
-	TsrxFragment(node, context) {
-		const { visit, state } = context;
-		const children = node.children.filter(
-			(child) => child != null && child.type !== 'EmptyStatement',
-		);
-		apply_tsrx_css_scoping(children, state);
-
-		/** @type {AST.Statement[]} */
-		const init = [];
-		transform_children(
-			children,
-			/** @type {TransformServerContext} */ ({
-				visit,
-				state: {
-					...state,
-					init,
-					regular_js: false,
-					jsx_to_tsrx_element: true,
-					// The fragment's own children are no longer the direct body of the
-					// enclosing control-flow branch, so they must not inherit the marker.
-					control_flow_branch_body: false,
-				},
-			}),
-		);
-
-		if (state.template_child) {
-			// In template position the client lowers `<>…</>` to a `<!>` placeholder +
-			// `_$_.expression(() => _$_.tsrx_element(…))`. During hydration that
-			// expression() needs a matching `<!--[-->`…`<!--]-->` boundary whenever it
-			// would otherwise borrow a nested control-flow's start marker as its own and
-			// advance the cursor past that child's content (desyncing hydration). That
-			// happens in two situations:
-			//   - the fragment is the direct body of a control-flow branch (or nested in
-			//     an element within one): the enclosing block already consumed its own
-			//     marker via hydrate_next before the branch body runs, leaving none for
-			//     the fragment — `control_flow_branch_body`;
-			//   - the fragment leads with control flow (e.g. a component body
-			//     `<> @for … </>`): its first child's marker would be mistaken for the
-			//     fragment's own.
-			// A fragment that leads with a component/element instead reuses its host
-			// boundary (or adopts real nodes) and must NOT be bracketed, or the extra
-			// markers desync the static-cursor (`next()` + skip_advance) client path.
-			const needs_boundary =
-				state.control_flow_branch_body || fragment_leads_with_control_flow(children, context);
-			if (needs_boundary && init.length > 0) {
-				state.init?.push(b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_OPEN))));
-				state.init?.push(b.block(init));
-				state.init?.push(b.stmt(b.call(b.id('_$_.output_push'), b.literal(BLOCK_CLOSE))));
-			} else if (init.length > 0) {
-				// Template body: push children statements inline
-				state.init?.push(b.block(init));
-			}
-		} else {
-			// Expression context: return tsrx_element(render_fn)
-			const render_fn = b.arrow([], b.block(init));
-			return b.call('_$_.tsrx_element', render_fn);
-		}
+		state.init?.push(b.stmt(b.call(b.id('_$_.output_push'), b.literal(escape(value)))));
 	},
 
 	TSModuleBlock(node, context) {
@@ -3234,8 +3307,7 @@ function thread_statement_list(list, out_id) {
 			pending.push(arg);
 		} else if (CONTAINER_TYPES.has(stmt.type) && !container_header_branches(stmt)) {
 			commit();
-			thread_container(stmt, out_id);
-			out.push(stmt);
+			out.push(thread_container(stmt, out_id));
 		} else if (stmt.type === 'ReturnStatement' || contains_branching_call(stmt)) {
 			flush();
 			out.push(stmt);
@@ -3251,47 +3323,63 @@ function thread_statement_list(list, out_id) {
 }
 
 /**
- * Threads the accumulator into a container's body slot(s), in place.
+ * Threads the accumulator into a container's body slot(s), copy-on-write:
+ * returns a rebuilt statement instead of mutating the original.
  * @param {AST.Statement} stmt
  * @param {string} out_id
- * @returns {void}
+ * @returns {AST.Statement}
  */
 function thread_container(stmt, out_id) {
 	/** @param {AST.Statement} node @returns {AST.Statement} */
 	const body_slot = (node) => {
 		if (node.type === 'BlockStatement') {
-			node.body = thread_statement_list(node.body, out_id);
-			return node;
+			return { ...node, body: thread_statement_list(node.body, out_id) };
 		}
 		return b.block(thread_statement_list([node], out_id));
 	};
 	switch (stmt.type) {
 		case 'BlockStatement':
-			stmt.body = thread_statement_list(stmt.body, out_id);
-			break;
+			return { ...stmt, body: thread_statement_list(stmt.body, out_id) };
 		case 'IfStatement':
-			stmt.consequent = body_slot(stmt.consequent);
-			if (stmt.alternate) stmt.alternate = body_slot(stmt.alternate);
-			break;
+			return {
+				...stmt,
+				consequent: body_slot(stmt.consequent),
+				alternate: stmt.alternate ? body_slot(stmt.alternate) : stmt.alternate,
+			};
 		case 'ForStatement':
 		case 'ForInStatement':
 		case 'ForOfStatement':
 		case 'WhileStatement':
 		case 'DoWhileStatement':
 		case 'LabeledStatement':
-			stmt.body = body_slot(stmt.body);
-			break;
+			return { ...stmt, body: body_slot(stmt.body) };
 		case 'SwitchStatement':
-			for (const switch_case of stmt.cases) {
-				switch_case.consequent = thread_statement_list(switch_case.consequent, out_id);
-			}
-			break;
+			return {
+				...stmt,
+				cases: stmt.cases.map((switch_case) => ({
+					...switch_case,
+					consequent: thread_statement_list(switch_case.consequent, out_id),
+				})),
+			};
 		case 'TryStatement':
-			stmt.block.body = thread_statement_list(stmt.block.body, out_id);
-			if (stmt.handler)
-				stmt.handler.body.body = thread_statement_list(stmt.handler.body.body, out_id);
-			if (stmt.finalizer) stmt.finalizer.body = thread_statement_list(stmt.finalizer.body, out_id);
-			break;
+			return {
+				...stmt,
+				block: { ...stmt.block, body: thread_statement_list(stmt.block.body, out_id) },
+				handler: stmt.handler
+					? {
+							...stmt.handler,
+							body: {
+								...stmt.handler.body,
+								body: thread_statement_list(stmt.handler.body.body, out_id),
+							},
+						}
+					: stmt.handler,
+				finalizer: stmt.finalizer
+					? { ...stmt.finalizer, body: thread_statement_list(stmt.finalizer.body, out_id) }
+					: stmt.finalizer,
+			};
+		default:
+			return stmt;
 	}
 }
 
@@ -3367,34 +3455,58 @@ function fresh_accumulator_name(body) {
  * and flush before every branching statement and at block end. So a child block's
  * slot always follows what the parent already flushed: we never accumulate across
  * a block boundary.
+ *
+ * Copy-on-write: the input tree is never mutated — changed spines are rebuilt
+ * and the rebuilt program is returned. A shared subtree is rewritten once and
+ * every occurrence points at the same rewritten copy (mirroring the old
+ * in-place semantics).
  * @param {AST.Program} program
- * @returns {void}
+ * @returns {AST.Program}
  */
 function accumulate_output_pushes(program) {
-	const seen = new WeakSet();
-	/** @param {unknown} node */
+	/** @type {WeakMap<object, unknown>} */
+	const cache = new WeakMap();
+	/** @param {unknown} node @returns {unknown} */
 	const recurse = (node) => {
 		if (Array.isArray(node)) {
-			for (const child of node) recurse(child);
-			return;
+			/** @type {unknown[] | null} */
+			let copy = null;
+			for (let i = 0; i < node.length; i++) {
+				const next = recurse(node[i]);
+				if (next !== node[i]) {
+					copy ??= node.slice();
+					copy[i] = next;
+				}
+			}
+			return copy ?? node;
 		}
-		if (!is_traversable_ast_node(node)) return;
-		if (seen.has(node)) return;
-		seen.add(node);
+		if (!is_traversable_ast_node(node)) return node;
+		if (cache.has(node)) return cache.get(node);
+		// Guard against cycles: re-entry resolves to the original node.
+		cache.set(node, node);
+
+		/** @type {AST.TraversableAstNode} */
+		let result = /** @type {AST.TraversableAstNode} */ (node);
 
 		if (isFunctionNode(node)) {
 			const body = /** @type {AST.Function} */ (node).body;
 			if (body && body.type === 'BlockStatement' && has_direct_output_push(body.body)) {
 				const out_id = fresh_accumulator_name(body.body);
-				body.body = [
-					b.let(b.id(out_id), b.literal('')),
-					...thread_statement_list(body.body, out_id),
-					b.stmt(b.call(b.id('_$_.output_push'), b.id(out_id))),
-				];
+				result = /** @type {AST.TraversableAstNode} */ ({
+					...node,
+					body: {
+						...body,
+						body: [
+							b.let(b.id(out_id), b.literal('')),
+							...thread_statement_list(body.body, out_id),
+							b.stmt(b.call(b.id('_$_.output_push'), b.id(out_id))),
+						],
+					},
+				});
 			}
 		}
 
-		for (const key in node) {
+		for (const key in result) {
 			if (
 				key === 'metadata' ||
 				key === 'loc' ||
@@ -3404,10 +3516,18 @@ function accumulate_output_pushes(program) {
 			) {
 				continue;
 			}
-			recurse(node[key]);
+			const child = result[key];
+			const next = recurse(child);
+			if (next !== child) {
+				if (result === node) result = /** @type {AST.TraversableAstNode} */ ({ ...node });
+				result[key] = next;
+			}
 		}
+
+		cache.set(node, result);
+		return result;
 	};
-	recurse(program);
+	return /** @type {AST.Program} */ (recurse(program));
 }
 
 /**
@@ -3447,18 +3567,6 @@ export function transform_server(filename, source, analysis, minify_css, dev = f
 
 	const { css, cssHash } = renderCssResult(state.stylesheets, minify_css);
 
-	// Register each stylesheet's CSS so the runtime can serialize it
-	if (css) {
-		for (const stylesheet of state.stylesheets) {
-			const css_for_component = renderStylesheets([stylesheet]);
-			/** @type {AST.Program} */ (program).body.push(
-				b.stmt(
-					b.call('_$_.register_css', b.literal(stylesheet.hash), b.literal(css_for_component)),
-				),
-			);
-		}
-	}
-
 	/** @type {AST.Program['body']} */
 	let body = [];
 
@@ -3472,13 +3580,25 @@ export function transform_server(filename, source, analysis, minify_css, dev = f
 
 	body.push(...program.body);
 
-	program.body = body;
+	// Register each stylesheet's CSS so the runtime can serialize it
+	if (css) {
+		for (const stylesheet of state.stylesheets) {
+			const css_for_component = renderStylesheets([stylesheet]);
+			body.push(
+				b.stmt(
+					b.call('_$_.register_css', b.literal(stylesheet.hash), b.literal(css_for_component)),
+				),
+			);
+		}
+	}
+
+	program = /** @type {AST.Program} */ ({ ...program, body });
 
 	// Accumulate each runtime block's output into a single `__out` string and
 	// push it once per block (flushing only before a child block) so the whole
 	// `@for` feed lands in one push. Stays within block boundaries by
 	// construction (see accumulate_output_pushes).
-	accumulate_output_pushes(/** @type {AST.Program} */ (program));
+	program = accumulate_output_pushes(/** @type {AST.Program} */ (program));
 
 	const { code, map } = print(
 		program,

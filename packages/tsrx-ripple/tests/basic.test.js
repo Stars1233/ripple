@@ -504,6 +504,20 @@ describe('@tsrx/ripple lowers control flow combined into an expression', () => {
 		expect(code).not.toMatch(/const ad = if\b/);
 	});
 
+	it('lowers a value-position @else if chain to a ternary chain in to_ts output', () => {
+		const source = `function App({ x }: { x: number }) {
+	const v = @if (x > 1) { <div>a</div> } @else if (x > 0) { <div>b</div> } @else { <div>c</div> }
+	return <div>{v}</div>;
+}`;
+		// Each `@else if` link recurses into build_tsrx_ts_directive_value as a plain
+		// IfStatement — it must lower like the rooting `@if` (the ternary's next arm),
+		// not fall through to the `@try` lowering (which used to crash on the missing
+		// `block`).
+		const { code, errors } = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
+		expect(errors).toEqual([]);
+		expect(code).toContain('x > 1 ? <div>a</div> : x > 0 ? <div>b</div> : <div>c</div>');
+	});
+
 	it('wraps a @{ … } code block operand and a ternary branch', () => {
 		const code_block = `function App() @{
 			const ad = (@{ const x = 1; <span>{x}</span> }) || 'd';
@@ -832,10 +846,7 @@ describe('@tsrx/ripple Volar mappings style anchors', () => {
 		const collect_style_nodes = (node) => {
 			if (!node || typeof node !== 'object' || seen.has(node)) return;
 			seen.add(node);
-			if (
-				node.type === 'JSXStyleElement' ||
-				(node.type === 'Element' && node.id?.name === 'style')
-			) {
+			if (node.type === 'JSXStyleElement') {
 				source_style_nodes.push(node.type);
 			}
 			for (const key in node) {
@@ -1487,7 +1498,7 @@ describe('@tsrx/ripple <> expression values', () => {
 		const { code } = compile(`const App = () => <button>Hello</button>;`, 'App.tsrx');
 
 		expect(code).toContain('template(`<button>Hello</button>`');
-		expect(code).toContain('_$_.append(__anchor, button_1)');
+		expect(code).toContain('_$_.append(__anchor, button)');
 		expect(code).not.toContain('template(``');
 	});
 
@@ -1500,7 +1511,7 @@ describe('@tsrx/ripple <> expression values', () => {
 		);
 
 		expect(code).toContain('template(`<div>Commented</div>`');
-		expect(code).toContain('_$_.append(__anchor, div_1)');
+		expect(code).toContain('_$_.append(__anchor, div)');
 	});
 
 	it('keeps directly called PascalCase numeric helpers as ordinary functions', () => {

@@ -69,15 +69,15 @@ describe('compiler > basics', () => {
 
 		const ast = parse(source, 'App.tsrx');
 		const elements = get_returned_tsrx(ast.body[0]).children.filter(
-			(node: AST.Node) => node.type === 'Element',
-		) as AST.Element[];
+			(node: AST.Node) => node.type === 'JSXElement',
+		) as ESTreeJSX.JSXElement[];
 		const expression = elements[0].children[0] as AST.Node & { expression: AST.Expression };
 		const text_expression = elements[1].children[0] as AST.Node & { expression: AST.Expression };
 
 		expect(elements).toHaveLength(2);
-		expect(expression.type).toBe('TSRXExpression');
+		expect(expression.type).toBe('JSXExpressionContainer');
 		expect((expression.expression as AST.Identifier).name).toBe('markup');
-		expect(text_expression.type).toBe('TSRXExpression');
+		expect(text_expression.type).toBe('JSXExpressionContainer');
 		expect((text_expression.expression as AST.Identifier).name).toBe('text');
 
 		const { code } = compile(source, 'text-directive.tsrx', { mode: 'client' });
@@ -196,8 +196,8 @@ export function App() @{
 		const declaration = (ast.body[0] as AST.VariableDeclaration).declarations[0];
 		const fragment = get_returned_tsrx(declaration) as any;
 
-		expect(fragment.type).toBe('TsrxFragment');
-		expect(fragment.children[0].type).toBe('TSRXExpression');
+		expect(fragment.type).toBe('JSXFragment');
+		expect(fragment.children[0].type).toBe('JSXExpressionContainer');
 		expect(fragment.children[0].expression.type).toBe('TemplateLiteral');
 		expect(fragment.children[0].expression.quasis[0].value.raw).toBe('333');
 	});
@@ -215,9 +215,9 @@ export function App() @{
 		const declaration = (ast.body[0] as AST.VariableDeclaration).declarations[0];
 		const fragment = get_returned_tsrx(declaration) as any;
 
-		expect(fragment.type).toBe('TsrxFragment');
+		expect(fragment.type).toBe('JSXFragment');
 		expect(fragment.children.map((child: any) => child.type)).toEqual([
-			'TSRXExpression',
+			'JSXExpressionContainer',
 		]);
 		expect(fragment.children[0].expression.type).toBe('TemplateLiteral');
 		expect(fragment.children[0].expression.quasis[0].value.raw).toContain('<b></b>');
@@ -1229,14 +1229,16 @@ export function App() @{
 			const ast = parse(source, 'App.tsrx');
 			const returned = get_returned_tsrx(ast.body[0]);
 			const ul =
-				returned.type === 'Element'
+				returned.type === 'JSXElement'
 					? returned
-					: returned.children.find((n: AST.Node) => n.type === 'Element') as AST.Element;
-			expect((ul.id as AST.Identifier).name).toBe('ul');
+					: returned.children.find(
+							(n: AST.Node) => n.type === 'JSXElement',
+						) as ESTreeJSX.JSXElement;
+			expect((ul.openingElement.name as ESTreeJSX.JSXIdentifier).name).toBe('ul');
 			expect(ul.children).toHaveLength(1);
-			const text = ul.children[0] as unknown as { type: string; expression: AST.Literal };
-			expect(text.type).toBe('Text');
-			expect(text.expression.value).toBe('var a = "123"');
+			const text = ul.children[0] as unknown as { type: string; value: string };
+			expect(text.type).toBe('JSXText');
+			expect(text.value).toBe('var a = "123"');
 			expect((ul.closingElement?.name as ESTreeJSX.JSXIdentifier)?.name).toBe('ul');
 		},
 	);

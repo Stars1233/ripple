@@ -88,7 +88,28 @@ interface BaseNodeMetaData {
 	dynamicElement?: boolean;
 	templateMode?: 'script' | 'template';
 	script_only?: boolean;
-	tsrxDirective?: 'if' | 'for' | 'switch' | 'try';
+	/** A synthetic wrapper for a nested `@{ @{ ... } }` code-block render chain. */
+	tsrx_code_block_chain?: boolean;
+	/** A synthesized render-body fragment (see create_native_tsrx_render_function). */
+	tsrx_render_fragment?: boolean;
+	/** A merged text run produced by normalize_children - renders through the text path. */
+	tsrx_text?: boolean;
+	/** Control-flow node renders as the sole child of its parent (controlled anchor). */
+	is_controlled?: boolean;
+	/** Control-flow node is the root of a render body - anchors on `__anchor`. */
+	root_controlled?: boolean;
+	/** Append target set by transform_children when all siblings are static component children. */
+	append_into?: AST.Identifier;
+	/** Generated pattern id substituted for a destructured keyed `@for` left. */
+	tsrx_for_pattern_id?: AST.Identifier;
+	/** Memoized render-body statements (see get_native_tsrx_function_body). */
+	tsrx_render_body?: AST.Node[];
+	/** Memoized resolved render slot of a `@{ … }` code block (see get_code_block_render). */
+	tsrx_render_slot?: { render: AST.Node | null };
+	/** Memoized template-child lowering of a `@{ … }` code block (see get_code_block_template_child). */
+	tsrx_template_child?: { child: AST.Node | null };
+	/** Memoized `<> … </>` wrapper for a value-position directive (see get_directive_value_wrapper). */
+	tsrx_value_wrapper?: AST.TSRXJSXFragment;
 	ts_name?: string;
 	delegated?: any;
 	returned_tsrx_return?: AST.ReturnStatement;
@@ -122,6 +143,10 @@ interface FunctionMetaData extends BaseNodeMetaData {
 	is_method?: boolean;
 	tracked?: boolean;
 	has_lazy_descendants?: boolean;
+	/** The component's extracted `<style>` stylesheet (element-level scoped-class info lives on BaseNodeMetaData's `css`). */
+	component_css?: AST.CSS.StyleSheet | null;
+	/** Top-level scoped classes collected while pruning the component's CSS. */
+	topScopedClasses?: TopScopedClasses;
 	synthetic_children?: boolean;
 	generated_helpers?: any[];
 	generated_statics?: any[];
@@ -248,30 +273,17 @@ declare module 'estree' {
 		tracked?: boolean;
 	}
 
-	interface SimpleLiteral extends AST.LiteralNode {}
-	interface RegExpLiteral extends AST.LiteralNode {}
-	interface BigIntLiteral extends AST.LiteralNode {}
-
 	interface TrackedNode {
 		tracked?: boolean;
 	}
 
-	interface LiteralNode {
-		was_expression?: boolean;
-	}
-
 	// Include TypeScript node types and TSRX-specific nodes in NodeMap
 	interface NodeMap {
-		Element: Element;
-		TsrxFragment: TsrxFragment;
-		Text: Text;
+		JSXSpreadChild: ESTreeJSX.JSXSpreadChild;
 		TSRXJSXElement: TSRXJSXElement;
 		TSRXJSXFragment: TSRXJSXFragment;
 		TSRXJSXOpeningElement: ESTreeJSX.TSRXJSXOpeningElement;
 		TSRXJSXClosingElement: ESTreeJSX.TSRXJSXClosingElement;
-		TSRXExpression: TSRXExpression;
-		Attribute: Attribute;
-		SpreadAttribute: SpreadAttribute;
 		JSXCodeBlock: JSXCodeBlock;
 		JSXStyleElement: JSXStyleElement;
 		JSXIfExpression: JSXIfExpression;
@@ -282,10 +294,8 @@ declare module 'estree' {
 	}
 
 	interface ExpressionMap {
-		Element: Element;
-		TsrxFragment: TsrxFragment;
-		Text: Text;
-		TSRXExpression: TSRXExpression;
+		TSRXJSXElement: TSRXJSXElement;
+		TSRXJSXFragment: TSRXJSXFragment;
 		JSXCodeBlock: JSXCodeBlock;
 		JSXStyleElement: JSXStyleElement;
 		JSXIfExpression: JSXIfExpression;
@@ -298,69 +308,6 @@ declare module 'estree' {
 	}
 
 	type TraversableAstNode = AST.Node & Record<string, unknown>;
-
-	// Ripple-normalized template node shapes. The core parser emits JSX-shaped
-	// TSRX nodes; @tsrx/ripple creates these during its normalization pass.
-	interface Attribute extends AST.BaseNode {
-		type: 'Attribute';
-		name: AST.Identifier;
-		value: any;
-		shorthand?: boolean;
-		metadata: BaseNodeMetaData;
-	}
-
-	interface SpreadAttribute extends AST.BaseNode {
-		type: 'SpreadAttribute';
-		argument: AST.Expression;
-		metadata: BaseNodeMetaData;
-	}
-
-	interface Element extends AST.BaseExpression {
-		type: 'Element';
-		id: AST.Expression;
-		attributes: Array<Attribute | SpreadAttribute>;
-		children: AST.Node[];
-		openingElement: ESTreeJSX.JSXOpeningElement;
-		closingElement: ESTreeJSX.JSXClosingElement | null;
-		selfClosing?: boolean;
-		unclosed?: boolean;
-		isDynamic?: boolean;
-		css?: string;
-		metadata: BaseNodeMetaData;
-		start: number;
-		end: number;
-	}
-
-	interface TsrxFragment extends AST.BaseExpression {
-		type: 'TsrxFragment';
-		children: AST.Node[];
-		openingElement?: ESTreeJSX.JSXOpeningFragment;
-		closingElement?: ESTreeJSX.JSXClosingFragment | null;
-		selfClosing?: boolean;
-		attributes?: Array<Attribute | SpreadAttribute>;
-		metadata: BaseNodeMetaData & {
-			/**
-			 * A synthetic wrapper for a nested code-block render chain
-			 * (`@{ @{ … } }`), so render-slot consumers see a template node;
-			 * template-children lowering unwraps it.
-			 */
-			tsrx_code_block_chain?: boolean;
-		};
-		start: number;
-		end: number;
-	}
-
-	interface Text extends AST.BaseExpression {
-		type: 'Text';
-		expression: AST.Expression;
-		metadata: BaseNodeMetaData;
-	}
-
-	interface TSRXExpression extends AST.BaseExpression {
-		type: 'TSRXExpression';
-		expression: AST.Expression;
-		metadata: BaseNodeMetaData;
-	}
 
 	type TSRXJSXChild =
 		| ESTreeJSX.JSXText
@@ -376,7 +323,16 @@ declare module 'estree' {
 			AST.NodeWithMaybeComments {
 		openingElement: ESTreeJSX.TSRXJSXOpeningElement;
 		closingElement: ESTreeJSX.TSRXJSXClosingElement | null;
-		children: TSRXJSXChild[];
+		/** The parser marks dynamic `<{expr}>` tags; lower_dynamic_element clears it on its copy. */
+		isDynamic?: boolean;
+		/** Loose-mode recovery: the element was never closed. */
+		unclosed?: boolean;
+		/**
+		 * The parser emits {@link TSRXJSXChild}; the compile pre-passes lower
+		 * template children in place (retyped directives, code-block IIFEs,
+		 * merged text runs), so any node can appear here by transform time.
+		 */
+		children: AST.Node[];
 		metadata: BaseNodeMetaData & {
 			ts_name?: string;
 		};
@@ -384,7 +340,8 @@ declare module 'estree' {
 
 	interface TSRXJSXFragment
 		extends Omit<ESTreeJSX.JSXFragment, 'children'>, AST.NodeWithMaybeComments {
-		children: TSRXJSXChild[];
+		/** See {@link TSRXJSXElement}'s `children`. */
+		children: AST.Node[];
 	}
 
 	interface JSXCodeBlock extends AST.BaseExpression {
@@ -411,21 +368,38 @@ declare module 'estree' {
 		metadata: BaseNodeMetaData;
 	}
 
-	interface JSXForExpression extends AST.BaseExpression {
+	interface JSXForExpressionBase extends AST.BaseExpression {
 		type: 'JSXForExpression';
-		statementType: 'ForStatement' | 'ForInStatement' | 'ForOfStatement';
-		body: AST.Statement;
-		init?: AST.VariableDeclaration | AST.Expression | null;
-		test?: AST.Expression | null;
-		update?: AST.Expression | null;
-		left?: AST.VariableDeclaration | AST.Pattern;
-		right?: AST.Expression;
-		await?: boolean;
+		/** The parser raises unless the directive body is a `{ … }` block. */
+		body: AST.BlockStatement;
 		index?: AST.Identifier | null;
 		key?: AST.Expression | null;
 		empty?: AST.BlockStatement | null;
 		metadata: BaseNodeMetaData;
 	}
+
+	interface JSXForOfExpression extends JSXForExpressionBase {
+		statementType: 'ForOfStatement';
+		left: AST.VariableDeclaration | AST.Pattern;
+		right: AST.Expression;
+		await?: boolean;
+	}
+
+	interface JSXForInExpression extends JSXForExpressionBase {
+		statementType: 'ForInStatement';
+		left: AST.VariableDeclaration | AST.Pattern;
+		right: AST.Expression;
+	}
+
+	interface JSXForPlainExpression extends JSXForExpressionBase {
+		statementType: 'ForStatement';
+		init?: AST.VariableDeclaration | AST.Expression | null;
+		test?: AST.Expression | null;
+		update?: AST.Expression | null;
+	}
+
+	/** `@for` — discriminated on `statementType` (for-of / for-in / for(;;)). */
+	type JSXForExpression = JSXForOfExpression | JSXForInExpression | JSXForPlainExpression;
 
 	interface JSXSwitchExpression extends AST.BaseExpression {
 		type: 'JSXSwitchExpression';
@@ -444,6 +418,13 @@ declare module 'estree' {
 		pending?: AST.BlockStatement | null;
 		metadata: BaseNodeMetaData;
 	}
+
+	/** A `@if`/`@for`/`@switch`/`@try` template control-flow directive. */
+	type JSXTemplateDirective =
+		| JSXIfExpression
+		| JSXForExpression
+		| JSXSwitchExpression
+		| JSXTryExpression;
 
 	interface ParenthesizedExpression extends AST.BaseNode {
 		type: 'ParenthesizedExpression';
@@ -764,11 +745,27 @@ declare module 'estree-jsx' {
 	}
 
 	interface TSRXJSXOpeningElement extends Omit<JSXOpeningElement, 'name'> {
-		name: AST.MemberExpression | JSXIdentifier | JSXNamespacedName | JSXExpressionContainer;
+		/** The parser marks dynamic `<{expr}>` tags; lower_dynamic_element clears it on its copy. */
+		isDynamic?: boolean;
+		// AST.MemberExpression: the parser never produces it, but the to_ts
+		// transform plants the visited member chain (`<Foo.Bar>`) into the name
+		// slot for the TSX printer and its source mappings.
+		name:
+			| JSXMemberExpression
+			| JSXIdentifier
+			| JSXNamespacedName
+			| JSXExpressionContainer
+			| import('estree').MemberExpression;
 	}
 
 	interface TSRXJSXClosingElement extends Omit<JSXClosingElement, 'name'> {
-		name: AST.MemberExpression | JSXIdentifier | JSXNamespacedName | JSXExpressionContainer;
+		// See TSRXJSXOpeningElement's `name`.
+		name:
+			| JSXMemberExpression
+			| JSXIdentifier
+			| JSXNamespacedName
+			| JSXExpressionContainer
+			| import('estree').MemberExpression;
 	}
 
 	interface ExpressionMap {
@@ -1116,8 +1113,10 @@ declare module 'estree' {
 	> {
 		typeAnnotation: TypeNode;
 	}
-	interface TSTypeAssertion extends AcornTSNode<TSESTree.TSTypeAssertion> {
+	interface TSTypeAssertion extends Omit<AcornTSNode<TSESTree.TSTypeAssertion>, 'typeAnnotation'> {
+		// Have to override it to use our Expression for required properties like metadata
 		expression: AST.Expression;
+		typeAnnotation: TypeNode;
 	}
 	interface TSTypeLiteral extends Omit<AcornTSNode<TSESTree.TSTypeLiteral>, 'members'> {
 		members: TypeElement[];
@@ -1452,7 +1451,7 @@ export interface AnalysisState extends BaseState {
 			filename: string;
 		};
 	};
-	elements?: Array<ESTreeJSX.JSXElement | AST.Element>;
+	elements?: Array<AST.TSRXJSXElement | AST.JSXStyleElement>;
 	function_depth?: number;
 	collect?: boolean;
 	metadata: BaseStateMetaData & {
@@ -1531,7 +1530,25 @@ export interface TransformClientState extends BaseState {
 }
 
 /** Override zimmerframe types and provide our own */
-type NodeOf<T extends string, X> = X extends { type: T } ? X : never;
+/**
+ * Where stock `@types/estree-jsx` and the TSRX parser shapes share a `type`
+ * tag, visitors receive the TSRX shape — the parser only ever produces that
+ * one (dynamic tag names, code-block children, `metadata`, `start`/`end`).
+ * Interface merging cannot widen the stock interfaces' property types, so the
+ * TSRXJSX* variants override the plain ones here instead.
+ */
+interface VisitorNodeOverrides {
+	JSXElement: AST.TSRXJSXElement;
+	JSXFragment: AST.TSRXJSXFragment;
+	JSXOpeningElement: ESTreeJSX.TSRXJSXOpeningElement;
+	JSXClosingElement: ESTreeJSX.TSRXJSXClosingElement;
+}
+
+type NodeOf<T extends string, X> = T extends keyof VisitorNodeOverrides
+	? VisitorNodeOverrides[T]
+	: X extends { type: T }
+		? X
+		: never;
 
 type SpecializedVisitors<T extends AST.Node | AST.CSS.Node, U> = {
 	[K in T['type']]?: Visitor<NodeOf<K, T>, U, T>;
@@ -1545,7 +1562,12 @@ export type CatchAllVisitor<T, U, V> = (
 	visit: VisitFn<V>,
 ) => V | void;
 
-export type Visitor<T, U, V> = (node: T, context: Context<V, U>) => V | void;
+/**
+ * A visitor may replace a node with several: zimmerframe stores the returned
+ * array verbatim in the parent's statement list and the printer flattens
+ * nested statement arrays.
+ */
+export type Visitor<T, U, V> = (node: T, context: Context<V, U>) => V | V[] | void;
 
 export type Visitors<T extends AST.Node | AST.CSS.Node, U> = T['type'] extends '_'
 	? never

@@ -16,9 +16,25 @@ import {
 	isNonDelegated,
 	isVoidElement,
 	normalizeEventName,
+	setLocation,
 	simpleHash,
 	strongHash,
 } from '@tsrx/core';
+import {
+	get_element_id,
+	get_element_identifier,
+	get_template_expression,
+	is_droppable_template_text,
+	is_empty_expression_container,
+	is_dynamic_element,
+	is_template_element,
+	is_template_directive,
+	is_template_else_if,
+	is_template_expression,
+	is_template_fragment,
+	is_template_text,
+	is_template_text_or_expression,
+} from './template-ast.js';
 const b = builders;
 
 // Re-export under the framework's snake_case internal convention.
@@ -57,17 +73,14 @@ export function should_guard_regular_js_statement(statement) {
 }
 
 /**
- * Plain JS control flow (`if`/`for`/`while`/`switch`/`try`, etc.) that is NOT an
- * `@if`/`@for`/`@switch`/`@try` template directive. Only directives carry
- * `metadata.tsrxDirective`; everything else is ordinary JavaScript that may
- * return JSX, and must lower exactly like control flow in a regular function.
+ * Plain JS control flow (`if`/`for`/`while`/`switch`/`try`, etc.). Template
+ * directives keep their own parser node types (`JSXIfExpression`, …), so any
+ * standard statement form here is ordinary JavaScript that may return JSX and
+ * must lower exactly like control flow in a regular function.
  * @param {AST.Node} node
  * @returns {boolean}
  */
 export function is_plain_js_control_flow(node) {
-	if (node.metadata?.tsrxDirective) {
-		return false;
-	}
 	return (
 		node.type === 'IfStatement' ||
 		node.type === 'SwitchStatement' ||
@@ -168,62 +181,7 @@ export function is_tsrx_component_function(node) {
 export function is_native_tsrx_template_node(node) {
 	return !!(
 		node &&
-		(node.type === 'Element' ||
-			node.type === 'TsrxFragment' ||
-			node.type === 'JSXElement' ||
-			node.type === 'JSXFragment' ||
-			node.type === 'JSXIfExpression' ||
-			node.type === 'JSXForExpression' ||
-			node.type === 'JSXSwitchExpression' ||
-			node.type === 'JSXTryExpression' ||
-			node.metadata?.tsrxDirective === 'if' ||
-			node.metadata?.tsrxDirective === 'for' ||
-			node.metadata?.tsrxDirective === 'switch' ||
-			node.metadata?.tsrxDirective === 'try')
-	);
-}
-
-/**
- * Normalize native JSX-shaped TSRX parser nodes into Ripple's current internal
- * template node shape. Ripple's renderer still consumes Element/TsrxFragment,
- * while the shared parser now emits JSXElement/JSXFragment plus custom JSX
- * control-flow expressions.
- * @template T
- * @param {T} node
- * @param {{ to_ts?: boolean }} [options]
- * @returns {T}
- */
-export function normalize_jsx_tsrx_templates(node, options = {}) {
-	const previous_to_ts = normalize_output_to_ts;
-	normalize_output_to_ts = !!options.to_ts;
-	try {
-		wrap_directives_combined_into_expressions(/** @type {any} */ (node));
-		return /** @type {T} */ (normalize_jsx_tsrx_node(/** @type {any} */ (node), []));
-	} finally {
-		normalize_output_to_ts = previous_to_ts;
-	}
-}
-
-/**
- * A `@if`/`@for`/`@switch`/`@try` control-flow directive — a raw `JSX…Expression`
- * before normalization, or a statement carrying `metadata.tsrxDirective` after.
- * (A `@{ … }` code block is deliberately NOT included: it self-lowers to an IIFE
- * in every position, so it never needs wrapping and wrapping it would add a
- * redundant fragment.)
- * @param {AST.Node} node
- * @returns {boolean}
- */
-function is_control_flow_directive(node) {
-	const directive = node?.metadata?.tsrxDirective;
-	return (
-		directive === 'if' ||
-		directive === 'for' ||
-		directive === 'switch' ||
-		directive === 'try' ||
-		node?.type === 'JSXIfExpression' ||
-		node?.type === 'JSXForExpression' ||
-		node?.type === 'JSXSwitchExpression' ||
-		node?.type === 'JSXTryExpression'
+		(node.type === 'JSXElement' || node.type === 'JSXFragment' || is_template_directive(node))
 	);
 }
 
@@ -233,36 +191,46 @@ function is_control_flow_directive(node) {
  * value position (an operator operand, a variable initializer, a `@for` iterable,
  * an `@if`/`@switch` test, a concise arrow body, a `return` argument, a member
  * object, …), where a bare directive would leak as an `if (…) { … }` statement
- * and is wrapped instead. Enumerating the render positions (rather than the value
- * ones) is robust: it covers every value slot, and the pre- and post-normalization
- * node shapes alike.
- * @param {AST.Node} parent
- * @param {string} key
- * @param {AST.Node} child
+ * and is wrapped in a `<> … </>` instead. Enumerating the render positions
+ * (rather than the value ones) is robust: it covers every value slot.
+ * @param {AST.Node | undefined} parent
+ * @param {AST.Node} node
  * @returns {boolean}
  */
-function is_render_child_or_statement_slot(parent, key, child) {
-	// JSX children.
-	if (key === 'children') return true;
-	// Block/program/loop/function bodies are statement lists — but a CONCISE
-	// (non-block) arrow body is an expression position, not a statement.
-	if (key === 'body') {
-		return !(
-			parent?.type === 'ArrowFunctionExpression' &&
-			/** @type {any} */ (child)?.type !== 'BlockStatement'
+export function is_directive_render_position(parent, node) {
+	if (!parent) return true;
+	// A structural view over the slots that can hold a directive — no single
+	// estree interface carries them all.
+	const container =
+		/** @type {{ type: AST.Node['type']; body?: AST.Node | AST.Node[]; children?: AST.Node[]; render?: AST.Node | null; expression?: AST.Node; consequent?: AST.Node | AST.Node[]; alternate?: AST.Node | null }} */ (
+			/** @type {unknown} */ (parent)
 		);
+	// Block/program/loop/function bodies are statement lists (or a lone body
+	// statement) — but a CONCISE (non-block) arrow body is an expression
+	// position, not a statement, and a directive is never a BlockStatement.
+	if (container.body === node) {
+		return container.type !== 'ArrowFunctionExpression';
 	}
+	if (Array.isArray(container.body) && container.body.includes(node)) return true;
+	// JSX children.
+	if (Array.isArray(container.children) && container.children.includes(node)) return true;
 	// A `@{ … }` code block's trailing render output.
-	if (parent?.type === 'JSXCodeBlock' && key === 'render') return true;
+	if (container.type === 'JSXCodeBlock' && container.render === node) return true;
 	// `{ … }` containers lower their expression through the render machinery.
-	if (parent?.type === 'JSXExpressionContainer' && key === 'expression') return true;
+	if (container.type === 'JSXExpressionContainer' && container.expression === node) return true;
 	// Switch-case statement lists.
-	if (parent?.type === 'SwitchCase' && key === 'consequent') return true;
+	if (
+		container.type === 'SwitchCase' &&
+		Array.isArray(container.consequent) &&
+		container.consequent.includes(node)
+	) {
+		return true;
+	}
 	// An if-node's branches, and the `@else if` chain (another directive) that
 	// lives in `alternate`.
 	if (
-		(parent?.type === 'IfStatement' || parent?.type === 'JSXIfExpression') &&
-		(key === 'consequent' || key === 'alternate')
+		(container.type === 'IfStatement' || container.type === 'JSXIfExpression') &&
+		(container.consequent === node || container.alternate === node)
 	) {
 		return true;
 	}
@@ -270,14 +238,28 @@ function is_render_child_or_statement_slot(parent, key, child) {
 }
 
 /**
- * Wrap a directive in a `<> … </>` so it normalizes to a `TsrxFragment` — the
- * same shape an authored `<>@if … </>` produces — and flows through the render
- * machinery (a `tsrx_element` on the client/server, a `<> … </>` in to_ts).
- * @param {any} directive
- * @returns {any}
+ * The generated `<> … </>` wrapper for a `@if`/`@for`/`@switch`/`@try`
+ * directive used in a VALUE position — the sole value of a slot
+ * (`let cd = @if (…) { … }`), an operator operand, a conditional branch, an
+ * array element, a `@for` iterable, an `@if`/`@switch` test, a concise arrow
+ * body (`xs.map((x) => @if (…) { … })`), a `return` argument, a member
+ * object. Wrapped, the directive flows through the render machinery as a
+ * valid value (a `tsrx_element` render on the client/server, a `<> … </>` in
+ * to_ts) instead of leaking a bare `if (…) { … }` statement into expression
+ * position (or a raw `JSX…Expression` crashing the printer). A `@{ … }` code
+ * block self-lowers to an IIFE in every position and is never wrapped.
+ *
+ * Memoized on the directive so the analyzer and the transforms share one
+ * wrapper identity.
+ * @param {AST.JSXTemplateDirective} directive
+ * @returns {AST.TSRXJSXFragment}
  */
-function wrap_directive_in_jsx_fragment(directive) {
-	const fragment = /** @type {any} */ (b.jsx_fragment([directive]));
+export function get_directive_value_wrapper(directive) {
+	directive.metadata ??= { path: [] };
+	if (directive.metadata.tsrx_value_wrapper) {
+		return directive.metadata.tsrx_value_wrapper;
+	}
+	const fragment = b.jsx_fragment([directive]);
 	// Mark as a GENERATED wrapper (not an authored `<> … </>`) so the to_ts
 	// single-child collapse keeps unwrapping it to the directive's lowered value,
 	// unlike an authored fragment which is kept verbatim.
@@ -286,70 +268,63 @@ function wrap_directive_in_jsx_fragment(directive) {
 		native_tsrx: true,
 		tsrx_generated_wrapper: true,
 	};
-	fragment.start = directive.start;
-	fragment.end = directive.end;
-	fragment.loc = directive.loc;
+	setLocation(fragment, /** @type {AST.NodeWithLocation} */ (directive));
+	directive.metadata.tsrx_value_wrapper = fragment;
 	return fragment;
 }
 
 /**
- * Pre-normalization pass: a `@if`/`@for`/`@switch`/`@try` directive used in ANY
- * value position — the sole value of a slot (`let cd = @if (…) { … }`), an
- * operator operand, a conditional branch, an array element, a `@for` iterable, an
- * `@if`/`@switch` test, a concise arrow body (`xs.map((x) => @if (…) { … })`), a
- * `return` argument, a member object — is wrapped in a `<> … </>` so it becomes a
- * valid value (a `tsrx_element` render, or a `<> … </>` in to_ts) instead of a
- * bare `if (…) { … }` statement leaking into expression position (or a raw
- * `JSX…Expression` crashing the printer). The render positions where a directive
- * is already lowered correctly are enumerated in `is_render_child_or_statement_slot`;
- * everything else is wrapped. A `@{ … }` code block self-lowers to an IIFE in
- * every position and is never wrapped.
- * @param {any} ast
+ * The transform-side dissolution of the old wrap pre-pass: dispatch a template
+ * control-flow directive through `visit`, detouring VALUE-position directives
+ * through their generated `<> … </>` wrapper first. Whether a directive is a
+ * value is decided during ANALYSIS (where traversal is generic and visitor
+ * paths mirror the real tree — the transforms' helper funnels skip levels, so
+ * their paths cannot be trusted for slot checks) and communicated via the
+ * memoized wrapper on the directive's metadata. The wrapper-in-path guard
+ * stops the detour once the wrapper's own visit re-reaches the directive.
+ * @template {AST.JSXTemplateDirective} T
+ * @template {{ path: AST.Node[]; visit: (node: AST.Node) => AST.Node }} C
+ * @param {T} node
+ * @param {C} context
+ * @param {(node: T, context: C) => AST.Node | AST.Node[] | void} visit
+ * @returns {AST.Node | AST.Node[] | void}
  */
-function wrap_directives_combined_into_expressions(ast) {
-	const seen = new Set();
-	/**
-	 * @param {any} parent
-	 * @param {string} key
-	 * @param {any} child
-	 * @returns {boolean}
-	 */
-	const is_flagged = (parent, key, child) =>
-		is_control_flow_directive(child) && !is_render_child_or_statement_slot(parent, key, child);
-	/**
-	 * @param {any} node
-	 */
-	const visit = (node) => {
-		if (!node || typeof node !== 'object' || seen.has(node)) return;
-		seen.add(node);
-		if (Array.isArray(node)) {
-			for (const item of node) visit(item);
-			return;
-		}
-		for (const key of Object.keys(node)) {
-			if (key === 'loc' || key === 'start' || key === 'end' || key === 'metadata') continue;
-			const value = node[key];
-			if (Array.isArray(value)) {
-				for (let i = 0; i < value.length; i++) {
-					if (is_flagged(node, key, value[i])) {
-						value[i] = wrap_directive_in_jsx_fragment(value[i]);
-					}
-					visit(value[i]);
-				}
-			} else if (is_flagged(node, key, value)) {
-				node[key] = wrap_directive_in_jsx_fragment(value);
-				visit(node[key]);
-			} else {
-				visit(value);
-			}
-		}
-	};
-	visit(ast);
+export function visit_directive_wrapping_values(node, context, visit) {
+	const wrapper = node.metadata?.tsrx_value_wrapper;
+	if (wrapper && !context.path.includes(wrapper)) {
+		return context.visit(wrapper);
+	}
+	return visit(node, context);
+}
+
+/**
+ * The analyzer-side counterpart of {@link visit_directive_wrapping_values}:
+ * the analyzer's traversal is generic, so its visitor path mirrors the real
+ * tree and the slot check is decidable here. A VALUE-position directive gets
+ * its `<> … </>` wrapper memoized (for the transforms to follow) and is
+ * analyzed through it; the wrapper's re-visit of the directive lands in
+ * render position and proceeds normally.
+ * @template {AST.JSXTemplateDirective} T
+ * @template {{ path: AST.Node[]; visit: (node: AST.Node) => AST.Node }} C
+ * @param {T} node
+ * @param {C} context
+ * @param {(node: T, context: C) => AST.Node | AST.Node[] | void} visit
+ * @returns {AST.Node | AST.Node[] | void}
+ */
+export function analyze_directive_wrapping_values(node, context, visit) {
+	const wrapper = node.metadata?.tsrx_value_wrapper;
+	if (
+		(!wrapper || !context.path.includes(wrapper)) &&
+		!is_directive_render_position(context.path.at(-1), node)
+	) {
+		return context.visit(get_directive_value_wrapper(node));
+	}
+	return visit(node, context);
 }
 
 /**
  * Wrap a `@{ … }` code block in an immediately-invoked arrow
- * (`(() => @{ … })()`). Ripple only lowers a code block when it is a function body
+ * (`(() =>@{ … })()`). Ripple only lowers a code block when it is a function body
  * @param {AST.JSXCodeBlock} code_block
  * @returns {AST.CallExpression}
  */
@@ -402,7 +377,7 @@ export function is_code_block_function_body(node, parent) {
 		(parent?.type === 'ArrowFunctionExpression' ||
 			parent?.type === 'FunctionDeclaration' ||
 			parent?.type === 'FunctionExpression') &&
-		/** @type {any} */ (parent).body === node
+		parent.body === node
 	);
 }
 
@@ -421,7 +396,7 @@ export function function_has_native_tsrx_return(node) {
 	}
 
 	if (node.body?.type === 'JSXCodeBlock') {
-		return is_native_tsrx_template_node(node.body.render);
+		return is_native_tsrx_template_node(get_code_block_render(node.body));
 	}
 
 	if (node.type === 'ArrowFunctionExpression' && node.body?.type !== 'BlockStatement') {
@@ -447,7 +422,7 @@ export function function_contains_native_tsrx_template(node) {
 	}
 
 	if (node.body?.type === 'JSXCodeBlock') {
-		return is_native_tsrx_template_node(node.body.render);
+		return is_native_tsrx_template_node(get_code_block_render(node.body));
 	}
 
 	return node_contains_native_tsrx_template(node.body, true);
@@ -526,7 +501,7 @@ function node_contains_native_tsrx_template(node, root = false) {
 			continue;
 		}
 
-		const value = /** @type {any} */ (node)[key];
+		const value = /** @type {AST.TraversableAstNode} */ (node)[key];
 		if (Array.isArray(value)) {
 			if (value.some((child) => node_contains_native_tsrx_template(child, false))) {
 				return true;
@@ -534,7 +509,7 @@ function node_contains_native_tsrx_template(node, root = false) {
 		} else if (
 			value &&
 			typeof value === 'object' &&
-			node_contains_native_tsrx_template(value, false)
+			node_contains_native_tsrx_template(/** @type {AST.Node} */ (value), false)
 		) {
 			return true;
 		}
@@ -666,7 +641,7 @@ function statements_contain_native_tsrx_return(statements) {
 }
 
 /**
- * @param {any} statement
+ * @param {AST.Node | null | undefined} statement
  * @returns {boolean}
  */
 function statement_contains_native_tsrx_return(statement) {
@@ -698,7 +673,7 @@ function statement_contains_native_tsrx_return(statement) {
 	}
 
 	if (statement.type === 'SwitchStatement') {
-		return (statement.cases || []).some((/** @type {any} */ c) =>
+		return (statement.cases || []).some((c) =>
 			statements_contain_native_tsrx_return(c.consequent || []),
 		);
 	}
@@ -715,50 +690,76 @@ function statement_contains_native_tsrx_return(statement) {
 }
 
 /**
- * @param {AST.Element | AST.TsrxFragment} node
+ * @param {ESTreeJSX.JSXElement | ESTreeJSX.JSXFragment} node
+ * @param {Map<AST.Node | AST.Node[], ScopeInterface>} [scopes]
  * @returns {AST.Node[]}
  */
-export function get_native_tsrx_template_children(node) {
-	return node.type === 'TsrxFragment' ? node.children || [] : [node];
+export function get_native_tsrx_template_children(node, scopes) {
+	return is_template_fragment(node)
+		? lower_code_block_children(/** @type {AST.Node[]} */ (node.children || []), scopes)
+		: [node];
 }
 
 /**
  * @param {AST.Function} node
+ * @param {Map<AST.Node | AST.Node[], ScopeInterface>} [scopes]
  * @returns {AST.Node[]}
  */
-export function get_native_tsrx_function_body(node) {
-	if (node.body?.type === 'JSXCodeBlock') {
-		const block = node.body;
-		return [
-			...expand_native_tsrx_return_statements(block.body || [], true),
-			...(is_native_tsrx_template_node(block.render)
-				? [mark_returned_template_child(/** @type {AST.Node} */ (block.render))]
-				: []),
-		];
+export function get_native_tsrx_function_body(node, scopes) {
+	// Memoized: the expansion is computed once (during analysis) and shared
+	// with the transforms, so the expanded statements keep one identity across
+	// stages — metadata written on them by the analyzer stays visible.
+	node.metadata ??= { path: [] };
+	const metadata = /** @type {{ tsrx_render_body?: AST.Node[] }} */ (node.metadata);
+	if (metadata.tsrx_render_body) {
+		return metadata.tsrx_render_body;
 	}
 
-	if (node.type === 'ArrowFunctionExpression' && node.body?.type !== 'BlockStatement') {
-		return is_native_tsrx_template_node(node.body)
+	/** @type {AST.Node[]} */
+	let result;
+	if (node.body?.type === 'JSXCodeBlock') {
+		const block = node.body;
+		const render = get_code_block_render(block, scopes);
+		result = [
+			...expand_native_tsrx_return_statements(
+				(block.body || []).filter((statement) => statement.type !== 'EmptyStatement'),
+				true,
+				scopes,
+			),
+			...(is_native_tsrx_template_node(render)
+				? [mark_returned_template_child(/** @type {AST.Node} */ (render))]
+				: []),
+		];
+	} else if (node.type === 'ArrowFunctionExpression' && node.body?.type !== 'BlockStatement') {
+		result = is_native_tsrx_template_node(node.body)
 			? [
 					...get_native_tsrx_template_children(
-						/** @type {AST.Element | AST.TsrxFragment} */ (/** @type {unknown} */ (node.body)),
+						/** @type {ESTreeJSX.JSXElement | ESTreeJSX.JSXFragment} */ (
+							/** @type {unknown} */ (node.body)
+						),
+						scopes,
 					).map((child) => mark_returned_template_child(child)),
 				]
 			: [b.return(/** @type {AST.Expression} */ (node.body))];
+	} else {
+		const body = node.body?.type === 'BlockStatement' ? node.body.body : [];
+		result = expand_native_tsrx_return_statements(body, true, scopes);
 	}
 
-	const body = node.body?.type === 'BlockStatement' ? node.body.body : [];
-	return expand_native_tsrx_return_statements(body, true);
+	metadata.tsrx_render_body = result;
+	return result;
 }
 
 /**
  * @param {AST.Statement[]} statements
  * @param {boolean} [omit_final_control_return]
+ * @param {Map<AST.Node | AST.Node[], ScopeInterface>} [scopes]
  * @returns {AST.Node[]}
  */
 export function expand_native_tsrx_return_statements(
 	statements,
 	omit_final_control_return = false,
+	scopes,
 ) {
 	return statements.flatMap((statement, index) =>
 		expand_native_tsrx_return_statement(
@@ -766,6 +767,7 @@ export function expand_native_tsrx_return_statements(
 			omit_final_control_return &&
 				index === statements.length - 1 &&
 				statement.type === 'ReturnStatement',
+			scopes,
 		),
 	);
 }
@@ -832,10 +834,8 @@ function node_contains_component_return(node) {
 	}
 
 	if (node.type === 'SwitchStatement') {
-		return (node.cases || []).some((/** @type {any} */ switch_case) =>
-			/** @type {AST.Statement[]} */ (switch_case.consequent || []).some((statement) =>
-				node_contains_component_return(statement),
-			),
+		return (node.cases || []).some((switch_case) =>
+			(switch_case.consequent || []).some((statement) => node_contains_component_return(statement)),
 		);
 	}
 
@@ -875,11 +875,11 @@ function should_render_return_argument(argument) {
 /**
  * @param {AST.Expression} argument
  * @param {AST.ReturnStatement} statement
- * @returns {AST.TSRXExpression}
+ * @returns {ESTreeJSX.JSXExpressionContainer}
  */
 function create_return_argument_child(argument, statement) {
-	return /** @type {AST.TSRXExpression} */ ({
-		type: 'TSRXExpression',
+	return /** @type {ESTreeJSX.JSXExpressionContainer} */ ({
+		type: 'JSXExpressionContainer',
 		expression: argument,
 		metadata: {
 			path: statement.metadata?.path ?? [],
@@ -894,9 +894,25 @@ function create_return_argument_child(argument, statement) {
 /**
  * @param {AST.Statement} statement
  * @param {boolean} [omit_control_return]
+ * @param {Map<AST.Node | AST.Node[], ScopeInterface>} [scopes]
  * @returns {AST.Node[]}
  */
-function expand_native_tsrx_return_statement(statement, omit_control_return = false) {
+function expand_native_tsrx_return_statement(statement, omit_control_return = false, scopes) {
+	/**
+	 * Copy-on-write helper: rebuilt spine nodes inherit the original's scope
+	 * mapping so transform-time lookups keep working.
+	 * @template {AST.Node} T
+	 * @param {T} original
+	 * @param {Partial<T>} updates
+	 * @returns {T}
+	 */
+	const rebuild = (original, updates) => {
+		const copy = { ...original, ...updates };
+		const scope = scopes?.get(original);
+		if (scope) scopes?.set(copy, scope);
+		return copy;
+	};
+
 	if (statement.metadata?.returned_tsrx_child) {
 		return [statement];
 	}
@@ -914,12 +930,19 @@ function expand_native_tsrx_return_statement(statement, omit_control_return = fa
 
 	if (statement.type === 'ReturnStatement' && is_native_tsrx_template_node(statement.argument)) {
 		const template_children = get_native_tsrx_template_children(
-			/** @type {AST.Element | AST.TsrxFragment} */ (/** @type {unknown} */ (statement.argument)),
+			/** @type {ESTreeJSX.JSXElement | ESTreeJSX.JSXFragment} */ (
+				/** @type {unknown} */ (statement.argument)
+			),
+			scopes,
 		);
 		const children = omit_control_return
 			? template_children.flatMap((child) =>
 					node_contains_component_return(child)
-						? expand_native_tsrx_return_statement(/** @type {AST.Statement} */ (child))
+						? expand_native_tsrx_return_statement(
+								/** @type {AST.Statement} */ (child),
+								false,
+								scopes,
+							)
 						: [child],
 				)
 			: template_children;
@@ -959,44 +982,61 @@ function expand_native_tsrx_return_statement(statement, omit_control_return = fa
 	}
 
 	if (statement.type === 'BlockStatement') {
-		statement.body = /** @type {AST.Statement[]} */ (
-			expand_native_tsrx_return_statements(statement.body || [])
+		const body = /** @type {AST.Statement[]} */ (
+			expand_native_tsrx_return_statements(statement.body || [], false, scopes)
 		);
-		return [statement];
+		return [body === (statement.body || []) ? statement : rebuild(statement, { body })];
 	}
 
 	if (statement.type === 'IfStatement') {
-		statement.consequent = expand_embedded_native_tsrx_return_statement(statement.consequent);
-		if (statement.alternate) {
-			statement.alternate = expand_embedded_native_tsrx_return_statement(statement.alternate);
-		}
-		return [statement];
+		const consequent = expand_embedded_native_tsrx_return_statement(statement.consequent, scopes);
+		const alternate = statement.alternate
+			? expand_embedded_native_tsrx_return_statement(statement.alternate, scopes)
+			: statement.alternate;
+		return [
+			consequent === statement.consequent && alternate === statement.alternate
+				? statement
+				: rebuild(statement, { consequent, alternate }),
+		];
 	}
 
 	if (statement.type === 'SwitchStatement') {
-		for (const switch_case of statement.cases || []) {
-			switch_case.consequent = /** @type {AST.Statement[]} */ (
-				expand_native_tsrx_return_statements(switch_case.consequent || [])
+		/** @type {AST.SwitchCase[] | null} */
+		let cases = null;
+		(statement.cases || []).forEach((switch_case, i) => {
+			const consequent = /** @type {AST.Statement[]} */ (
+				expand_native_tsrx_return_statements(switch_case.consequent || [], false, scopes)
 			);
-		}
-		return [statement];
+			if (consequent !== (switch_case.consequent || [])) {
+				cases ??= statement.cases.slice();
+				cases[i] = rebuild(switch_case, { consequent });
+			}
+		});
+		return [cases ? rebuild(statement, { cases }) : statement];
 	}
 
 	if (statement.type === 'TryStatement') {
-		statement.block = /** @type {AST.BlockStatement} */ (
-			expand_embedded_native_tsrx_return_statement(statement.block)
+		/** @type {Partial<AST.TryStatement> & Record<string, any>} */
+		const updates = {};
+		const block = /** @type {AST.BlockStatement} */ (
+			expand_embedded_native_tsrx_return_statement(statement.block, scopes)
 		);
+		if (block !== statement.block) updates.block = block;
 		if (statement.handler?.body) {
-			statement.handler.body = /** @type {AST.BlockStatement} */ (
-				expand_embedded_native_tsrx_return_statement(statement.handler.body)
+			const body = /** @type {AST.BlockStatement} */ (
+				expand_embedded_native_tsrx_return_statement(statement.handler.body, scopes)
 			);
+			if (body !== statement.handler.body) {
+				updates.handler = rebuild(statement.handler, { body });
+			}
 		}
 		if (statement.finalizer) {
-			statement.finalizer = /** @type {AST.BlockStatement} */ (
-				expand_embedded_native_tsrx_return_statement(statement.finalizer)
+			const finalizer = /** @type {AST.BlockStatement} */ (
+				expand_embedded_native_tsrx_return_statement(statement.finalizer, scopes)
 			);
+			if (finalizer !== statement.finalizer) updates.finalizer = finalizer;
 		}
-		return [statement];
+		return [Object.keys(updates).length > 0 ? rebuild(statement, updates) : statement];
 	}
 
 	return [statement];
@@ -1004,29 +1044,27 @@ function expand_native_tsrx_return_statement(statement, omit_control_return = fa
 
 /**
  * @param {AST.Statement} statement
+ * @param {Map<AST.Node | AST.Node[], ScopeInterface>} [scopes]
  * @returns {AST.Statement}
  */
-function expand_embedded_native_tsrx_return_statement(statement) {
-	const expanded = expand_native_tsrx_return_statement(statement);
-	return expanded.length === 1
-		? /** @type {AST.Statement} */ (expanded[0])
-		: b.block(
-				/** @type {AST.Statement[]} */ (expanded),
-				/** @type {AST.NodeWithLocation} */ (statement),
-			);
+function expand_embedded_native_tsrx_return_statement(statement, scopes) {
+	const expanded = expand_native_tsrx_return_statement(statement, false, scopes);
+	return expanded.length === 1 && expanded[0] === statement
+		? statement
+		: expanded.length === 1
+			? /** @type {AST.Statement} */ (expanded[0])
+			: b.block(
+					/** @type {AST.Statement[]} */ (expanded),
+					/** @type {AST.NodeWithLocation} */ (statement),
+				);
 }
 
 /**
  * @param {AST.Node | null | undefined} node
- * @returns {node is AST.Element}
+ * @returns {node is AST.JSXStyleElement}
  */
 export function is_style_element(node) {
-	return !!(
-		node &&
-		node.type === 'Element' &&
-		node.id?.type === 'Identifier' &&
-		node.id.name === 'style'
-	);
+	return !!(node && node.type === 'JSXStyleElement');
 }
 
 /**
@@ -1061,11 +1099,9 @@ function collect_style_elements(node, styles, inside_head) {
 	}
 	if (is_style_element(node)) {
 		if (!inside_head) {
-			const stylesheet = node.children?.find(
-				(/** @type {any} */ child) => child.type === 'StyleSheet',
-			);
+			const stylesheet = node.children?.find((child) => child.type === 'StyleSheet');
 			if (stylesheet) {
-				styles.push(/** @type {AST.CSS.StyleSheet} */ (/** @type {unknown} */ (stylesheet)));
+				styles.push(stylesheet);
 			}
 		}
 		return;
@@ -1077,12 +1113,8 @@ function collect_style_elements(node, styles, inside_head) {
 	) {
 		return;
 	}
-	const node_any = /** @type {any} */ (node);
 	const next_inside_head =
-		inside_head ||
-		(node_any.type === 'Element' &&
-			node_any.id?.type === 'Identifier' &&
-			node_any.id.name === 'head');
+		inside_head || (is_template_element(node) && get_element_identifier(node)?.name === 'head');
 	if ('children' in node && Array.isArray(node.children)) {
 		collect_style_elements(/** @type {AST.Node[]} */ (node.children), styles, next_inside_head);
 	}
@@ -1096,57 +1128,82 @@ function collect_style_elements(node, styles, inside_head) {
 }
 
 /**
+ * Copy-on-write: rebuilt spine nodes inherit the original's scope mapping when
+ * a `scopes` map is provided, so transform-time lookups keep working.
  * @param {AST.Node[]} nodes
+ * @param {Map<AST.Node | AST.Node[], ScopeInterface>} [scopes]
  * @returns {AST.Node[]}
  */
-export function strip_tsrx_style_elements(nodes) {
-	return strip_style_elements(nodes, false);
+export function strip_tsrx_style_elements(nodes, scopes) {
+	return strip_style_elements(nodes, false, scopes);
 }
 
 /**
  * @param {AST.Node[]} nodes
  * @param {boolean} inside_head
+ * @param {Map<AST.Node | AST.Node[], ScopeInterface>} [scopes]
  * @returns {AST.Node[]}
  */
-function strip_style_elements(nodes, inside_head) {
-	return nodes
-		.filter((node) => !(is_style_element(node) && !inside_head))
-		.map((node) => strip_style_element_children(node, inside_head))
-		.filter(Boolean);
+function strip_style_elements(nodes, inside_head, scopes) {
+	/** @type {AST.Node[] | null} */
+	let out = null;
+	for (let i = 0; i < nodes.length; i++) {
+		const node = nodes[i];
+		const next =
+			is_style_element(node) && !inside_head
+				? null
+				: strip_style_element_children(node, inside_head, scopes);
+		if (next !== node) {
+			out ??= nodes.slice();
+			out[i] = /** @type {AST.Node} */ (next);
+		}
+	}
+	const result = out ?? nodes;
+	return result.some((node) => node == null) ? result.filter(Boolean) : result;
 }
 
 /**
  * @param {AST.Node} node
  * @param {boolean} inside_head
+ * @param {Map<AST.Node | AST.Node[], ScopeInterface>} [scopes]
  * @returns {AST.Node}
  */
-function strip_style_element_children(node, inside_head) {
-	const node_any = /** @type {any} */ (node);
+function strip_style_element_children(node, inside_head, scopes) {
 	const next_inside_head =
-		inside_head ||
-		(node_any.type === 'Element' &&
-			node_any.id?.type === 'Identifier' &&
-			node_any.id.name === 'head');
+		inside_head || (is_template_element(node) && get_element_identifier(node)?.name === 'head');
+	/** @type {Record<string, any> | null} */
+	let updates = null;
 	if ('children' in node && Array.isArray(node.children)) {
-		node.children = strip_style_elements(
+		const children = strip_style_elements(
 			/** @type {AST.Node[]} */ (node.children),
 			next_inside_head,
+			scopes,
 		);
+		if (children !== node.children) (updates ??= {}).children = children;
 	}
 	if (node.type === 'BlockStatement') {
-		node.body = /** @type {AST.Statement[]} */ (strip_style_elements(node.body, next_inside_head));
+		const body = /** @type {AST.Statement[]} */ (
+			strip_style_elements(node.body, next_inside_head, scopes)
+		);
+		if (body !== node.body) (updates ??= {}).body = body;
 	}
 	if (node.type === 'IfStatement') {
-		node.consequent = /** @type {AST.Statement} */ (
-			strip_style_element_children(node.consequent, next_inside_head)
+		const consequent = /** @type {AST.Statement} */ (
+			strip_style_element_children(node.consequent, next_inside_head, scopes)
 		);
+		if (consequent !== node.consequent) (updates ??= {}).consequent = consequent;
 		if (node.alternate) {
-			node.alternate = /** @type {AST.Statement} */ (
-				strip_style_element_children(node.alternate, next_inside_head)
+			const alternate = /** @type {AST.Statement} */ (
+				strip_style_element_children(node.alternate, next_inside_head, scopes)
 			);
+			if (alternate !== node.alternate) (updates ??= {}).alternate = alternate;
 		}
 	}
-	return node;
+	if (!updates) return node;
+	const copy = { ...node, ...updates };
+	const scope = scopes?.get(node);
+	if (scope) scopes?.set(copy, scope);
+	return copy;
 }
 
 /**
@@ -1156,23 +1213,18 @@ function strip_style_element_children(node, inside_head) {
  * @returns {AST.ArrowFunctionExpression}
  */
 export function create_native_tsrx_render_function(params, children, source_node) {
-	const fragment = /** @type {AST.TsrxFragment} */ (
+	const fragment = /** @type {ESTreeJSX.JSXFragment} */ (
 		/** @type {unknown} */ ({
-			type: 'TsrxFragment',
+			type: 'JSXFragment',
 			children,
-			openingElement: { type: 'JSXOpeningFragment', metadata: { path: [] } },
-			closingElement: { type: 'JSXClosingFragment', metadata: { path: [] } },
-			selfClosing: false,
-			attributes: [],
-			metadata: { path: [] },
+			openingFragment: { type: 'JSXOpeningFragment', metadata: { path: [] } },
+			closingFragment: { type: 'JSXClosingFragment', metadata: { path: [] } },
+			metadata: { path: [], tsrx_render_fragment: true },
 		})
 	);
 	const fn = b.arrow(
 		params,
-		b.block(
-			[b.return(/** @type {any} */ (fragment))],
-			/** @type {AST.NodeWithLocation | undefined} */ (source_node),
-		),
+		b.block([b.return(fragment)], /** @type {AST.NodeWithLocation | undefined} */ (source_node)),
 		false,
 		undefined,
 		/** @type {AST.NodeWithLocation | undefined} */ (source_node),
@@ -1887,16 +1939,16 @@ export function escape_html(value, is_attr = false) {
 
 /**
  * Returns true if node is a DOM element (not a component)
- * @param {AST.Node} node
+ * @param {AST.TSRXJSXElement | AST.JSXStyleElement} node
  * @returns {boolean}
  */
 export function is_element_dom_element(node) {
 	// A dynamic tag's id is an arbitrary expression (possibly a lowercase
 	// identifier) and resolves at runtime, never statically to a DOM element.
-	if (/** @type {AST.Element} */ (node).isDynamic === true) {
+	if (is_dynamic_element(node)) {
 		return false;
 	}
-	const id = /** @type {AST.Element} */ (node).id;
+	const id = /** @type {AST.Identifier} */ (get_element_id(node));
 	return (
 		id.type === 'Identifier' &&
 		id.name[0].toLowerCase() === id.name[0] &&
@@ -1908,50 +1960,76 @@ export function is_element_dom_element(node) {
 export const dynamic_element_import_local = 'TsrxDynamic';
 
 /**
- * @param {AST.Element} node
+ * Lower a dynamic `<{expr}>` element to the `TsrxDynamic` component shape on a
+ * copy — the source element is never mutated. Returns the lowered copy, or
+ * `null` when the element is not dynamic.
+ * @param {AST.TSRXJSXElement} node
  * @param {AST.Expression} [component_id] - Override for the lowered component
  * reference; defaults to the `TsrxDynamic` local used by type-only output.
- * @returns {boolean}
+ * @param {Map<AST.Node | AST.Node[], ScopeInterface>} [scopes]
+ * @returns {AST.TSRXJSXElement | null}
  */
-export function lower_dynamic_element(node, component_id) {
-	if (node.isDynamic !== true) {
-		return false;
+export function lower_dynamic_element(node, component_id, scopes) {
+	if (!is_dynamic_element(node)) {
+		return null;
 	}
 
-	const expression = /** @type {AST.Expression & { was_expression?: boolean }} */ (node.id);
-	const closing_name = /** @type {any} */ (node.closingElement?.name);
+	const expression = /** @type {AST.Expression} */ (get_element_id(node));
+	const closing_name = node.closingElement?.name;
 	const closing_expression =
-		closing_name?.expression && clone_expression_node(closing_name.expression);
-	expression.was_expression = true;
+		closing_name?.type === 'JSXExpressionContainer' &&
+		clone_expression_node(closing_name.expression);
 	add_extra_source_mappings_from_matching_expression(expression, closing_expression);
-	node.id = component_id ?? b.id(dynamic_element_import_local);
-	if (node.openingElement?.name) {
-		node.openingElement.name = b.jsx_id(dynamic_element_import_local);
-	}
-	if (node.closingElement?.name) {
-		node.closingElement.name = b.jsx_id(dynamic_element_import_local);
-	}
-	node.attributes = [
-		/** @type {AST.Attribute} */ ({
-			type: 'Attribute',
-			name: {
-				type: 'Identifier',
-				name: 'is',
-				tracked: false,
-				start: expression.start,
-				end: expression.end,
-				loc: expression.loc,
-			},
-			value: expression,
+
+	const is_attribute = /** @type {ESTreeJSX.JSXAttribute} */ (
+		// A synthetic `is={expr}` JSXAttribute; the container value marks it as
+		// an authored-expression attribute for the accessors.
+		/** @type {unknown} */ ({
+			type: 'JSXAttribute',
+			name: b.jsx_id(
+				'is',
+				/** @type {AST.NodeWithLocation} */ (/** @type {unknown} */ (expression)),
+			),
+			value: b.jsx_expression_container(
+				expression,
+				/** @type {AST.NodeWithLocation} */ (/** @type {unknown} */ (expression)),
+			),
 			shorthand: false,
 			start: expression.start,
 			end: expression.end,
 			loc: expression.loc,
-		}),
-		...node.attributes,
-	];
-	node.isDynamic = false;
-	return true;
+		})
+	);
+
+	// The component reference becomes the copy's tag: the default `TsrxDynamic`
+	// local as a plain JSX identifier, or the caller's reference (the server's
+	// `_$_.dynamic_element` member) planted directly in the name slot —
+	// get_element_id derives the id from either.
+	const name =
+		component_id && component_id.type === 'MemberExpression'
+			? component_id
+			: b.jsx_id(dynamic_element_import_local);
+	const opening = node.openingElement;
+	const copy = /** @type {AST.TSRXJSXElement} */ ({
+		...node,
+		// The tag is no longer dynamic — the copy drops the parser's markers and
+		// the dynamic name container.
+		isDynamic: false,
+		openingElement: {
+			...opening,
+			isDynamic: false,
+			name,
+			attributes: [is_attribute, ...(opening?.attributes ?? [])],
+		},
+		closingElement: node.closingElement?.name
+			? { ...node.closingElement, name: b.jsx_id(dynamic_element_import_local) }
+			: node.closingElement,
+		metadata: { ...node.metadata },
+	});
+
+	const scope = scopes?.get(node);
+	if (scope) scopes?.set(copy, scope);
+	return copy;
 }
 
 /**
@@ -1961,6 +2039,7 @@ export function lower_dynamic_element(node, component_id) {
  * @returns {AST.Node[]}
  */
 export function normalize_children(children, context) {
+	const to_ts = !!context.state.to_ts;
 	/** @type {AST.Node[]} */
 	const normalized = [];
 
@@ -1973,34 +2052,42 @@ export function normalize_children(children, context) {
 		const prev_child = normalized[i - 1];
 
 		if (
-			(child.type === 'TSRXExpression' || child.type === 'Text') &&
-			(prev_child?.type === 'TSRXExpression' || prev_child?.type === 'Text')
+			is_template_text_or_expression(child) &&
+			prev_child != null &&
+			is_template_text_or_expression(prev_child)
 		) {
+			const child_expression = get_template_expression(child, to_ts);
+			const prev_expression = get_template_expression(prev_child, to_ts);
 			if (
-				(child.type === 'TSRXExpression' &&
-					is_children_template_expression(child.expression, context.state.scope)) ||
-				(prev_child.type === 'TSRXExpression' &&
-					is_children_template_expression(prev_child.expression, context.state.scope)) ||
-				expression_contains_call(child.expression) ||
-				expression_contains_call(prev_child.expression)
+				(is_template_expression(child) &&
+					is_children_template_expression(child_expression, context.state.scope)) ||
+				(is_template_expression(prev_child) &&
+					is_children_template_expression(prev_expression, context.state.scope)) ||
+				expression_contains_call(child_expression) ||
+				expression_contains_call(prev_expression)
 			) {
 				continue;
 			}
 
-			if (prev_child.type === 'Text' || child.type === 'Text') {
-				prev_child.type = 'Text';
-			}
-			if (child.expression.type === 'Literal' && prev_child.expression.type === 'Literal') {
-				prev_child.expression = b.literal(
-					prev_child.expression.value + String(child.expression.value),
-				);
-			} else {
-				prev_child.expression = b.binary(
-					'+',
-					prev_child.expression,
-					b.call('String', b.logical('??', child.expression, b.literal(''))),
-				);
-			}
+			const merged_expression =
+				child_expression.type === 'Literal' && prev_expression.type === 'Literal'
+					? b.literal(prev_expression.value + String(child_expression.value))
+					: b.binary(
+							'+',
+							prev_expression,
+							b.call('String', b.logical('??', child_expression, b.literal(''))),
+						);
+			const merged = b.jsx_expression_container(
+				merged_expression,
+				/** @type {AST.NodeWithLocation} */ (prev_child),
+			);
+			merged.metadata = {
+				...(prev_child.metadata ?? {}),
+				// A run containing any text renders through the text path
+				// (`_$_.text`/`set_text`) — the analogue of the old merged `Text` node.
+				tsrx_text: is_template_text(prev_child) || is_template_text(child),
+			};
+			normalized[i - 1] = merged;
 			normalized.splice(i, 1);
 		}
 	}
@@ -2202,7 +2289,7 @@ export function is_children_template_expression(expression, scope, component_sco
  * @returns {boolean}
  */
 function is_template_fragment_node(node) {
-	return node?.type === 'TsrxFragment';
+	return is_template_fragment(node);
 }
 
 /**
@@ -2242,14 +2329,35 @@ function is_template_fragment_binding(binding, scope, visited = new Set()) {
 function normalize_child(node, normalized, context) {
 	if (node.type === 'EmptyStatement') {
 		return;
+	} else if (node.type === 'JSXCodeBlock') {
+		// A `@{ … }` template child renders as its lowered template form (or
+		// nothing at all) — lowered lazily here, at the point of use.
+		const child = get_code_block_template_child(
+			/** @type {AST.JSXCodeBlock} */ (node),
+			context.state.scopes,
+		);
+		if (child != null) {
+			normalize_child(child, normalized, context);
+		}
+		return;
 	} else if (
-		node.type === 'Element' &&
-		node.id.type === 'Identifier' &&
-		((node.id.name === 'style' &&
-			!context.state.inside_head &&
-			!context.state.keep_component_style) ||
-			node.id.name === 'head' ||
-			(node.id.name === 'title' && context.state.inside_head))
+		// Insignificant whitespace text renders nothing, and a `{/* comment */}`
+		// container is a comment — both are dropped from the rendered children.
+		is_droppable_template_text(node, !!context.state.to_ts) ||
+		is_empty_expression_container(node)
+	) {
+		return;
+	} else if (
+		node.type === 'JSXStyleElement' &&
+		!context.state.inside_head &&
+		!context.state.keep_component_style
+	) {
+		// Component styles render nothing — their CSS is extracted at analysis.
+		return;
+	} else if (
+		is_template_element(node) &&
+		(get_element_identifier(node)?.name === 'head' ||
+			(get_element_identifier(node)?.name === 'title' && context.state.inside_head))
 	) {
 		return;
 	} else {
@@ -2342,17 +2450,20 @@ export function build_getter(node, context) {
 
 	if (!context.path) return node;
 
-	for (let i = context.path.length - 1; i >= 0; i -= 1) {
-		const binding = state.scope.get(node.name);
-		const transform = binding?.transform;
+	// don't transform the declaration itself — checked structurally because the
+	// declarator id may be a copy of the binding's node (copy-on-write rewrites)
+	const parent = context.path.at(-1);
+	if (parent?.type === 'VariableDeclarator' && parent.id === node) {
+		return node;
+	}
 
-		// don't transform the declaration itself
-		if (node !== binding?.node) {
-			const read_fn = transform?.read;
+	const binding = state.scope.get(node.name);
 
-			if (read_fn) {
-				return read_fn(node);
-			}
+	if (node !== binding?.node) {
+		const read_fn = binding?.transform?.read;
+
+		if (read_fn) {
+			return read_fn(node);
 		}
 	}
 
@@ -2522,7 +2633,7 @@ export function is_inside_left_side_assignment(node) {
 			case 'MethodDefinition':
 			case 'PropertyDefinition':
 			case 'StaticBlock':
-			case 'Element':
+			case 'JSXElement':
 				return false;
 
 			default:
@@ -2572,660 +2683,324 @@ export function ripple_import_requires_block(name) {
 }
 
 /**
+ * Visit a node's children the way zimmerframe's `context.next()` would, but on
+ * a shallow copy with the given fields cleared, so the cleared subtrees are
+ * neither visited nor emitted. The source node is left untouched; the copy
+ * mirrors the source's scope mapping when one exists.
+ * @template {AST.Node} T
+ * @param {T} node
+ * @param {CommonContext} context
+ * @param {string[]} cleared_fields
+ * @returns {T}
+ */
+export function visit_children_without(node, context, cleared_fields) {
+	const copy = /** @type {Record<string, any>} */ ({ ...node });
+	for (const field of cleared_fields) {
+		copy[field] = undefined;
+	}
+	for (const key in copy) {
+		if (key === 'type') continue;
+		const child = copy[key];
+		if (child && typeof child === 'object') {
+			if (Array.isArray(child)) {
+				copy[key] = child.map((item) =>
+					item && typeof item === 'object' ? context.visit(item) : item,
+				);
+			} else {
+				copy[key] = context.visit(child);
+			}
+		}
+	}
+	const scopes = context.state.scopes;
+	const scope = scopes?.get(node);
+	if (scope) scopes.set(/** @type {AST.Node} */ (copy), scope);
+	return /** @type {T} */ (/** @type {unknown} */ (copy));
+}
+
+/**
+ * Strips TypeScript-only class syntax and visits the remaining children,
+ * returning the transformed copy — the source node is never mutated.
  * @param {AST.ClassDeclaration | AST.ClassExpression} node
  * @param {CommonContext} context
- * @returns {void}
+ * @returns {AST.ClassDeclaration | AST.ClassExpression}
  */
 export function strip_class_typescript_syntax(node, context) {
-	delete node.typeParameters;
-	delete node.superTypeParameters;
-	delete node.implements;
+	let superClass = node.superClass;
 
-	if (node.superClass?.type === 'TSInstantiationExpression') {
-		node.superClass = /** @type {AST.Expression} */ (context.visit(node.superClass.expression));
-	} else if (node.superClass && 'typeArguments' in node.superClass) {
-		delete node.superClass.typeArguments;
-	}
-}
-
-/**
- * Converts a JSXMemberExpression to an AST MemberExpression.
- * e.g., <Foo.Bar.Baz> → MemberExpression(MemberExpression(Foo, Bar), Baz)
- * @param {import('estree-jsx').JSXMemberExpression} jsx_member
- * @returns {AST.MemberExpression}
- */
-function jsx_member_expression_to_member_expression(jsx_member) {
-	/** @type {AST.Expression} */
-	let object;
-
-	if (jsx_member.object.type === 'JSXMemberExpression') {
-		// Recursively convert nested member expressions
-		object = jsx_member_expression_to_member_expression(jsx_member.object);
-	} else {
-		// Base case: JSXIdentifier
-		object = /** @type {AST.Identifier} */ ({
-			type: 'Identifier',
-			name: jsx_member.object.name,
-			start: jsx_member.object.start,
-			end: jsx_member.object.end,
-		});
+	if (superClass?.type === 'TSInstantiationExpression') {
+		superClass = /** @type {AST.Expression} */ (context.visit(superClass.expression));
+	} else if (superClass && 'typeArguments' in superClass) {
+		superClass = /** @type {AST.Expression} */ ({ ...superClass, typeArguments: undefined });
 	}
 
-	return /** @type {AST.MemberExpression} */ ({
-		type: 'MemberExpression',
-		object,
-		property: /** @type {AST.Identifier} */ ({
-			type: 'Identifier',
-			name: jsx_member.property.name,
-			start: jsx_member.property.start,
-			end: jsx_member.property.end,
-		}),
-		computed: false,
-		optional: false,
-		start: jsx_member.start,
-		end: jsx_member.end,
-	});
-}
-
-/**
- * @param {string} value
- * @returns {string}
- */
-function decode_jsx_text_entities(value) {
-	return value.replace(
-		/&(#x[0-9a-fA-F]+|#[0-9]+|amp|quot|apos|lt|gt);/g,
-		(/** @type {string} */ match, /** @type {string} */ entity) => {
-			if (entity === 'amp') return '&';
-			if (entity === 'quot') return '"';
-			if (entity === 'apos') return "'";
-			if (entity === 'lt') return '<';
-			if (entity === 'gt') return '>';
-			if (entity.startsWith('#x')) {
-				const code_point = Number.parseInt(entity.slice(2), 16);
-				return Number.isNaN(code_point) ? match : String.fromCodePoint(code_point);
-			}
-			if (entity.startsWith('#')) {
-				const code_point = Number.parseInt(entity.slice(1), 10);
-				return Number.isNaN(code_point) ? match : String.fromCodePoint(code_point);
-			}
-			return match;
-		},
-	);
-}
-
-/**
- * Whether normalization is producing the type-only (editor) view. In that mode text
- * is kept verbatim so it stays faithful to the source and its location; whitespace
- * collapse is a runtime-only concern (see {@link normalize_jsx_text_value}).
- * @type {boolean}
- */
-let normalize_output_to_ts = false;
-
-/**
- * @param {string} value
- * @returns {string}
- */
-function normalize_jsx_text_value(value) {
-	// The whitespace collapse is a runtime-only concern: Ripple lowers text to explicit
-	// `_$_.text(...)` calls, so insignificant JSX whitespace (newlines/indentation between
-	// elements) must be trimmed or it would render as literal text. The type-only view
-	// keeps the JSX shape — like the other targets — so it stays faithful to the source and
-	// its location. Trimming there would leave the node lying about its size (e.g. a lone
-	// `@` with a 1-char value but a multi-char location), producing a mismatched-length
-	// source mapping the editor can't use for completions.
-	const normalized = normalize_output_to_ts ? value : /[\r\n]/.test(value) ? value.trim() : value;
-	return decode_jsx_text_entities(normalized);
-}
-
-/**
- * @param {ESTreeJSX.JSXFragment} node
- * @param {AST.Node[]} [inherited_path]
- * @returns {AST.TsrxFragment}
- */
-function jsx_to_ripple_fragment(node, inherited_path = []) {
-	const fragment = /** @type {AST.TsrxFragment} */ (
-		/** @type {unknown} */ ({
-			type: 'TsrxFragment',
-			children: normalize_jsx_tsrx_template_children(node.children || [], inherited_path),
-			openingElement: node.openingFragment,
-			closingElement: node.closingFragment,
-			selfClosing: false,
-			attributes: [],
-			metadata: { ...(node.metadata ?? {}), path: inherited_path },
-			start: node.start,
-			end: node.end,
-			loc: node.loc,
-		})
-	);
-
-	return fragment;
-}
-
-/**
- * @param {any} node
- * @param {AST.Node[]} [inherited_path]
- * @returns {any}
- */
-function jsx_control_expression_to_statement(node, inherited_path = []) {
-	const statement = /** @type {any} */ ({ ...node, type: node.statementType });
-	delete statement.statementType;
-	const directive =
-		node.type === 'JSXIfExpression'
-			? 'if'
-			: node.type === 'JSXForExpression'
-				? 'for'
-				: node.type === 'JSXSwitchExpression'
-					? 'switch'
-					: node.type === 'JSXTryExpression'
-						? 'try'
-						: null;
-	statement.metadata = { ...(statement.metadata ?? {}), path: inherited_path };
-	if (directive) {
-		statement.metadata.tsrxDirective = directive;
+	/** @type {AST.ClassDeclaration | AST.ClassExpression} */
+	let source = node;
+	if (superClass !== node.superClass) {
+		source = { ...node, superClass };
+		const scopes = context.state.scopes;
+		const scope = scopes?.get(node);
+		if (scope) scopes.set(source, scope);
 	}
 
-	if (statement.consequent?.type === 'BlockStatement') {
-		statement.consequent.body = normalize_jsx_tsrx_template_children(
-			statement.consequent.body || [],
-			[...inherited_path, statement],
+	return visit_children_without(source, context, [
+		'typeParameters',
+		'superTypeParameters',
+		'implements',
+	]);
+}
+
+/**
+ * Resolve the render slot of a `@{ … }` code block, folding nested
+ * code-block chains: each level is its own scope, so the inner chain
+ * lowers like a template child and — unless it collapsed to a plain template
+ * node — rides in a synthetic `tsrx_code_block_chain` fragment so render-slot
+ * consumers treat it like any other template output. Memoized on the node so
+ * the analyzer and the transforms share one lowered identity.
+ * @param {AST.JSXCodeBlock} block
+ * @param {Map<AST.Node | AST.Node[], ScopeInterface>} [scopes]
+ * @returns {AST.Node | null}
+ */
+export function get_code_block_render(block, scopes) {
+	block.metadata ??= { path: [] };
+	const memo = block.metadata;
+	if (memo.tsrx_render_slot) {
+		return memo.tsrx_render_slot.render;
+	}
+
+	let render = /** @type {AST.Node | null} */ (block.render ?? null);
+	if (render?.type === 'JSXCodeBlock') {
+		const inner_child = get_code_block_template_child(
+			/** @type {AST.JSXCodeBlock} */ (render),
+			scopes,
 		);
-	} else if (statement.consequent) {
-		statement.consequent = normalize_jsx_tsrx_node(statement.consequent, [
-			...inherited_path,
-			statement,
-		]);
-	}
-	if (statement.alternate?.type === 'BlockStatement') {
-		statement.alternate.body = normalize_jsx_tsrx_template_children(
-			statement.alternate.body || [],
-			[...inherited_path, statement],
-		);
-	} else if (statement.alternate) {
-		statement.alternate = normalize_jsx_tsrx_node(statement.alternate, [
-			...inherited_path,
-			statement,
-		]);
-		if (directive === 'if' && statement.alternate?.type === 'IfStatement') {
-			statement.alternate.metadata = {
-				...(statement.alternate.metadata ?? {}),
-				tsrxDirective: 'if',
-			};
-		}
-	}
-	if (statement.body?.type === 'BlockStatement') {
-		statement.body.body = normalize_jsx_tsrx_template_children(statement.body.body || [], [
-			...inherited_path,
-			statement,
-		]);
-	}
-	if (statement.empty?.type === 'BlockStatement') {
-		statement.empty.body = normalize_jsx_tsrx_template_children(statement.empty.body || [], [
-			...inherited_path,
-			statement,
-		]);
-	}
-	if (statement.block?.type === 'BlockStatement') {
-		statement.block.body = normalize_jsx_tsrx_template_children(statement.block.body || [], [
-			...inherited_path,
-			statement,
-		]);
-	}
-	if (statement.pending?.type === 'BlockStatement') {
-		statement.pending.body = normalize_jsx_tsrx_template_children(statement.pending.body || [], [
-			...inherited_path,
-			statement,
-		]);
-	}
-	if (statement.handler?.body?.type === 'BlockStatement') {
-		statement.handler.body.body = normalize_jsx_tsrx_template_children(
-			statement.handler.body.body || [],
-			[...inherited_path, statement],
-		);
-	}
-	if (statement.finalizer?.type === 'BlockStatement') {
-		statement.finalizer.body = normalize_jsx_tsrx_template_children(
-			statement.finalizer.body || [],
-			[...inherited_path, statement],
-		);
-	}
-	if (Array.isArray(statement.cases)) {
-		for (const switch_case of statement.cases) {
-			switch_case.consequent = normalize_jsx_tsrx_template_children(switch_case.consequent || [], [
-				...inherited_path,
-				statement,
-			]);
+		if (inner_child == null) {
+			// An inner block that is empty all the way down renders nothing —
+			// dropping it makes the outer block code-only (and prunable too).
+			render = null;
+		} else if (is_native_tsrx_template_node(inner_child)) {
+			// The inner chain collapsed to a plain template node (its scope was
+			// unobservable) — it becomes this block's render directly, with no
+			// wrapper fragment.
+			render = inner_child;
+		} else {
+			const fragment = b.jsx_fragment([inner_child]);
+			setLocation(fragment, /** @type {AST.NodeWithLocation} */ (block.render));
+			// native_tsrx so the template paths treat the wrapper like any other
+			// template fragment; tsrx_code_block_chain so template-children
+			// lowering can unwrap it instead of stacking an inline component per
+			// nesting level.
+			fragment.metadata.native_tsrx = true;
+			fragment.metadata.tsrx_code_block_chain = true;
+			render = fragment;
 		}
 	}
 
-	return statement;
+	memo.tsrx_render_slot = { render };
+	return render;
 }
 
 /**
- * @param {AST.JSXStyleElement} node
- * @param {AST.Node[]} [inherited_path]
- * @returns {AST.Element}
- */
-function jsx_style_to_ripple_element(node, inherited_path = []) {
-	const id = /** @type {AST.Identifier} */ ({
-		type: 'Identifier',
-		name: 'style',
-		start: node.openingElement?.name?.start ?? node.start,
-		end: node.openingElement?.name?.end ?? node.start,
-		loc: node.openingElement?.name?.loc,
-	});
-	const stylesheet = node.children?.find(
-		(/** @type {any} */ child) => child?.type === 'StyleSheet',
-	);
-
-	return /** @type {AST.Element} */ (
-		/** @type {unknown} */ ({
-			type: 'Element',
-			id,
-			attributes: [],
-			children: node.children || [],
-			openingElement: node.openingElement,
-			closingElement: node.closingElement,
-			selfClosing: false,
-			css: stylesheet?.source ?? '',
-			metadata: { ...(node.metadata ?? {}), scoped: false, path: inherited_path },
-			start: node.start,
-			end: node.end,
-			loc: node.loc,
-		})
-	);
-}
-
-/**
- * @param {any[]} children
- * @param {AST.Node[]} [inherited_path]
- * @returns {AST.Node[]}
- */
-function normalize_jsx_tsrx_children(children, inherited_path = []) {
-	return children
-		.map((/** @type {any} */ child) => normalize_jsx_tsrx_node(child, inherited_path))
-		.flat()
-		.filter((/** @type {any} */ child) => child != null && child.type !== 'EmptyStatement');
-}
-
-/**
- * Lower a `@{ … }` code block that appears in a template children list. Each
- * code block is its own lexical scope, so it never flattens into the
- * surrounding scope, but the lowering only pays for what the block uses:
+ * Lower a `@{ … }` code block for a template-children position. Each code
+ * block is its own lexical scope, so it never flattens into the surrounding
+ * scope, but the lowering only pays for what the block uses:
  *
  * - no setup code: the scope is unobservable, so the render output merges
  *   statically into the parent template — no `_$_.expression`, no inline
  *   component, no anchor;
  * - code-only: a plain `BlockStatement` — statements run in source order,
- *   scoped, render nothing;
+ *   scoped, render nothing (`null` when the block is empty all the way down);
  * - setup code + render output: an inline anonymous component expression
- *   (`(() => @{ … })()`, the same lowering as value-position code blocks),
+ *   (`(() =>@{ … })()`, the same lowering as value-position code blocks),
  *   since the setup may feed the output — `_$_.expression` is the right tool
  *   for a dynamic child value;
- * - nested chains (`@{ @{ … } }`): intermediate levels with statements merge
- *   into one IIFE as nested plain `{ … }` blocks (one closure, not one per
- *   level), and only the innermost render-bearing level becomes the inline
- *   component.
- * @param {AST.JSXCodeBlock} block — internals already normalized
- * @param {AST.Node[]} inherited_path
+ * - nested chains (a code block directly inside another): intermediate levels
+ *   with statements merge into one IIFE as nested plain `{ … }` blocks (one
+ *   closure, not one per level), and only the innermost render-bearing level
+ *   becomes the inline component.
+ *
+ * Memoized on the node so the analyzer and the transforms share one lowered
+ * identity. When a `scopes` map is provided, synthesized statement blocks and
+ * scope IIFEs mirror the code block's scope so binding lookups keep working
+ * (mirroring is idempotent, so it also applies on memoized hits).
+ * @param {AST.JSXCodeBlock} block
+ * @param {Map<AST.Node | AST.Node[], ScopeInterface>} [scopes]
  * @returns {AST.Node | null}
  */
-function code_block_to_template_child(block, inherited_path) {
-	const body = block.body || [];
-	const render = block.render;
+export function get_code_block_template_child(block, scopes) {
+	block.metadata ??= { path: [] };
+	const memo = block.metadata;
+	if (memo.tsrx_template_child) {
+		mirror_code_block_scope(block, memo.tsrx_template_child.child, scopes);
+		return memo.tsrx_template_child.child;
+	}
 
-	// `@{ @{ … } }` — normalize wrapped the already-lowered inner chain in a
-	// synthetic fragment for render-slot consumers (function bodies, value
-	// positions). As a template child, unwrap it instead of stacking an
-	// inline component per nesting level.
-	if (render?.type === 'TsrxFragment' && render.metadata.tsrx_code_block_chain) {
-		const inner_child = render.children[0];
+	const body = (block.body || []).filter((statement) => statement.type !== 'EmptyStatement');
+	const render = get_code_block_render(block, scopes);
+	/** @type {AST.Node | null} */
+	let child;
+
+	if (render?.type === 'JSXFragment' && render.metadata?.tsrx_code_block_chain) {
+		// `@{ @{ … } }` — the folded inner chain rides in a synthetic fragment
+		// for render-slot consumers (function bodies, value positions). As a
+		// template child, unwrap it instead of stacking an inline component per
+		// nesting level.
+		const inner_child = /** @type {AST.Node} */ (render.children[0]);
 		if (body.length === 0) {
-			return inner_child;
-		}
-		if (inner_child.type === 'BlockStatement') {
-			const statement = b.block(
-				[...body, inner_child],
-				/** @type {AST.NodeWithLocation} */ (block),
-			);
-			statement.metadata = { path: inherited_path };
-			return statement;
-		}
-		if (inner_child.type !== 'TSRXExpression') {
+			child = inner_child;
+		} else if (inner_child.type === 'BlockStatement') {
+			child = b.block([...body, inner_child], /** @type {AST.NodeWithLocation} */ (block));
+		} else if (inner_child.type !== 'JSXExpressionContainer') {
 			// Unreachable by construction — the chain wrapper only ever holds
 			// a statement block or an expression child.
-			return inner_child;
+			child = inner_child;
+		} else {
+			// The inner level is either one of our scope IIFEs (fold its body in
+			// as a nested plain block instead of a nested closure, so a whole
+			// chain shares a single function) or the inline component (return its
+			// value from this level's scope).
+			const inner_expression = inner_child.expression;
+			const scope_body =
+				inner_expression.type === 'CallExpression' &&
+				inner_expression.metadata?.tsrx_code_block_scope &&
+				inner_expression.callee.type === 'ArrowFunctionExpression' &&
+				inner_expression.callee.body.type === 'BlockStatement'
+					? [...body, inner_expression.callee.body]
+					: [...body, b.return(inner_expression)];
+			const scope_call = /** @type {AST.SimpleCallExpression} */ (
+				b.call(b.arrow([], b.block(scope_body, /** @type {AST.NodeWithLocation} */ (block))))
+			);
+			scope_call.metadata = { ...scope_call.metadata, tsrx_code_block_scope: true };
+			child = b.jsx_expression_container(scope_call, /** @type {AST.NodeWithLocation} */ (block));
 		}
-		// The inner level is either one of our scope IIFEs (fold its body in
-		// as a nested plain block instead of a nested closure, so a whole
-		// chain shares a single function) or the inline component (return its
-		// value from this level's scope).
-		const inner_expression = inner_child.expression;
-		const scope_body =
-			inner_expression.type === 'CallExpression' &&
-			inner_expression.metadata?.tsrx_code_block_scope &&
-			inner_expression.callee.type === 'ArrowFunctionExpression' &&
-			inner_expression.callee.body.type === 'BlockStatement'
-				? [...body, inner_expression.callee.body]
-				: [...body, b.return(inner_expression)];
-		const scope_call = /** @type {AST.SimpleCallExpression} */ (
-			b.call(b.arrow([], b.block(scope_body, /** @type {AST.NodeWithLocation} */ (block))))
-		);
-		scope_call.metadata = { ...scope_call.metadata, tsrx_code_block_scope: true };
-		return b.tsrx_expression(scope_call, /** @type {AST.NodeWithLocation} */ (block));
-	}
-
-	if (render == null) {
-		if (body.length === 0) {
-			return null;
-		}
-		const statement = b.block(body, /** @type {AST.NodeWithLocation} */ (block));
-		statement.metadata = { path: inherited_path };
-		return statement;
-	}
-
-	if (body.length === 0) {
+	} else if (render == null) {
+		child = body.length === 0 ? null : b.block(body, /** @type {AST.NodeWithLocation} */ (block));
+	} else if (body.length === 0) {
 		// No setup code — the block's scope is unobservable, so the render
 		// output merges statically into the parent template.
-		return render;
+		child = render;
+	} else {
+		child = b.jsx_expression_container(
+			wrap_code_block_in_iife(block),
+			/** @type {AST.NodeWithLocation} */ (block),
+		);
 	}
 
-	return b.tsrx_expression(
-		wrap_code_block_in_iife(block),
-		/** @type {AST.NodeWithLocation} */ (block),
-	);
+	memo.tsrx_template_child = { child };
+	mirror_code_block_scope(block, child, scopes);
+	return child;
 }
 
 /**
- * Normalize a template children list (fragment/element children, control-flow
- * branch bodies), lowering `@{ … }` code-block children into their scoped
- * template-child form. Statement arrays that are not template children
- * (function bodies, program body) must keep using
- * `normalize_jsx_tsrx_children` so statement-position code blocks stay
- * lexical blocks.
- * @param {any[]} children
- * @param {AST.Node[]} [inherited_path]
+ * Mirror a code block's scope onto the statement blocks / scope IIFEs its
+ * lowering synthesized, so binding lookups during the walks keep working. The
+ * plain-IIFE lowering keeps the original `JSXCodeBlock` as the arrow body, so
+ * it needs no mirroring — the scope map already keys off the block itself.
+ * @param {AST.JSXCodeBlock} block
+ * @param {AST.Node | null} child
+ * @param {Map<AST.Node | AST.Node[], ScopeInterface>} [scopes]
+ * @returns {void}
+ */
+function mirror_code_block_scope(block, child, scopes) {
+	if (!scopes || child == null) return;
+	const scope = scopes.get(block);
+	if (!scope) return;
+	if (child.type === 'BlockStatement') {
+		scopes.set(child, scope);
+	} else if (child.type === 'JSXExpressionContainer') {
+		const expression = child.expression;
+		if (expression.type === 'CallExpression' && expression.metadata?.tsrx_code_block_scope) {
+			const arrow = expression.callee;
+			if (arrow.type === 'ArrowFunctionExpression') {
+				scopes.set(arrow, scope);
+				scopes.set(arrow.body, scope);
+			}
+		}
+	}
+}
+
+/**
+ * Lower any raw `@{ … }` entries in a template-children list to their
+ * template forms (dropping blocks that render nothing). Returns the input
+ * list unchanged when it holds no code blocks.
+ * @param {AST.Node[]} children
+ * @param {Map<AST.Node | AST.Node[], ScopeInterface>} [scopes]
  * @returns {AST.Node[]}
  */
-function normalize_jsx_tsrx_template_children(children, inherited_path = []) {
-	return normalize_jsx_tsrx_children(children, inherited_path)
-		.map((child) =>
-			child.type === 'JSXCodeBlock' ? code_block_to_template_child(child, inherited_path) : child,
-		)
-		.filter((child) => child != null);
+export function lower_code_block_children(children, scopes) {
+	return children.some((child) => child?.type === 'JSXCodeBlock')
+		? children.flatMap((child) =>
+				child?.type === 'JSXCodeBlock'
+					? (get_code_block_template_child(/** @type {AST.JSXCodeBlock} */ (child), scopes) ?? [])
+					: [child],
+			)
+		: children;
 }
 
 /**
- * @param {any} node
- * @param {AST.Node[]} [inherited_path]
- * @returns {any}
+ * Whether `node` sits in a template-children slot: a JSX element/fragment
+ * children list, or a branch body of a template control-flow directive
+ * (including positional `@else if` chain links and `@try` catch handlers).
+ * @param {AST.Node[]} path — ancestor chain, innermost last
+ * @param {AST.Node} node
+ * @returns {boolean}
  */
-function normalize_jsx_tsrx_node(node, inherited_path = []) {
-	if (!node || typeof node !== 'object') return node;
-	if (Array.isArray(node)) return normalize_jsx_tsrx_children(node, inherited_path);
-
-	if (node.type === 'JSXFragment') {
-		return jsx_to_ripple_fragment(node, inherited_path);
-	}
-	if (node.type === 'JSXElement') {
-		return jsx_to_ripple_node(node, inherited_path);
-	}
-	if (node.type === 'JSXStyleElement') {
-		return jsx_style_to_ripple_element(node, inherited_path);
-	}
+export function is_template_child_position(path, node) {
+	const parent = path.at(-1);
+	if (!parent) return false;
 	if (
-		node.type === 'JSXIfExpression' ||
-		node.type === 'JSXForExpression' ||
-		node.type === 'JSXSwitchExpression' ||
-		node.type === 'JSXTryExpression'
+		(parent.type === 'JSXElement' || parent.type === 'JSXFragment') &&
+		parent.children.some((child) => child === node)
 	) {
-		return jsx_control_expression_to_statement(node, inherited_path);
+		return true;
 	}
-	if (node.type === 'JSXText') {
-		return jsx_to_ripple_node(node, inherited_path);
-	}
-	if (node.type === 'JSXExpressionContainer') {
-		return jsx_to_ripple_node(node, inherited_path);
-	}
-	if (node.type === 'JSXCodeBlock') {
-		// Each `@{ … }` is its own lexical scope, so nested blocks never merge
-		// into their parent. A block whose render output is itself a code block
-		// (`@{ @{ … } }`) keeps the nesting: the inner block is lowered like a
-		// template child inside a synthetic fragment so it gets its own scope.
-		const path = [...inherited_path, node];
-		node.body = normalize_jsx_tsrx_children(node.body || [], path);
-		if (node.render?.type === 'JSXCodeBlock') {
-			const inner = normalize_jsx_tsrx_node(node.render, path);
-			const inner_child = code_block_to_template_child(inner, path);
-			// An inner block that is empty all the way down renders nothing —
-			// drop it so the outer block becomes code-only (and prunable too).
-			if (inner_child == null) {
-				node.render = null;
-			} else if (is_native_tsrx_template_node(inner_child)) {
-				// The inner chain collapsed to a plain template node (its scope
-				// was unobservable) — it becomes this block's render directly,
-				// with no wrapper fragment.
-				node.render = inner_child;
-			} else {
-				const fragment = b.tsrx_fragment(
-					[inner_child],
-					/** @type {AST.NodeWithLocation} */ (inner),
-				);
-				fragment.metadata.path = path;
-				// Mark the wrapper so template-children lowering can unwrap it
-				// instead of stacking an inline component per nesting level.
-				fragment.metadata.tsrx_code_block_chain = true;
-				node.render = fragment;
-			}
-		} else if (node.render) {
-			node.render = normalize_jsx_tsrx_node(node.render, path);
-		}
-		return node;
-	}
-
-	for (const key in node) {
+	if (parent.type === 'BlockStatement' || parent.type === 'SwitchCase') {
+		const grand = path.at(-2);
+		if (!grand) return false;
+		if (is_template_directive(grand)) return true;
+		if (grand.type === 'CatchClause' && is_template_directive(path.at(-3))) return true;
 		if (
-			key === 'metadata' ||
-			key === 'parent' ||
-			key === 'loc' ||
-			key === 'start' ||
-			key === 'end' ||
-			key === 'type'
+			grand.type === 'IfStatement' &&
+			is_template_else_if(grand, /** @type {AST.Node[]} */ (path.slice(0, -2)))
 		) {
-			continue;
-		}
-
-		const value = node[key];
-		if (Array.isArray(value)) {
-			node[key] = normalize_jsx_tsrx_children(value, [...inherited_path, node]);
-		} else if (value && typeof value === 'object') {
-			node[key] = normalize_jsx_tsrx_node(value, [...inherited_path, node]);
+			return true;
 		}
 	}
-
-	return node;
+	return false;
 }
 
 /**
- * Converts a JSX AST node (JSXElement, JSXText, etc.) to a Ripple AST node
- * (Element, Text, TSRXExpression) for JSX-to-template lowering.
- *
- * @param {any} node
- * @param {AST.Node[]} [inherited_path]
- * @returns {any}
+ * Mark every element/fragment in a raw JSX subtree `native_tsrx` so the
+ * transforms route it through the template paths rather than the raw-JSX
+ * value lowering.
+ * @param {AST.Node | AST.Node[] | null | undefined} node
+ * @returns {void}
  */
-export function jsx_to_ripple_node(node, inherited_path = []) {
-	if (node.type === 'JSXElement') {
-		const opening = node.openingElement;
-		const name = opening.name;
-
-		/** @type {AST.Identifier | AST.MemberExpression | AST.Expression} */
-		let id;
-
-		if (name.type === 'JSXIdentifier') {
-			id = /** @type {AST.Identifier} */ ({
-				type: 'Identifier',
-				name: name.name,
-				start: name.start,
-				end: name.end,
-			});
-		} else if (name.type === 'JSXMemberExpression') {
-			// Convert JSXMemberExpression to MemberExpression
-			// e.g., <Foo.Bar.Baz> → MemberExpression(MemberExpression(Foo, Bar), Baz)
-			id = jsx_member_expression_to_member_expression(name);
-		} else if (name.type === 'JSXNamespacedName') {
-			// For JSXNamespacedName like <namespace:element>, create an identifier with the full name
-			id = /** @type {AST.Identifier} */ ({
-				type: 'Identifier',
-				name: name.namespace.name + ':' + name.name.name,
-				start: name.start,
-				end: name.end,
-			});
-		} else if (name.type === 'JSXExpressionContainer' && name.isDynamic === true) {
-			id = name.expression;
-		} else {
-			// Fallback - should not reach here
-			id = /** @type {AST.Identifier} */ ({
-				type: 'Identifier',
-				name: 'unknown',
-				start: /** @type {AST.Node} */ (name).start,
-				end: /** @type {AST.Node} */ (name).end,
-			});
-		}
-
-		const attributes = opening.attributes
-			.map((/** @type {any} */ attr) => {
-				if (attr.type === 'JSXAttribute') {
-					const name =
-						attr.name.type === 'JSXIdentifier'
-							? attr.name.name
-							: attr.name.namespace.name + ':' + attr.name.name.name;
-					const shorthand_end_loc =
-						attr.loc?.end && attr.loc.end.column > 0
-							? { ...attr.loc.end, column: attr.loc.end.column - 1 }
-							: attr.loc?.end;
-					const value = attr.shorthand
-						? {
-								type: 'Identifier',
-								name,
-								start: attr.name.start,
-								end:
-									attr.name.end && attr.name.end > attr.name.start ? attr.name.end : attr.end - 1,
-								loc: {
-									start: attr.name.loc?.start ?? attr.loc?.start,
-									end: attr.name.loc?.end ?? shorthand_end_loc,
-								},
-							}
-						: attr.value
-							? attr.value.type === 'JSXExpressionContainer'
-								? attr.value.expression
-								: attr.value
-							: null;
-					if (attr.value?.type === 'JSXExpressionContainer' && value) {
-						value.was_expression = true;
-					}
-					return /** @type {AST.Node} */ ({
-						type: 'Attribute',
-						name: {
-							type: 'Identifier',
-							name,
-							tracked: false,
-							start: attr.name.start,
-							end: attr.name.end && attr.name.end > attr.name.start ? attr.name.end : attr.end - 1,
-							loc: {
-								start: attr.name.loc?.start ?? attr.loc?.start,
-								end: attr.name.loc?.end ?? shorthand_end_loc,
-							},
-						},
-						value,
-						shorthand: attr.shorthand === true,
-						start: attr.start,
-						end: attr.end,
-					});
-				} else if (attr.type === 'JSXSpreadAttribute') {
-					return /** @type {AST.Node} */ ({
-						type: 'SpreadAttribute',
-						argument: attr.argument,
-						start: attr.start,
-						end: attr.end,
-					});
-				}
-				return null;
-			})
-			.filter(Boolean);
-
-		const element = /** @type {AST.Element} */ (
-			/** @type {unknown} */ ({
-				type: 'Element',
-				id,
-				attributes,
-				children: [],
-				openingElement: opening,
-				closingElement: node.closingElement,
-				selfClosing: opening.selfClosing,
-				metadata: { scoped: false, path: inherited_path },
-				start: node.start,
-				end: node.end,
-			})
-		);
-		if (node.isDynamic === true || opening.isDynamic === true || name.isDynamic === true) {
-			element.isDynamic = true;
-		}
-
-		element.children = /** @type {AST.Node[]} */ (
-			normalize_jsx_tsrx_template_children(/** @type {AST.Node[]} */ (node.children), [
-				...inherited_path,
-				element,
-			]).filter(Boolean)
-		);
-
-		return element;
+function mark_raw_template_jsx(node) {
+	if (!node || typeof node !== 'object') return;
+	if (Array.isArray(node)) {
+		for (const item of node) mark_raw_template_jsx(item);
+		return;
 	}
-
-	if (node.type === 'JSXStyleElement') {
-		return jsx_style_to_ripple_element(node, inherited_path);
+	// Only children chains: raw JSX inside `{ … }` containers or attribute
+	// values keeps lowering lazily through the value path.
+	if (node.type === 'JSXElement' || node.type === 'JSXFragment') {
+		node.metadata = { ...(node.metadata ?? {}), native_tsrx: true };
+		mark_raw_template_jsx(node.children);
 	}
+}
 
-	if (node.type === 'JSXText') {
-		const value = normalize_jsx_text_value(node.value);
-		// Runtime collapses insignificant newline whitespace to '' (dropped here) while
-		// keeping significant single spaces. to_ts keeps text verbatim, so a newline-only run
-		// stays non-empty and is preserved — matching the other targets' JSX view.
-		if (value === '') {
-			return null;
-		}
-		return /** @type {AST.Node} */ (
-			b.text(value, /** @type {AST.NodeWithLocation} */ (/** @type {unknown} */ (node)))
-		);
-	}
-
-	if (node.type === 'JSXExpressionContainer') {
-		if (node.expression.type === 'JSXEmptyExpression') return null;
-		return /** @type {AST.Node} */ ({
-			type: 'TSRXExpression',
-			expression: normalize_jsx_tsrx_node(node.expression, inherited_path),
-			metadata: {},
-			start: node.start,
-			end: node.end,
-		});
-	}
-
-	if (node.type === 'JSXFragment') {
-		return /** @type {AST.Node[]} */ (
-			normalize_jsx_tsrx_template_children(
-				/** @type {AST.Node[]} */ (node.children),
-				inherited_path,
-			).filter(Boolean)
-		);
-	}
-
-	if (
-		node.type === 'JSXIfExpression' ||
-		node.type === 'JSXForExpression' ||
-		node.type === 'JSXSwitchExpression' ||
-		node.type === 'JSXTryExpression'
-	) {
-		return jsx_control_expression_to_statement(node, inherited_path);
-	}
-
-	return node;
+/**
+ * Adopt a raw JSX subtree (an attribute value or other JSX the parser did not
+ * stamp `native_tsrx`) into the template machinery. The analyze-time
+ * pre-passes already traversed it (they walk attribute values too), so its
+ * code blocks and value-position directives are lowered — adoption is just
+ * the `native_tsrx` marking that routes the visitors down the template paths,
+ * plus flattening a fragment root to its children.
+ *
+ * @param {AST.Node} node
+ * @returns {AST.Node | AST.Node[]}
+ */
+export function adopt_raw_template_jsx(node) {
+	mark_raw_template_jsx(node);
+	return node.type === 'JSXFragment' ? node.children : node;
 }

@@ -6,6 +6,7 @@
 	AnalysisContext,
 	Context,
 	ScopeInterface,
+	Visitor,
 	Visitors,
 	Binding,
 	TopScopedClasses,
@@ -60,8 +61,29 @@ import {
 	get_native_tsrx_function_body,
 	is_native_tsrx_template_node,
 	is_native_tsrx_function_node,
+	get_code_block_template_child,
+	is_template_child_position,
+	is_directive_render_position,
+	get_directive_value_wrapper,
+	analyze_directive_wrapping_values,
 	is_tsrx_component_function,
 } from '../utils.js';
+import {
+	get_attribute_name_node,
+	get_attribute_value,
+	get_element_attributes,
+	get_element_id,
+	get_template_expression,
+	is_droppable_template_text,
+	is_dynamic_element,
+	is_empty_expression_container,
+	is_template_directive,
+	is_template_element,
+	is_template_else_if,
+	is_template_fragment,
+	is_template_text_or_expression,
+	rendered_template_children,
+} from '../template-ast.js';
 import is_reference from 'is-reference';
 
 const valid_in_head = new Set(['title', 'base', 'link', 'meta', 'style', 'script', 'noscript']);
@@ -70,124 +92,6 @@ const TRACKED_INDEX_VALUE_ERROR =
 	'Do not access tracked values with [0]. Use .value or &[] lazy destructuring instead. Numeric tracked access leads to degraded performance.';
 const TRACKED_INDEX_REFERENCE_ERROR =
 	'Do not access tracked values with [1]. Use the tracked value directly instead. Numeric tracked access leads to degraded performance.';
-
-/**
- * Ripple analysis still works with internal Element nodes after parser
- * normalization. Keep that compatibility local by presenting those nodes to the
- * shared CSS pruner as native JSX only during pruning.
- *
- * @param {AST.Node[]} nodes
- * @returns {() => void}
- */
-function prepare_legacy_nodes_for_css_pruning(nodes) {
-	/** @type {{ node: any, type: string, native_tsrx: unknown, had_native_tsrx: boolean }[]} */
-	const changed = [];
-	const seen = new Set();
-
-	/** @param {any} node */
-	function visit(node) {
-		if (!node || typeof node !== 'object' || seen.has(node)) {
-			return;
-		}
-		seen.add(node);
-
-		if (node.type === 'Element') {
-			node.metadata ??= { path: [] };
-			changed.push({
-				node,
-				type: node.type,
-				native_tsrx: node.metadata.native_tsrx,
-				had_native_tsrx: Object.prototype.hasOwnProperty.call(node.metadata, 'native_tsrx'),
-			});
-			node.type = 'JSXElement';
-			node.metadata.native_tsrx = true;
-		}
-
-		if (Array.isArray(node.children)) {
-			for (const child of node.children) {
-				visit(child);
-			}
-		}
-	}
-
-	for (const node of nodes) {
-		visit(node);
-	}
-
-	return () => {
-		for (let i = changed.length - 1; i >= 0; i--) {
-			const entry = changed[i];
-			entry.node.type = entry.type;
-			if (entry.had_native_tsrx) {
-				entry.node.metadata.native_tsrx = entry.native_tsrx;
-			} else {
-				delete entry.node.metadata.native_tsrx;
-			}
-		}
-	};
-}
-
-/**
- * Scope creation lives in @tsrx/core and only understands JSX-shaped native
- * TSRX nodes. Ripple still normalizes to internal Element/TsrxFragment nodes
- * before analysis, so present them as JSX only while scopes are created.
- *
- * @param {AST.Node} node
- * @returns {() => void}
- */
-function prepare_legacy_nodes_for_core_scopes(node) {
-	/** @type {{ node: any, type: string, native_tsrx: unknown, had_native_tsrx: boolean }[]} */
-	const changed = [];
-	const seen = new Set();
-
-	/** @param {any} current */
-	function visit(current) {
-		if (!current || typeof current !== 'object' || seen.has(current)) {
-			return;
-		}
-		seen.add(current);
-
-		if (current.type === 'Element' || current.type === 'TsrxFragment') {
-			current.metadata ??= { path: [] };
-			changed.push({
-				node: current,
-				type: current.type,
-				native_tsrx: current.metadata.native_tsrx,
-				had_native_tsrx: Object.prototype.hasOwnProperty.call(current.metadata, 'native_tsrx'),
-			});
-			current.type = current.type === 'Element' ? 'JSXElement' : 'JSXFragment';
-			current.metadata.native_tsrx = true;
-		}
-
-		for (const key in current) {
-			if (key === 'parent' || key === 'loc' || key === 'range' || key === 'metadata') {
-				continue;
-			}
-			const value = current[key];
-			if (Array.isArray(value)) {
-				for (const child of value) {
-					visit(child);
-				}
-			} else if (value && typeof value === 'object') {
-				visit(value);
-			}
-		}
-	}
-
-	visit(node);
-
-	return () => {
-		for (let i = changed.length - 1; i >= 0; i--) {
-			const entry = changed[i];
-			entry.node.type = entry.type;
-			if (entry.had_native_tsrx) {
-				entry.node.metadata.native_tsrx = entry.native_tsrx;
-			} else {
-				delete entry.node.metadata.native_tsrx;
-			}
-		}
-	};
-}
 
 const mutating_method_names = new Set([
 	'add',
@@ -205,9 +109,6 @@ const mutating_method_names = new Set([
 	'splice',
 	'unshift',
 ]);
-
-const TEMPLATE_FRAGMENT_ERROR =
-	'JSX fragment syntax is not needed in TSRX templates. TSRX renders in immediate mode, so everything is already a fragment. Use `<>...</>` only in expression position.';
 
 /**
  * @param {AST.MemberExpression} node
@@ -383,7 +284,8 @@ function mark_control_flow_has_template(path, node) {
 			node.type === 'TryStatement' ||
 			node.type === 'IfStatement' ||
 			node.type === 'SwitchStatement' ||
-			node.type === 'TsrxFragment'
+			is_template_directive(node) ||
+			is_template_fragment(node)
 		) {
 			node.metadata.has_template = true;
 		}
@@ -420,6 +322,7 @@ function is_function_or_class_boundary(node) {
  */
 function is_loop_statement(node) {
 	return (
+		node.type === 'JSXForExpression' ||
 		node.type === 'ForOfStatement' ||
 		node.type === 'ForStatement' ||
 		node.type === 'ForInStatement' ||
@@ -445,7 +348,7 @@ function is_inside_component_for_of(path) {
 		// directive enforces the no-return/no-continue rule; a plain JS `for…of`
 		// is ordinary JavaScript, so stop and report it as not template-owned.
 		if (node.type === 'ForOfStatement') {
-			return node.metadata?.tsrxDirective === 'for';
+			return false;
 		}
 	}
 	return false;
@@ -461,13 +364,15 @@ function is_inside_template_if(path) {
 		if (is_function_or_class_boundary(node)) {
 			return false;
 		}
-		if (node.type === 'IfStatement' && node.metadata?.tsrxDirective === 'if') {
-			return true;
-		}
-		if (node.type === 'IfStatement' && /** @type {any} */ (node).statementType === 'IfStatement') {
-			return true;
-		}
 		if (node.type === 'JSXIfExpression') {
+			return true;
+		}
+		// An `@else if` chain link is template-owned; any other plain `if` is
+		// ordinary JavaScript the walk passes through.
+		if (
+			node.type === 'IfStatement' &&
+			is_template_else_if(node, /** @type {AST.Node[]} */ (path.slice(0, i)))
+		) {
 			return true;
 		}
 	}
@@ -484,7 +389,7 @@ function is_inside_template_child(path) {
 		if (is_function_or_class_boundary(node)) {
 			return false;
 		}
-		if (node.type === 'Element' || node.type === 'TsrxFragment') {
+		if (is_template_element(node) || is_template_fragment(node)) {
 			return true;
 		}
 	}
@@ -508,7 +413,7 @@ function break_targets_component_loop(path) {
 		// Only a `@for` template directive forbids it; plain JS loops are ordinary
 		// JavaScript where `break` is allowed.
 		if (is_loop_statement(node)) {
-			return node.type === 'ForOfStatement' && node.metadata?.tsrxDirective === 'for';
+			return node.type === 'JSXForExpression';
 		}
 	}
 	return false;
@@ -1305,13 +1210,13 @@ function visit_function(node, context) {
 			}
 		}
 
-		/** @type {AST.Element[]} */
+		/** @type {Array<AST.TSRXJSXElement | AST.JSXStyleElement>} */
 		const elements = [];
 		const metadata = {};
 		const styleClasses = new Map();
 		/** @type {TopScopedClasses} */
 		const topScopedClasses = new Map();
-		const render_body = get_native_tsrx_function_body(node);
+		const render_body = get_native_tsrx_function_body(node, context.state.scopes);
 		const component_state = {
 			...context.state,
 			component: node,
@@ -1323,19 +1228,13 @@ function visit_function(node, context) {
 		context.next(component_state);
 
 		const css = collect_tsrx_stylesheet(render_body);
-		/** @type {any} */ (node).css = css;
-		/** @type {any} */ (node.metadata).css = css;
+		node.metadata.component_css = css;
 
 		if (css !== null) {
 			analyzeCss(css);
 			const prune = () => {
-				const restore_nodes = prepare_legacy_nodes_for_css_pruning(elements);
-				try {
-					for (const element of elements) {
-						pruneCss(css, element, styleClasses, topScopedClasses);
-					}
-				} finally {
-					restore_nodes();
+				for (const element of elements) {
+					pruneCss(css, element, styleClasses, topScopedClasses);
 				}
 			};
 			prune();
@@ -1346,7 +1245,7 @@ function visit_function(node, context) {
 				prune();
 			}
 			if (topScopedClasses.size > 0) {
-				/** @type {any} */ (node.metadata).topScopedClasses = topScopedClasses;
+				node.metadata.topScopedClasses = topScopedClasses;
 			}
 		}
 
@@ -1433,6 +1332,190 @@ function is_children_template_expression(expression, context) {
 	return is_children_template_expression_in_scope(expression, context.state.scope, component_scope);
 }
 
+/**
+ * Shared by the plain statement and the `@`-directive forms — the logic is
+ * (almost) entirely common; directive-ness is derived from the node type
+ * where it matters.
+ * @type {Visitor<AST.SwitchStatement | AST.JSXSwitchExpression, AnalysisState, AST.Node>}
+ */
+const visit_switch_statement = (node, context) => {
+	if (context.state.regular_js || node.metadata?.regular_js) {
+		return context.next({ ...context.state, regular_js: true, component: undefined });
+	}
+
+	if (!is_inside_component(context)) {
+		return context.next();
+	}
+
+	context.visit(node.discriminant, context.state);
+
+	for (const switch_case of node.cases) {
+		// Skip empty cases
+		if (switch_case.consequent.length === 0) {
+			continue;
+		}
+
+		node.metadata = {
+			...node.metadata,
+			has_template: false,
+		};
+
+		context.visit(switch_case, context.state);
+	}
+};
+
+/**
+ * Shared by the plain statement and the `@`-directive forms — the logic is
+ * (almost) entirely common; directive-ness is derived from the node type
+ * where it matters.
+ * @type {Visitor<AST.IfStatement | AST.JSXIfExpression, AnalysisState, AST.Node>}
+ */
+const visit_if_statement = (node, context) => {
+	if (context.state.regular_js || node.metadata?.regular_js) {
+		return context.next({ ...context.state, regular_js: true, component: undefined });
+	}
+
+	if (!is_inside_component(context)) {
+		return context.next();
+	}
+
+	const is_template_directive =
+		node.type === 'JSXIfExpression' ||
+		is_template_else_if(node, /** @type {AST.Node[]} */ (context.path));
+
+	node.metadata = {
+		...node.metadata,
+		has_template: false,
+		has_throw: false,
+		has_continue: false,
+	};
+
+	const test_metadata = { tracking: false };
+	context.visit(node.test, { ...context.state, metadata: test_metadata });
+	if (test_metadata.tracking) {
+		/** @type {AST.TrackedNode} */ (node.test).tracked = true;
+	}
+
+	context.visit(node.consequent, context.state);
+
+	const consequent_body =
+		node.consequent.type === 'BlockStatement' ? node.consequent.body : [node.consequent];
+
+	if (
+		consequent_body.length === 1 &&
+		consequent_body[0].type === 'ReturnStatement' &&
+		!node.alternate
+	) {
+		node.metadata.lone_return = true;
+	}
+
+	const consequent_script_only = is_script_only_control_flow_body(node.consequent);
+
+	let alternate_script_only = false;
+	if (node.alternate) {
+		const saved_has_return = node.metadata.has_return;
+		const saved_returns = node.metadata.returns;
+		const saved_has_continue = node.metadata.has_continue;
+		node.metadata.has_template = false;
+		node.metadata.has_throw = false;
+		node.metadata.has_continue = false;
+		context.visit(node.alternate, context.state);
+
+		alternate_script_only = is_script_only_control_flow_body(node.alternate);
+
+		if (saved_has_return) {
+			node.metadata.has_return = true;
+			if (saved_returns) {
+				node.metadata.returns = [...saved_returns, ...(node.metadata.returns || [])];
+			}
+		}
+		if (saved_has_continue) {
+			node.metadata.has_continue = true;
+		}
+	}
+
+	if (!is_template_directive) {
+		if (node.metadata.has_template && !node.metadata.has_return) {
+			error(
+				'TSRX elements and text inside JavaScript control flow blocks must use template directives. Use `@if`, `@for`, `@switch`, or `@try` for template control flow.',
+				context.state.analysis.module.filename,
+				node,
+				context.state.collect ? context.state.analysis.errors : undefined,
+				context.state.analysis.comments,
+			);
+		} else if (!node.metadata.has_template && !node.metadata.has_continue) {
+			node.metadata.regular_js = true;
+		}
+		return;
+	}
+
+	if (
+		!node.metadata.has_template &&
+		!node.metadata.has_return &&
+		!node.metadata.has_throw &&
+		!node.metadata.has_continue &&
+		consequent_script_only &&
+		(!node.alternate || alternate_script_only)
+	) {
+		node.metadata.script_only = true;
+	}
+};
+
+/**
+ * Shared by the plain statement and the `@`-directive forms — the logic is
+ * (almost) entirely common; directive-ness is derived from the node type
+ * where it matters.
+ * @type {Visitor<AST.TryStatement | AST.JSXTryExpression, AnalysisState, AST.Node>}
+ */
+const visit_try_statement = (node, context) => {
+	const { state } = context;
+	if (state.regular_js || node.metadata?.regular_js) {
+		return context.next({ ...state, regular_js: true, component: undefined });
+	}
+
+	if (!is_inside_component(context)) {
+		return context.next();
+	}
+
+	if (node.pending) {
+		node.metadata = {
+			...node.metadata,
+			has_template: false,
+		};
+
+		context.visit(node.block, state);
+
+		if (!node.metadata.has_template && is_script_only_control_flow_body(node.block)) {
+			node.metadata.script_only = true;
+		}
+
+		node.metadata = {
+			...node.metadata,
+			has_template: false,
+		};
+
+		context.visit(node.pending, state);
+
+		if (
+			(node.pending.body || []).length > 0 &&
+			!node.metadata.has_template &&
+			is_script_only_control_flow_body(node.pending)
+		) {
+			node.metadata.script_only = true;
+		}
+	} else {
+		context.visit(node.block, state);
+	}
+
+	if (node.handler) {
+		context.visit(node.handler, state);
+	}
+
+	if (node.finalizer) {
+		context.visit(node.finalizer, state);
+	}
+};
+
 /** @type {Visitors<AST.Node, AnalysisState>} */
 const visitors = {
 	_(node, { state, next, path }) {
@@ -1503,8 +1586,10 @@ const visitors = {
 	Identifier(node, context) {
 		const binding = context.state.scope.get(node.name);
 		const parent = context.path.at(-1);
+		// The TSRX dialect allows an Identifier import source (`from server`),
+		// which the estree type for `source` (a Literal) does not model.
 		const is_import_source =
-			parent?.type === 'ImportDeclaration' && /** @type {any} */ (parent).source === node;
+			parent?.type === 'ImportDeclaration' && /** @type {AST.Node} */ (parent.source) === node;
 
 		if (
 			!is_import_source &&
@@ -1671,15 +1756,6 @@ const visitors = {
 	},
 
 	CallExpression(node, context) {
-		// bug in our acorn [parser]: it uses typeParameters instead of typeArguments
-		// @ts-expect-error
-		if (node.typeParameters) {
-			// @ts-expect-error
-			node.typeArguments = node.typeParameters;
-			// @ts-expect-error
-			delete node.typeParameters;
-		}
-
 		const callee = node.callee;
 
 		if (is_children_template_expression(/** @type {AST.Expression} */ (callee), context)) {
@@ -1866,30 +1942,9 @@ const visitors = {
 		context.next();
 	},
 
-	SwitchStatement(node, context) {
-		if (context.state.regular_js || node.metadata?.regular_js) {
-			return context.next({ ...context.state, regular_js: true, component: undefined });
-		}
-
-		if (!is_inside_component(context)) {
-			return context.next();
-		}
-
-		context.visit(node.discriminant, context.state);
-
-		for (const switch_case of node.cases) {
-			// Skip empty cases
-			if (switch_case.consequent.length === 0) {
-				continue;
-			}
-
-			node.metadata = {
-				...node.metadata,
-				has_template: false,
-			};
-
-			context.visit(switch_case, context.state);
-		}
+	SwitchStatement: visit_switch_statement,
+	JSXSwitchExpression(node, context) {
+		return analyze_directive_wrapping_values(node, context, visit_switch_statement);
 	},
 
 	ForOfStatement(node, context) {
@@ -1901,25 +1956,52 @@ const visitors = {
 			return context.next();
 		}
 
-		const is_template_directive = node.metadata?.tsrxDirective === 'for';
-		if (!is_template_directive) {
-			node.metadata = {
-				...node.metadata,
-				has_template: false,
-			};
-			context.next();
-			if (node.metadata.has_template) {
-				error(
-					'TSRX elements and text inside JavaScript control flow blocks must use template directives. Use `@if`, `@for`, `@switch`, or `@try` for template control flow.',
-					context.state.analysis.module.filename,
-					node,
-					context.state.collect ? context.state.analysis.errors : undefined,
-					context.state.analysis.comments,
-				);
-			} else {
-				node.metadata.regular_js = true;
-			}
+		node.metadata = {
+			...node.metadata,
+			has_template: false,
+		};
+		context.next();
+		if (node.metadata.has_template) {
+			error(
+				'TSRX elements and text inside JavaScript control flow blocks must use template directives. Use `@if`, `@for`, `@switch`, or `@try` for template control flow.',
+				context.state.analysis.module.filename,
+				node,
+				context.state.collect ? context.state.analysis.errors : undefined,
+				context.state.analysis.comments,
+			);
+		} else {
+			node.metadata.regular_js = true;
+		}
+	},
+
+	/**
+	 * A `@for` directive — index/key bindings are template concerns; a plain
+	 * JS `for…of` never carries them.
+	 * @param {AST.JSXForExpression} node
+	 * @param {AnalysisContext} context
+	 */
+	JSXForExpression(node, context) {
+		const wrapper = node.metadata?.tsrx_value_wrapper;
+		if (
+			(!wrapper || !context.path.includes(wrapper)) &&
+			!is_directive_render_position(context.path.at(-1), node)
+		) {
+			context.visit(get_directive_value_wrapper(node));
 			return;
+		}
+		// `@for` covers for-of / for-in / for(;;): only the for-of form carries
+		// index/key bindings; the other forms analyze like their plain statements
+		// (an ordinary traversal, same as the ForInStatement/ForStatement visitors).
+		if (node.statementType !== 'ForOfStatement') {
+			return context.next();
+		}
+
+		if (context.state.regular_js || node.metadata?.regular_js) {
+			return context.next({ ...context.state, regular_js: true, component: undefined });
+		}
+
+		if (!is_inside_component(context)) {
+			return context.next();
 		}
 
 		if (node.index) {
@@ -1947,8 +2029,11 @@ const visitors = {
 			if (state.to_ts || state.mode === 'server') {
 				pattern_id = pattern;
 			} else {
+				// The transforms substitute the generated pattern id for the
+				// destructured left when lowering a keyed @for — communicated
+				// via metadata rather than rewriting the source declaration.
 				pattern_id = b.id(scope.generate('pattern'));
-				/** @type {AST.VariableDeclaration} */ (node.left).declarations[0].id = pattern_id;
+				node.metadata.tsrx_for_pattern_id = pattern_id;
 			}
 
 			for (const path of paths) {
@@ -2077,104 +2162,12 @@ const visitors = {
 	},
 
 	TSTypeReference(node, context) {
-		// bug in our acorn parser: it uses typeParameters instead of typeArguments
-		// @ts-expect-error
-		if (node.typeParameters) {
-			// @ts-expect-error
-			node.typeArguments = node.typeParameters;
-			// @ts-expect-error
-			delete node.typeParameters;
-		}
 		context.next();
 	},
 
-	IfStatement(node, context) {
-		if (context.state.regular_js || node.metadata?.regular_js) {
-			return context.next({ ...context.state, regular_js: true, component: undefined });
-		}
-
-		if (!is_inside_component(context)) {
-			return context.next();
-		}
-
-		const is_template_directive = node.metadata?.tsrxDirective === 'if';
-
-		node.metadata = {
-			...node.metadata,
-			has_template: false,
-			has_throw: false,
-			has_continue: false,
-		};
-
-		const test_metadata = { tracking: false };
-		context.visit(node.test, { ...context.state, metadata: test_metadata });
-		if (test_metadata.tracking) {
-			/** @type {AST.TrackedNode} */ (node.test).tracked = true;
-		}
-
-		context.visit(node.consequent, context.state);
-
-		const consequent_body =
-			node.consequent.type === 'BlockStatement' ? node.consequent.body : [node.consequent];
-
-		if (
-			consequent_body.length === 1 &&
-			consequent_body[0].type === 'ReturnStatement' &&
-			!node.alternate
-		) {
-			node.metadata.lone_return = true;
-		}
-
-		const consequent_script_only = is_script_only_control_flow_body(node.consequent);
-
-		let alternate_script_only = false;
-		if (node.alternate) {
-			const saved_has_return = node.metadata.has_return;
-			const saved_returns = node.metadata.returns;
-			const saved_has_continue = node.metadata.has_continue;
-			node.metadata.has_template = false;
-			node.metadata.has_throw = false;
-			node.metadata.has_continue = false;
-			context.visit(node.alternate, context.state);
-
-			alternate_script_only = is_script_only_control_flow_body(node.alternate);
-
-			if (saved_has_return) {
-				node.metadata.has_return = true;
-				if (saved_returns) {
-					node.metadata.returns = [...saved_returns, ...(node.metadata.returns || [])];
-				}
-			}
-			if (saved_has_continue) {
-				node.metadata.has_continue = true;
-			}
-		}
-
-		if (!is_template_directive) {
-			if (node.metadata.has_template && !node.metadata.has_return) {
-				error(
-					'TSRX elements and text inside JavaScript control flow blocks must use template directives. Use `@if`, `@for`, `@switch`, or `@try` for template control flow.',
-					context.state.analysis.module.filename,
-					node,
-					context.state.collect ? context.state.analysis.errors : undefined,
-					context.state.analysis.comments,
-				);
-			} else if (!node.metadata.has_template && !node.metadata.has_continue) {
-				node.metadata.regular_js = true;
-			}
-			return;
-		}
-
-		if (
-			!node.metadata.has_template &&
-			!node.metadata.has_return &&
-			!node.metadata.has_throw &&
-			!node.metadata.has_continue &&
-			consequent_script_only &&
-			(!node.alternate || alternate_script_only)
-		) {
-			node.metadata.script_only = true;
-		}
+	IfStatement: visit_if_statement,
+	JSXIfExpression(node, context) {
+		return analyze_directive_wrapping_values(node, context, visit_if_statement);
 	},
 
 	ReturnStatement(node, context) {
@@ -2327,53 +2320,9 @@ const visitors = {
 		context.next();
 	},
 
-	TryStatement(node, context) {
-		const { state } = context;
-		if (state.regular_js || node.metadata?.regular_js) {
-			return context.next({ ...state, regular_js: true, component: undefined });
-		}
-
-		if (!is_inside_component(context)) {
-			return context.next();
-		}
-
-		if (node.pending) {
-			node.metadata = {
-				...node.metadata,
-				has_template: false,
-			};
-
-			context.visit(node.block, state);
-
-			if (!node.metadata.has_template && is_script_only_control_flow_body(node.block)) {
-				node.metadata.script_only = true;
-			}
-
-			node.metadata = {
-				...node.metadata,
-				has_template: false,
-			};
-
-			context.visit(node.pending, state);
-
-			if (
-				(node.pending.body || []).length > 0 &&
-				!node.metadata.has_template &&
-				is_script_only_control_flow_body(node.pending)
-			) {
-				node.metadata.script_only = true;
-			}
-		} else {
-			context.visit(node.block, state);
-		}
-
-		if (node.handler) {
-			context.visit(node.handler, state);
-		}
-
-		if (node.finalizer) {
-			context.visit(node.finalizer, state);
-		}
+	TryStatement: visit_try_statement,
+	JSXTryExpression(node, context) {
+		return analyze_directive_wrapping_values(node, context, visit_try_statement);
 	},
 
 	ForInStatement(node, context) {
@@ -2388,23 +2337,7 @@ const visitors = {
 		context.next();
 	},
 
-	JSXElement(node, context) {
-		return context.next();
-	},
-
 	JSXFragment(node, context) {
-		if (!node.metadata?.native_tsrx) {
-			return context.next();
-		}
-
-		error(TEMPLATE_FRAGMENT_ERROR, context.state.analysis.module.filename, node);
-	},
-
-	/**
-	 * @param {any} node
-	 * @param {AnalysisContext} context
-	 */
-	TsrxFragment(node, context) {
 		if (context.state.regular_js) {
 			return context.next();
 		}
@@ -2413,22 +2346,40 @@ const visitors = {
 		return context.next();
 	},
 
-	Element(node, context) {
+	JSXStyleElement(node, context) {
 		if (context.state.regular_js || node.metadata?.regular_js) {
 			return context.next({ ...context.state, regular_js: true, component: undefined });
 		}
 
-		if (!node.id) {
-			error(TEMPLATE_FRAGMENT_ERROR, context.state.analysis.module.filename, node);
+		mark_control_flow_has_template(context.path, node);
+
+		if (context.state.elements) {
+			context.state.elements.push(node);
+		}
+
+		// Children are stylesheet AST — nothing to analyze.
+	},
+
+	JSXElement(node, context) {
+		// A raw (non-template) element — an attribute value or other JSX that
+		// never entered the template traversal.
+		if (!is_template_element(node)) {
+			return context.next();
+		}
+
+		if (context.state.regular_js || node.metadata?.regular_js) {
+			return context.next({ ...context.state, regular_js: true, component: undefined });
 		}
 
 		const { state, visit, path } = context;
-		const is_dynamic_element = node.isDynamic === true;
+		const element_id = get_element_id(node);
+		const element_attributes = get_element_attributes(node);
+		const is_dynamic = is_dynamic_element(node);
 		const is_dom_element = is_element_dom_element(node);
 		// Dynamic tags (`<{expr}>`) resolve at runtime: scoped CSS pruning must
 		// keep type selectors (the tag could be any element) and collect the
 		// element so its classes match and receive the scope hash.
-		if (is_dynamic_element) {
+		if (is_dynamic) {
 			node.metadata.dynamicElement = true;
 		}
 		/** @type {Set<AST.Identifier>} */
@@ -2437,14 +2388,14 @@ const visitors = {
 		mark_control_flow_has_template(path, node);
 
 		if (
-			!is_dynamic_element &&
+			!is_dynamic &&
 			!is_dom_element &&
-			is_children_template_expression(/** @type {AST.Expression} */ (node.id), context)
+			is_children_template_expression(/** @type {AST.Expression} */ (element_id), context)
 		) {
 			error(
 				'`children` cannot be rendered as a component. Render it with `{children}` or `{props.children}` instead.',
 				state.analysis.module.filename,
-				node.id,
+				element_id,
 				context.state.collect ? context.state.analysis.errors : undefined,
 				context.state.analysis.comments,
 			);
@@ -2453,13 +2404,13 @@ const visitors = {
 		validateNesting(node, context);
 
 		if (is_dom_element) {
-			if (/** @type {AST.Identifier} */ (node.id).name === 'head') {
+			if (/** @type {AST.Identifier} */ (element_id).name === 'head') {
 				// head validation
-				if (node.attributes.length > 0) {
+				if (element_attributes.length > 0) {
 					// TODO: could transform attributes as something, e.g. Text Node, and avoid a fatal error
 					error('<head> cannot have any attributes', state.analysis.module.filename, node);
 				}
-				if (node.children.length === 0) {
+				if (rendered_template_children(node.children, !!state.to_ts).length === 0) {
 					// TODO: could transform children as something, e.g. Text Node, and avoid a fatal error
 					error('<head> must have children', state.analysis.module.filename, node);
 				}
@@ -2471,13 +2422,10 @@ const visitors = {
 				return;
 			}
 			if (state.inside_head) {
-				if (/** @type {AST.Identifier} */ (node.id).name === 'title') {
+				if (/** @type {AST.Identifier} */ (element_id).name === 'title') {
 					const children = normalize_children(node.children, context);
 
-					if (
-						children.length !== 1 ||
-						(children[0].type !== 'TSRXExpression' && children[0].type !== 'Text')
-					) {
+					if (children.length !== 1 || !is_template_text_or_expression(children[0])) {
 						// TODO: could transform children as something, e.g. Text Node, and avoid a fatal error
 						error(
 							'<title> must have only contain text nodes',
@@ -2488,16 +2436,16 @@ const visitors = {
 				}
 
 				// check for invalid elements in head
-				if (!valid_in_head.has(/** @type {AST.Identifier} */ (node.id).name)) {
+				if (!valid_in_head.has(/** @type {AST.Identifier} */ (element_id).name)) {
 					// TODO: could transform invalid elements as something, e.g. Text Node, and avoid a fatal error
 					error(
-						`<${/** @type {AST.Identifier} */ (node.id).name}> cannot be used in <head>`,
+						`<${/** @type {AST.Identifier} */ (element_id).name}> cannot be used in <head>`,
 						state.analysis.module.filename,
 						node,
 					);
 				}
 			} else {
-				if (/** @type {AST.Identifier} */ (node.id).name === 'script') {
+				if (/** @type {AST.Identifier} */ (element_id).name === 'script') {
 					const err_msg = '<script> cannot be used outside of <head>.';
 					error(
 						err_msg,
@@ -2517,17 +2465,19 @@ const visitors = {
 				}
 			}
 
-			const is_void = isVoidElement(/** @type {AST.Identifier} */ (node.id).name);
+			const is_void = isVoidElement(/** @type {AST.Identifier} */ (element_id).name);
 
 			if (state.elements) {
 				state.elements.push(node);
 			}
 
-			for (const attr of node.attributes) {
-				if (attr.type === 'Attribute') {
-					if (attr.value && attr.value.type === 'JSXEmptyExpression') {
+			for (const attr of element_attributes) {
+				if (attr.type === 'JSXAttribute') {
+					const attr_name = get_attribute_name_node(attr);
+					const attr_value = get_attribute_value(attr);
+					if (attr_value && attr_value.type === 'JSXEmptyExpression') {
 						const value = /** @type {ESTreeJSX.JSXEmptyExpression & AST.NodeWithLocation} */ (
-							attr.value
+							attr_value
 						);
 						error(
 							'attributes must only be assigned a non-empty expression',
@@ -2551,52 +2501,50 @@ const visitors = {
 							context.state.analysis.comments,
 						);
 					}
-					if (attr.name.type === 'Identifier') {
-						attribute_names.add(attr.name);
+					attribute_names.add(attr_name);
 
-						if (attr.name.name === 'key') {
+					if (attr_name.name === 'key') {
+						error(
+							'The `key` attribute is not a thing in Ripple, and cannot be used on DOM elements. If you are using a for loop, then use the `for (let item of items; key item.id)` syntax.',
+							state.analysis.module.filename,
+							attr,
+							context.state.collect ? context.state.analysis.errors : undefined,
+							context.state.analysis.comments,
+						);
+					}
+
+					if (isEventAttribute(attr_name.name)) {
+						if (attr_value === null) {
+							// A regular attribute can have no value (like `hidden`), but an
+							// event attribute like `<div onC>` has no handler to run
 							error(
-								'The `key` attribute is not a thing in Ripple, and cannot be used on DOM elements. If you are using a for loop, then use the `for (let item of items; key item.id)` syntax.',
+								`the \`${attr_name.name}\` event attribute must be assigned a handler expression`,
 								state.analysis.module.filename,
 								attr,
 								context.state.collect ? context.state.analysis.errors : undefined,
 								context.state.analysis.comments,
 							);
-						}
+						} else {
+							const handler = visit(/** @type {AST.Expression} */ (attr_value), state);
+							const is_delegated = is_delegated_event(attr_name.name, handler, context);
 
-						if (isEventAttribute(attr.name.name)) {
-							if (attr.value === null) {
-								// A regular attribute can have no value (like `hidden`), but an
-								// event attribute like `<div onC>` has no handler to run
-								error(
-									`the \`${attr.name.name}\` event attribute must be assigned a handler expression`,
-									state.analysis.module.filename,
-									attr,
-									context.state.collect ? context.state.analysis.errors : undefined,
-									context.state.analysis.comments,
-								);
-							} else {
-								const handler = visit(/** @type {AST.Expression} */ (attr.value), state);
-								const is_delegated = is_delegated_event(attr.name.name, handler, context);
-
-								if (is_delegated) {
-									if (attr.metadata === undefined) {
-										attr.metadata = { path: [...path] };
-									}
-
-									attr.metadata.delegated = is_delegated;
+							if (is_delegated) {
+								if (attr.metadata === undefined) {
+									attr.metadata = { path: [...path] };
 								}
+
+								attr.metadata.delegated = is_delegated;
 							}
-						} else if (attr.value !== null) {
-							visit(attr.value, state);
 						}
+					} else if (attr_value !== null) {
+						visit(attr_value, state);
 					}
 				}
 			}
 
-			if (is_void && node.children.length > 0) {
+			if (is_void && rendered_template_children(node.children, !!state.to_ts).length > 0) {
 				error(
-					`The <${/** @type {AST.Identifier} */ (node.id).name}> element is a void element and cannot have children`,
+					`The <${/** @type {AST.Identifier} */ (element_id).name}> element is a void element and cannot have children`,
 					state.analysis.module.filename,
 					node,
 					context.state.collect ? context.state.analysis.errors : undefined,
@@ -2604,19 +2552,18 @@ const visitors = {
 				);
 			}
 		} else {
-			if (is_dynamic_element && state.elements) {
+			if (is_dynamic && state.elements) {
 				state.elements.push(node);
 			}
 
-			for (const attr of node.attributes) {
-				if (attr.type === 'Attribute') {
-					if (attr.name.type === 'Identifier') {
-						attribute_names.add(attr.name);
+			for (const attr of element_attributes) {
+				if (attr.type === 'JSXAttribute') {
+					attribute_names.add(get_attribute_name_node(attr));
+					const attr_value = get_attribute_value(attr);
+					if (attr_value !== null) {
+						visit(attr_value, state);
 					}
-					if (attr.value !== null) {
-						visit(attr.value, state);
-					}
-				} else if (attr.type === 'SpreadAttribute') {
+				} else if (attr.type === 'JSXSpreadAttribute') {
 					visit(attr.argument, state);
 				}
 			}
@@ -2638,22 +2585,19 @@ const visitors = {
 
 			// Validate that parent element attributes don't reference child-declared components
 			if (child_component_names.size > 0) {
-				for (const attr of node.attributes) {
-					if (
-						attr.type === 'Attribute' &&
-						attr.value !== null &&
-						attr.value.type === 'Identifier'
-					) {
-						if (child_component_names.has(attr.value.name)) {
+				for (const attr of element_attributes) {
+					const attr_value = attr.type === 'JSXAttribute' ? get_attribute_value(attr) : null;
+					if (attr.type === 'JSXAttribute' && attr_value?.type === 'Identifier') {
+						if (child_component_names.has(attr_value.name)) {
 							error(
-								`Cannot use component '${attr.value.name}' as a prop on its parent element. Component declarations inside children are not in scope for the parent element's attributes.`,
+								`Cannot use component '${attr_value.name}' as a prop on its parent element. Component declarations inside children are not in scope for the parent element's attributes.`,
 								state.analysis.module.filename,
-								attr.value,
+								attr_value,
 								context.state.collect ? context.state.analysis.errors : undefined,
 								context.state.analysis.comments,
 							);
 						}
-					} else if (attr.type === 'SpreadAttribute' && attr.argument.type === 'Identifier') {
+					} else if (attr.type === 'JSXSpreadAttribute' && attr.argument.type === 'Identifier') {
 						if (child_component_names.has(attr.argument.name)) {
 							error(
 								`Cannot use component '${attr.argument.name}' as a prop on its parent element. Component declarations inside children are not in scope for the parent element's attributes.`,
@@ -2670,9 +2614,15 @@ const visitors = {
 			for (const child of node.children) {
 				if (is_native_tsrx_function_node(child)) {
 					visit(child, state);
-				} else if (child.type !== 'EmptyStatement') {
+				} else if (
+					child.type !== 'EmptyStatement' &&
+					!is_droppable_template_text(child, !!state.to_ts) &&
+					!is_empty_expression_container(child)
+				) {
 					implicit_children.push(
-						child.type === 'TSRXExpression' || child.type === 'Text' ? child.expression : child,
+						is_template_text_or_expression(child)
+							? get_template_expression(child, !!state.to_ts)
+							: child,
 					);
 				}
 			}
@@ -2700,31 +2650,50 @@ const visitors = {
 		};
 	},
 
-	TSRXExpression(node, context) {
+	JSXExpressionContainer(node, context) {
 		if (context.state.regular_js) {
 			return context.next();
 		}
 
-		mark_control_flow_has_template(context.path, node);
+		// A `{/* comment */}` container renders nothing — it must not mark the
+		// surrounding control flow as templated.
+		if (!is_empty_expression_container(node)) {
+			mark_control_flow_has_template(context.path, node);
+		}
 
 		context.next();
 	},
 
-	Text(node, context) {
+	JSXText(node, context) {
 		if (context.state.regular_js) {
 			return context.next();
 		}
 
-		mark_control_flow_has_template(context.path, node);
+		// Insignificant whitespace collapses to nothing at runtime — it must not
+		// mark the surrounding control flow as templated.
+		if (!is_droppable_template_text(node, !!context.state.to_ts)) {
+			mark_control_flow_has_template(context.path, node);
+		}
 
-		if (is_children_template_expression(/** @type {AST.Expression} */ (node.expression), context)) {
-			error(
-				'`children` cannot be rendered using explicit text interpolation. Use `{children}` or `{props.children}` instead.',
-				context.state.analysis.module.filename,
-				node.expression,
-				context.state.collect ? context.state.analysis.errors : undefined,
-				context.state.analysis.comments,
-			);
+		context.next();
+	},
+
+	JSXCodeBlock(node, context) {
+		const parent = context.path.at(-1);
+
+		// A `@{ … }` in a template-children slot, or the render slot of another
+		// code block (an `@{ @{ … } }` chain), analyzes as its lowered template
+		// form — the same memoized node the transforms will consume, so scope
+		// bindings and component analysis attach to what actually renders.
+		if (
+			is_template_child_position(context.path, node) ||
+			(parent?.type === 'JSXCodeBlock' && parent.render === node)
+		) {
+			const child = get_code_block_template_child(node, context.state.scopes);
+			if (child != null && child !== node) {
+				context.visit(child);
+			}
+			return;
 		}
 
 		context.next();
@@ -2809,19 +2778,12 @@ export function analyze(ast, filename, options = {}) {
 	const comments = options.comments ?? [];
 	const collect = !!(options.collect || options.loose);
 
-	const restore_scope_nodes = prepare_legacy_nodes_for_core_scopes(ast);
-	let scope;
-	let scopes;
-	try {
-		({ scope, scopes } = createScopes(ast, scope_root, null, {
-			collect,
-			errors,
-			filename,
-			comments,
-		}));
-	} finally {
-		restore_scope_nodes();
-	}
+	const { scope, scopes } = createScopes(ast, scope_root, null, {
+		collect,
+		errors,
+		filename,
+		comments,
+	});
 
 	const analysis = /** @type {AnalysisResult} */ ({
 		module: { ast, scope, scopes, filename },
