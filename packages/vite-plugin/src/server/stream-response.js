@@ -3,7 +3,7 @@
  * (render-route.js) and the production runtime (production.js).
  *
  * Platform-agnostic: relies only on the Web `Response`/`ReadableStream`
- * globals and the `render`/`create_ssr_stream` functions injected by the
+ * globals and the `render`/`createStream` functions injected by the
  * caller.
  */
 

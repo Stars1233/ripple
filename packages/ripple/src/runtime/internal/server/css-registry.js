@@ -23,7 +23,7 @@ export function register_component_css(hash, content) {
  * @param {Set<string>} hashes
  * @returns {string}
  */
-export function get_css_for_hashes(hashes) {
+export function get_css_text(hashes) {
 	const css_parts = [];
 	for (const hash of hashes) {
 		const content = css_registry.get(hash);

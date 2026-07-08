@@ -487,9 +487,9 @@ result interactive with `hydrate()`.
   `{ head, body, css, topLevelError }`. `head` and `body` are HTML strings for
   the document's head and body insertion points; `css` is a `Set` of scoped
   style hashes.
-- `create_ssr_stream()` — returns `{ stream, sink }`: a web `ReadableStream`
+- `createStream()` — returns `{ stream, sink }`: a web `ReadableStream`
   for the HTTP response and the sink that `render` writes into.
-- `get_css_for_hashes(css)` — returns the CSS text for a set of hashes; emit it
+- `getCss(css)` — returns the CSS text for a set of hashes; emit it
   in a `<style data-ripple-ssr>` tag so hydration can replace it with client
   styles.
 
@@ -497,7 +497,7 @@ result interactive with `hydrate()`.
 
 - `rootBoundary` — `{ pending?, catch? }` components wrapped around the app
   root; used when no user `@try` boundary handles a suspension or error.
-- `stream` — a sink from `create_ssr_stream()`; switches to streaming SSR and
+- `stream` — a sink from `createStream()`; switches to streaming SSR and
   resolves `{ stream, topLevelError }` instead of HTML strings.
 - `streamTemplate` — `{ before, between, after }` document scaffold for
   streaming: `before` + SSR head content + `between` + shell body go out in the
@@ -508,11 +508,11 @@ result interactive with `hydrate()`.
 Buffered rendering:
 
 ```ts
-import { render, get_css_for_hashes } from 'ripple/server';
+import { render, getCss } from 'ripple/server';
 
 const { head, body, css } = await render(App);
 const html = template
-	.replace('<!--ssr-head-->', `${head}<style data-ripple-ssr>${get_css_for_hashes(css)}</style>`)
+	.replace('<!--ssr-head-->', `${head}<style data-ripple-ssr>${getCss(css)}</style>`)
 	.replace('<!--ssr-body-->', body);
 ```
 
@@ -530,9 +530,9 @@ content swapped before hydration hydrates normally, and later chunks activate
 their boundary in place without re-rendering.
 
 ```ts
-import { render, create_ssr_stream } from 'ripple/server';
+import { render, createStream } from 'ripple/server';
 
-const { stream, sink } = create_ssr_stream();
+const { stream, sink } = createStream();
 render(App, {
 	stream: sink,
 	rootBoundary: { pending: Loading },

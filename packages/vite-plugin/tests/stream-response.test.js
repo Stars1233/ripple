@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { buildStreamTemplate, createStreamingResponse } from '../src/server/stream-response.js';
 
 describe('buildStreamTemplate', () => {
@@ -70,6 +70,8 @@ describe('createStreamingResponse', () => {
 	});
 
 	it('propagates render failures to the sink', async () => {
+		// createStreamingResponse logs the failure — keep it out of test output
+		const error_log = vi.spyOn(console, 'error').mockImplementation(() => {});
 		/** @type {unknown} */
 		let errored = null;
 		const response = createStreamingResponse({
@@ -92,5 +94,10 @@ describe('createStreamingResponse', () => {
 		expect(response).toBeInstanceOf(Response);
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		expect(errored).toBeInstanceOf(Error);
+		expect(error_log).toHaveBeenCalledWith(
+			'[ripple] SSR streaming error:',
+			expect.objectContaining({ message: 'render exploded' }),
+		);
+		error_log.mockRestore();
 	});
 });

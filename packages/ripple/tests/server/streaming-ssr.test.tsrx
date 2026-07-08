@@ -1,4 +1,4 @@
-import { create_ssr_stream } from 'ripple/server';
+import { createStream } from 'ripple/server';
 import { trackAsync } from 'ripple';
 
 interface Deferred<T> {
@@ -98,13 +98,13 @@ function normalize(html: string): string {
 	).replace(/<style data-ripple-ssr>[\s\S]*?<\/style>/g, '');
 }
 
-describe('create_ssr_stream', () => {
+describe('createStream', () => {
 	it('renders SSR HTML into the injected sink and exposes a web stream', async () => {
 		function App() @{
 			<div>{'Hello, streaming SSR!'}</div>
 		}
 
-		const { stream, sink } = create_ssr_stream();
+		const { stream, sink } = createStream();
 
 		expect(stream).toBeInstanceOf(ReadableStream);
 		await render(App, { stream: sink });
@@ -118,7 +118,7 @@ describe('create_ssr_stream', () => {
 			<p>{'stream closed'}</p>
 		}
 
-		const { stream, sink } = create_ssr_stream();
+		const { stream, sink } = createStream();
 		const reader = stream.getReader();
 		const decoder = new TextDecoder();
 		let html = '';

@@ -83,13 +83,13 @@ it resolves an object, not a string:
 - `head` — HTML for the document head, collected from `<head>` writes such as
   `<title>` and `<meta>`.
 - `css` — a `Set` of scoped style hashes collected during the render. Pass it
-  to `get_css_for_hashes()` and emit the result in a `<style data-ripple-ssr>`
+  to `getCss()` and emit the result in a `<style data-ripple-ssr>`
   tag so hydration can later swap it for the client styles.
 - `topLevelError` — the error that reached the root boundary, if any.
 
 ```js
 // server.js
-import { render, get_css_for_hashes } from 'ripple/server';
+import { render, getCss } from 'ripple/server';
 import { App } from './App.tsrx';
 
 const { head, body, css } = await render(App);
@@ -99,7 +99,7 @@ res.send(`
   <html>
     <head>
       ${head}
-      <style data-ripple-ssr>${get_css_for_hashes(css)}</style>
+      <style data-ripple-ssr>${getCss(css)}</style>
     </head>
     <body>
       <div id="app">${body}</div>
@@ -176,10 +176,10 @@ body in the first write, and `after` is pushed once the last chunk has
 streamed.
 
 ```js
-import { render, create_ssr_stream } from 'ripple/server';
+import { render, createStream } from 'ripple/server';
 import { App } from './App.tsrx';
 
-const { stream, sink } = create_ssr_stream();
+const { stream, sink } = createStream();
 
 render(App, {
   stream: sink,

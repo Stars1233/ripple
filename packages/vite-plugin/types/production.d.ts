@@ -90,7 +90,7 @@ export interface HandlerOptions {
 	getCss: (css: Set<string>) => string;
 	htmlTemplate: string;
 	executeServerFunction: (fn: Function, body: string) => Promise<string>;
-	/** `create_ssr_stream` from 'ripple/server' — required when streaming is enabled */
+	/** `createStream` from 'ripple/server' — required when streaming is enabled */
 	createSsrStream?: () => {
 		stream: ReadableStream<Uint8Array>;
 		sink: StreamSink;

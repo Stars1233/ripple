@@ -41,8 +41,7 @@ export async function handleRenderRoute(route, context, vite, rippleConfig) {
 		}
 
 		// Load ripple server utilities
-		const { render, get_css_for_hashes, create_ssr_stream } =
-			await vite.ssrLoadModule('ripple/server');
+		const { render, getCss, createStream } = await vite.ssrLoadModule('ripple/server');
 
 		// Load the page component
 		const entryPath = get_route_entry_path(route.entry);
@@ -102,7 +101,7 @@ export async function handleRenderRoute(route, context, vite, rippleConfig) {
 			if (streamTemplate) {
 				return createStreamingResponse({
 					render,
-					createSsrStream: create_ssr_stream,
+					createSsrStream: createStream,
 					component: RootComponent,
 					rootBoundary: rippleConfig?.rootBoundary,
 					streamTemplate,
@@ -122,7 +121,7 @@ export async function handleRenderRoute(route, context, vite, rippleConfig) {
 		// Generate CSS tags
 		let cssContent = '';
 		if (css.size > 0) {
-			const cssString = get_css_for_hashes(css);
+			const cssString = getCss(css);
 			if (cssString) {
 				cssContent = `<style data-ripple-ssr>${cssString}</style>`;
 			}

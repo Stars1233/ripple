@@ -74,7 +74,13 @@ export interface RenderOptions extends BaseRenderOptions {
 	stream?: undefined;
 }
 
-export declare function create_ssr_stream(): Stream;
+export declare function createStream(): Stream;
+
+/**
+ * Returns the CSS text for a set of scoped style hashes collected by
+ * `render()` — emit it in a `<style data-ripple-ssr>` tag.
+ */
+export declare function getCss(css: Set<string>): string;
 
 export declare function render(
 	component: Component,

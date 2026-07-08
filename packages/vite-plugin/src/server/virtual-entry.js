@@ -35,7 +35,7 @@ import {
  * Generate the virtual server entry module source code.
  *
  * The generated module:
- * 1. Imports ripple SSR utilities (render, get_css_for_hashes, executeServerFunction)
+ * 1. Imports ripple SSR utilities (render, getCss, executeServerFunction)
  * 2. Imports createHandler from @ripple-ts/vite-plugin/production
  * 3. Imports ripple.config.ts to get adapter, middlewares, and routes
  * 4. Imports each RenderRoute's entry (and layout) as SSR components
@@ -144,7 +144,7 @@ export function generateServerEntry(options) {
 // Auto-generated server entry for production build
 // Do not edit — regenerated on each build
 
-import { render, get_css_for_hashes, create_ssr_stream, executeServerFunction } from 'ripple/server';
+import { render, getCss, createStream, executeServerFunction } from 'ripple/server';
 import { createHandler, resolveRippleConfig } from '@ripple-ts/vite-plugin/production';
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -206,10 +206,10 @@ const handler = createHandler(
   },
   {
     render,
-    getCss: get_css_for_hashes,
+    getCss,
     htmlTemplate,
     executeServerFunction,
-    createSsrStream: create_ssr_stream,
+    createSsrStream: createStream,
   },
 );
 

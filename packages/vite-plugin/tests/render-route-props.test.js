@@ -217,7 +217,7 @@ describe('render route SSR props', () => {
 					const { render } = createHandlerOptions();
 					return {
 						render,
-						get_css_for_hashes: () => '',
+						getCss: () => '',
 					};
 				}
 				if (id === '/src/ToolPage.tsrx') {
@@ -277,7 +277,7 @@ describe('render route SSR props', () => {
 					const { render } = createHandlerOptions();
 					return {
 						render,
-						get_css_for_hashes: () => '',
+						getCss: () => '',
 					};
 				}
 				if (id === '/src/ToolPage.tsrx') {
@@ -349,7 +349,7 @@ describe('render route SSR props', () => {
 							Component({ fromRender: true });
 							return { head: '', body: '<div>ok</div>', css: new Set() };
 						},
-						get_css_for_hashes: () => '',
+						getCss: () => '',
 					};
 				}
 				if (id === '/src/ToolPage.tsrx') {

@@ -70,12 +70,12 @@ polka()
 			const template = fs.readFileSync(path.resolve(__dirname, 'index.html'), 'utf-8');
 			const transformed_template = await vite.transformIndexHtml(req.url, template);
 
-			let render, get_css_for_hashes;
+			let render, getCss;
 			let previous_rpc = rpc_modules;
 
 			try {
 				globalThis.rpc_modules = new Map(rpc_modules);
-				({ render, get_css_for_hashes } = await import_function('ripple/server'));
+				({ render, getCss } = await import_function('ripple/server'));
 			} finally {
 				globalThis.rpc_modules = previous_rpc;
 			}
@@ -86,7 +86,7 @@ polka()
 			// Get the actual CSS content for the rendered components
 			let css_tags = '';
 			if (css.size > 0) {
-				const css_content = get_css_for_hashes(css);
+				const css_content = getCss(css);
 				if (css_content) {
 					// Inline CSS for development (simpler and faster)
 					css_tags = `<style data-ripple-ssr>${css_content}</style>`;

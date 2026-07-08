@@ -71,7 +71,7 @@ import {
 	STREAM_HEAD_ATTR,
 	STREAM_ERROR_SCRIPT_PREFIX,
 } from '../../../constants.js';
-import { get_css_for_hashes } from './css-registry.js';
+import { get_css_text } from './css-registry.js';
 import { STREAM_RUNTIME_SCRIPT } from './stream-runtime.js';
 import { is_tsrx_element, normalize_children, tsrx_element } from '../../element.js';
 import {
@@ -672,7 +672,7 @@ export class Output {
 			if (root.#shell_flushed) {
 				if (!root.#sent_css.has(hash)) {
 					root.#sent_css.add(hash);
-					var css_text = get_css_for_hashes(new Set([hash]));
+					var css_text = get_css_text(new Set([hash]));
 					if (css_text) {
 						root.#streamOutput.push('<style data-ripple-ssr>' + css_text + '</style>');
 					}
@@ -886,7 +886,7 @@ export class Output {
 		if (fresh.size === 0) {
 			return '';
 		}
-		var css_text = get_css_for_hashes(fresh);
+		var css_text = get_css_text(fresh);
 		return css_text ? '<style data-ripple-ssr>' + css_text + '</style>' : '';
 	}
 
