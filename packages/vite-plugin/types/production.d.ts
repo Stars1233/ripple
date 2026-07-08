@@ -29,6 +29,8 @@ export interface ServerManifest {
 	/** Trust X-Forwarded-* headers when deriving origin for RPC fetch */
 	trustProxy?: boolean;
 	rootBoundary?: RootBoundaryOptions;
+	/** Stream render-route responses (progressive SSR of async boundaries) */
+	streaming?: boolean;
 	/** Platform-specific runtime primitives from the adapter */
 	runtime: RuntimePrimitives;
 	/**
@@ -47,14 +49,52 @@ export interface RenderResult {
 	css: Set<string>;
 }
 
-export interface HandlerOptions {
-	render: (
+export interface StreamTemplate {
+	before: string;
+	between: string;
+	after: string;
+}
+
+export interface StreamSink {
+	push(chunk: string): void;
+	close(): void;
+	error(reason: unknown): void;
+}
+
+/**
+ * Overloaded like ripple/server's `render`: without a `stream` sink it
+ * resolves to the buffered {@link RenderResult}, with one it streams into the
+ * sink and resolves to the stream handle.
+ */
+export interface RenderFunction {
+	(
 		component: Function,
-		options?: { rootBoundary?: RootBoundaryOptions },
-	) => Promise<RenderResult>;
+		options?: {
+			rootBoundary?: RootBoundaryOptions;
+			stream?: undefined;
+			streamTemplate?: StreamTemplate;
+		},
+	): Promise<RenderResult>;
+	(
+		component: Function,
+		options: {
+			rootBoundary?: RootBoundaryOptions;
+			stream: StreamSink;
+			streamTemplate?: StreamTemplate;
+		},
+	): Promise<{ stream: StreamSink }>;
+}
+
+export interface HandlerOptions {
+	render: RenderFunction;
 	getCss: (css: Set<string>) => string;
 	htmlTemplate: string;
 	executeServerFunction: (fn: Function, body: string) => Promise<string>;
+	/** `create_ssr_stream` from 'ripple/server' — required when streaming is enabled */
+	createSsrStream?: () => {
+		stream: ReadableStream<Uint8Array>;
+		sink: StreamSink;
+	};
 }
 
 export function createHandler(
