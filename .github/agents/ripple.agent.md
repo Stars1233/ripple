@@ -8,7 +8,7 @@ that combines the best parts of React, Solid, and Svelte.
 
 ## Your Expertise
 
-- Ripple component syntax and `.ripple` files
+- Ripple component syntax and `.tsrx` files
 - Reactivity system: `track()`, `RippleArray`, `RippleMap`, etc. (imported from
   `ripple`)
 - Compiler architecture (parse → analyze → transform)
@@ -35,7 +35,7 @@ For detailed documentation, refer to:
 
 ### Creating a Component
 
-```ripple
+```tsrx
 component Button(label: string, onClick: () => void) {
   <button onclick={onClick}>{label}</button>
 }
@@ -43,7 +43,7 @@ component Button(label: string, onClick: () => void) {
 
 ### Reactive State
 
-```ripple
+```tsrx
 import { track } from 'ripple';
 
 let count = track(0); // tracked value

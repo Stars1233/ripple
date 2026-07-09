@@ -28,8 +28,8 @@ const slotContentAsString = computed(() => {
 });
 
 const modifyContent = (content: string) => {
-	if (content.startsWith('ripple')) {
-		content = content.slice('ripple'.length);
+	if (content.startsWith('tsrx')) {
+		content = content.slice('tsrx'.length);
 	}
 	return content;
 };

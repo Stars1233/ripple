@@ -25,17 +25,12 @@ export default defineConfig({
 			/**
 			 * we have to duplicate the instance with a different name here,
 			 * because trying to insert an alias instead causes shiki to complain
-			 * that the Ripple Grammar doesn't exist, instead of waiting till
+			 * that the TSRX Grammar doesn't exist, instead of waiting till
 			 * after setup to check.
 			 *
 			 * Additionally, adding the grammar to `languages` doesn't work for
 			 * some reason.
 			 */
-			await highlighter.loadLanguage({
-				...modifiedGrammar,
-				name: 'ripple',
-			});
-
 			await highlighter.loadLanguage({
 				...modifiedGrammar,
 				name: 'tsrx',
