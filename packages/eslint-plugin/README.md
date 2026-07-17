@@ -3,8 +3,8 @@
 [![npm version](https://img.shields.io/npm/v/%40tsrx%2Feslint-plugin?logo=npm)](https://www.npmjs.com/package/@tsrx/eslint-plugin)
 [![npm downloads](https://img.shields.io/npm/dm/%40tsrx%2Feslint-plugin?logo=npm&label=downloads)](https://www.npmjs.com/package/@tsrx/eslint-plugin)
 
-ESLint plugin for [Ripple](https://www.ripple-ts.com) - helps enforce best practices
-and catch common mistakes when writing Ripple applications.
+ESLint plugin for [Ripple](https://www.ripple-ts.com) - helps enforce best
+practices and catch common mistakes when writing Ripple applications.
 
 Works just like `eslint-plugin-react` - simply install and use the recommended
 config!
