@@ -230,12 +230,14 @@ declare module 'estree' {
 	interface MethodDefinition {
 		typeParameters?: TSTypeParameterDeclaration;
 		accessibility?: Accessibility;
+		optional?: boolean;
 	}
 
 	interface PropertyDefinition {
 		accessibility?: Accessibility;
 		readonly?: boolean;
 		optional?: boolean;
+		definite?: boolean;
 	}
 
 	interface ClassDeclaration {
@@ -483,6 +485,9 @@ declare module 'estree' {
 	}
 	interface ExportNamedDeclaration {
 		exportKind: TSESTree.ExportNamedDeclaration['exportKind'];
+	}
+	interface ExportSpecifier {
+		exportKind: TSESTree.ExportSpecifier['exportKind'];
 	}
 
 	interface BaseNodeWithoutComments {
@@ -1231,6 +1236,13 @@ export interface ParseError {
 export interface ParseOptions {
 	collect?: boolean;
 	loose?: boolean;
+	preserveParens?: boolean;
+	/**
+	 * Collect `async`/`function` keyword tokens from the lexer onto the
+	 * returned program (`tsrx_keyword_tokens`) so mapping collection can span
+	 * keywords exactly. Volar/typeOnly parses opt in.
+	 */
+	keywordTokens?: boolean;
 	errors?: CompileError[];
 	comments?: AST.CommentWithLocation[];
 }

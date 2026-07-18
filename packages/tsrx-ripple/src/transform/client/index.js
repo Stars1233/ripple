@@ -683,10 +683,23 @@ function visit_function(node, context) {
 	// mutated) and replace lazy destructuring params with generated identifiers
 	const transformed_params = node.params.map((param) => {
 		/** @type {AST.Pattern} */
-		let param_out = param.typeAnnotation ? { ...param, typeAnnotation: undefined } : param;
+		let param_out =
+			param.typeAnnotation || /** @type {any} */ (param).optional
+				? /** @type {AST.Pattern} */ (
+						/** @type {unknown} */ ({ ...param, typeAnnotation: undefined, optional: false })
+					)
+				: param;
 		// Handle AssignmentPattern (parameters with default values)
-		if (param_out.type === 'AssignmentPattern' && param_out.left?.typeAnnotation) {
-			param_out = { ...param_out, left: { ...param_out.left, typeAnnotation: undefined } };
+		if (
+			param_out.type === 'AssignmentPattern' &&
+			(param_out.left?.typeAnnotation || /** @type {any} */ (param_out.left)?.optional)
+		) {
+			param_out = /** @type {AST.AssignmentPattern} */ (
+				/** @type {unknown} */ ({
+					...param_out,
+					left: { ...param_out.left, typeAnnotation: undefined, optional: false },
+				})
+			);
 		}
 		const pattern = param_out.type === 'AssignmentPattern' ? param_out.left : param_out;
 		if (pattern.type === 'ObjectPattern' || pattern.type === 'ArrayPattern') {
@@ -2294,6 +2307,23 @@ const visitors = {
 	ClassExpression(node, context) {
 		if (!context.state.to_ts) {
 			return strip_class_typescript_syntax(node, context);
+		}
+		return context.next();
+	},
+
+	ParenthesizedExpression(node, context) {
+		// Only volar/to_ts parses preserve source parens (build compiles fold
+		// them). A lowered fragment/element is self-delimiting — parens around
+		// it are redundant in the type view and the JS targets never print
+		// them, so drop the wrapper and keep the lowered child.
+		if (context.state.to_ts) {
+			const expression = /** @type {AST.Expression} */ (context.visit(node.expression));
+			if (expression.type === 'JSXFragment' || expression.type === 'JSXElement') {
+				return expression;
+			}
+			if (expression !== node.expression) {
+				return { ...node, expression };
+			}
 		}
 		return context.next();
 	},
@@ -5164,14 +5194,30 @@ function is_authored_native_fragment(node) {
  * @returns {boolean}
  */
 function is_combined_expression_position(path, node) {
-	let parent = path.at(-1);
+	let depth = path.length - 1;
+	let parent = path[depth];
 	let slot_node = node;
-	// A generated value wrapper is visited FROM its directive's visitor, so the
-	// directive sits atop the path — the wrapper stands in the directive's
-	// slot, so judge the position against the directive's own parent.
-	if (parent?.metadata?.tsrx_value_wrapper === node) {
-		slot_node = parent;
-		parent = path.at(-2);
+	// Walk up through transparent stand-ins, in whatever order they nest:
+	//  - preserved source parentheses (volar/to_ts parses only) — the wrapped
+	//    expression stands in the paren's slot (`(@if (…) { … }) || x` judges
+	//    against the `||`, not the paren);
+	//  - a generated value wrapper, visited FROM its directive's visitor, so
+	//    the directive sits atop the path and stands in the wrapper's slot.
+	while (parent) {
+		if (parent.type === 'ParenthesizedExpression') {
+			slot_node = parent;
+			parent = path[--depth];
+			continue;
+		}
+		if (
+			parent.metadata?.tsrx_value_wrapper === slot_node ||
+			parent.metadata?.tsrx_value_wrapper === node
+		) {
+			slot_node = parent;
+			parent = path[--depth];
+			continue;
+		}
+		break;
 	}
 	if (!parent || !isTemplateValuePosition(parent, slot_node)) return false;
 	switch (parent.type) {
@@ -6067,7 +6113,11 @@ function create_tsx_with_typescript_support(comments) {
 	const preserved_comments = comments?.filter(shouldPreserveComment) ?? [];
 	// Don't pass comments to esrap - we handle them manually via flush_comments_before
 	// because esrap's built-in comment handling requires all intermediate nodes to have loc
-	const base_tsx = /** @type {Visitors<AST.Node, TransformClientState>} */ (tsx());
+	// boundaryTokens: this language only prints the to_ts (volar) view — maps
+	// are consumed positionally by the language tooling, never shipped.
+	const base_tsx = /** @type {Visitors<AST.Node, TransformClientState>} */ (
+		tsx({ boundaryTokens: true })
+	);
 
 	// Track which comments have been written (by index)
 	let comment_index = 0;
@@ -6116,52 +6166,14 @@ function create_tsx_with_typescript_support(comments) {
 	 * @param {TransformClientContext} context
 	 */
 	const handle_function = (node, context) => {
-		const loc = /** @type {AST.SourceLocation} */ (node.loc);
-		const start_pos = /** @type {AST.Position} */ ({
-			line: loc.start.line,
-			column: loc.start.column,
-		});
-
-		if (node.async) {
-			context.location(loc.start.line, loc.start.column);
-			context.write('async ');
-			context.location(loc.start.line, loc.start.column + 'async '.length);
-			start_pos.column += 'async '.length;
-		}
-
-		context.location(start_pos.line, start_pos.column);
-		context.write('function');
-		context.location(start_pos.line, start_pos.column + 'function'.length);
-
-		if (node.generator) {
-			context.write('*');
-		}
-
-		const id = /** @type {AST.FunctionExpression | AST.FunctionDeclaration} */ (node).id;
-
-		// FunctionDeclaration always has a space before id, FunctionExpression only if id exists
-		if (node.type === 'FunctionDeclaration' || id) {
-			context.write(' ');
-		}
-		if (id) {
-			context.visit(id);
-		}
-		if (node.typeParameters) {
-			context.visit(node.typeParameters);
-		}
-		context.write('(');
-		for (let i = 0; i < node.params.length; i++) {
-			if (i > 0) context.write(', ');
-			context.visit(node.params[i]);
-		}
-		context.write(')');
-		if (node.returnType) {
-			context.visit(node.returnType);
-		}
-		context.write(' ');
-		if (node.body) {
-			context.visit(node.body);
-		}
+		// esrap ≥2.3.0 prints function-like nodes fully (mapped async/function
+		// keywords, generator star, id, typeParameters, params, returnType,
+		// body); keep only the node-boundary markers so segments.js can resolve
+		// the whole span (see ReturnStatement).
+		const loc = node.loc;
+		if (loc) context.location(loc.start.line, loc.start.column);
+		/** @type {(node: any, context: any) => void} */ (base_tsx[node.type])(node, context);
+		if (loc) context.location(loc.end.line, loc.end.column);
 	};
 
 	return /** @type {Visitors<AST.Node, TransformClientState>} */ ({
@@ -6381,16 +6393,11 @@ function create_tsx_with_typescript_support(comments) {
 			context.location(end.line, end.column);
 		},
 		AwaitExpression(node, context) {
+			// esrap ≥2.3.0 maps the await keyword; keep only boundary markers.
 			const loc = /** @type {AST.SourceLocation} */ (node.loc);
-			// the start needs to be covered as we don't cover it in visitors
-			context.location(loc.start.line, loc.start.column);
-			context.write('await');
-			// cover the 'await' end
-			context.location(loc.start.line, loc.start.column + 'await'.length);
-			context.write(' ');
-			context.visit(node.argument);
-			// cover the end of the expression
-			context.location(loc.end.line, loc.end.column);
+			if (loc) context.location(loc.start.line, loc.start.column);
+			/** @type {(node: any, context: any) => void} */ (base_tsx.AwaitExpression)(node, context);
+			if (loc) context.location(loc.end.line, loc.end.column);
 		},
 		Property(node, context) {
 			let start_pos = node.loc?.start;
@@ -6914,47 +6921,12 @@ function create_tsx_with_typescript_support(comments) {
 				context.visit(node.typeArguments);
 			}
 		},
-		// esrap's ArrowFunctionExpression printer ignores `typeParameters` and
-		// `returnType`, so an annotated arrow like `(): Record<...> => ...`
-		// prints as `() => ...` and segments.js can't resolve the return-type
-		// nodes' positions in the generated output.
+		// esrap ≥2.3.0 prints arrows fully (async/typeParameters/returnType and
+		// `{`-first body wrapping); keep only the boundary markers — an arrow's
+		// span can start at a bare `(`, which boundaryTokens does not anchor.
 		ArrowFunctionExpression(node, context) {
 			if (node.loc) context.location(node.loc.start.line, node.loc.start.column);
-
-			if (node.async) context.write('async ');
-
-			if (node.typeParameters) {
-				context.visit(node.typeParameters);
-			}
-
-			context.write('(');
-			// Visit each parameter
-			for (let i = 0; i < node.params.length; i++) {
-				if (i > 0) context.write(', ');
-				context.visit(node.params[i]);
-			}
-			context.write(')');
-
-			// Add TypeScript return type annotation if present
-			if (node.returnType) {
-				context.visit(node.returnType);
-			}
-
-			context.write(' => ');
-
-			if (
-				node.body.type === 'ObjectExpression' ||
-				(node.body.type === 'AssignmentExpression' && node.body.left.type === 'ObjectPattern') ||
-				(node.body.type === 'LogicalExpression' && node.body.left.type === 'ObjectExpression') ||
-				(node.body.type === 'ConditionalExpression' && node.body.test.type === 'ObjectExpression')
-			) {
-				context.write('(');
-				context.visit(node.body);
-				context.write(')');
-			} else {
-				context.visit(node.body);
-			}
-
+			base_tsx.ArrowFunctionExpression?.(node, context);
 			if (node.loc) context.location(node.loc.end.line, node.loc.end.column);
 		},
 		ClassDeclaration(node, context) {
@@ -7190,16 +7162,7 @@ export function transform_client(filename, source, analysis, to_ts, minify_css, 
 					// Add: ComponentName = _$_.hmr(ComponentName);
 					hmr_body.push(b.stmt(b.assignment('=', b.id(name), b.call('_$_.hmr', b.id(name)))));
 					// Re-export as named export
-					hmr_body.push(
-						b.export_builder(null, [
-							{
-								type: 'ExportSpecifier',
-								local: b.id(name),
-								exported: b.id(name),
-								metadata: { path: [] },
-							},
-						]),
-					);
+					hmr_body.push(b.export_builder(null, [b.export_specifier(name)]));
 				}
 			} else if (
 				node.type === 'FunctionExpression' &&

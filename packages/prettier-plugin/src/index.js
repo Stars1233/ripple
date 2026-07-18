@@ -2048,6 +2048,7 @@ function printRippleNode(node, path, options, print, args) {
 
 		case 'TSModuleDeclaration': {
 			nodeContent = [
+				node.declare ? 'declare ' : '',
 				node.metadata?.module_keyword ?? 'module',
 				' ',
 				path.call(print, 'id'),
@@ -2598,16 +2599,17 @@ function printExportNamedDeclaration(node, path, options, print) {
 		return parts;
 	} else if (node.specifiers && node.specifiers.length > 0) {
 		const specifiers = node.specifiers.map((spec) => {
+			const typePrefix = spec.exportKind === 'type' ? 'type ' : '';
 			const exportedName = /** @type {AST.Identifier} */ (spec.exported).name;
 			const localName = /** @type {AST.Identifier} */ (spec.local).name;
 			if (exportedName === localName) {
-				return localName;
+				return typePrefix + localName;
 			} else {
-				return localName + ' as ' + exportedName;
+				return typePrefix + localName + ' as ' + exportedName;
 			}
 		});
 
-		const parts = ['export { '];
+		const parts = [node.exportKind === 'type' ? 'export type { ' : 'export { '];
 		for (let i = 0; i < specifiers.length; i++) {
 			if (i > 0) parts.push(', ');
 			parts.push(specifiers[i]);
@@ -4696,7 +4698,9 @@ function printJSXSwitchCase(node, path, options, print, index) {
 		if (!child || child.type === 'EmptyStatement') {
 			continue;
 		}
-		printedConsequents.push(path.call(print, 'cases', index, 'consequent', i));
+		printedConsequents.push(
+			path.call((casePath) => casePath.call(print, 'consequent', i), 'cases', index),
+		);
 	}
 
 	const bodyDoc =

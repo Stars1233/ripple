@@ -34,8 +34,8 @@ catalogs:
       specifier: 2.0.0-beta.15
       version: 2.0.0-beta.15
     '@sveltejs/acorn-typescript':
-      specifier: ^1.0.10
-      version: 1.0.10
+      specifier: ^1.0.11
+      version: 1.0.11
     '@tailwindcss/vite':
       specifier: ^4.1.12
       version: 4.2.1
@@ -100,8 +100,8 @@ catalogs:
       specifier: ^3.9.1
       version: 3.9.1
     acorn:
-      specifier: ^8.16.0
-      version: 8.16.0
+      specifier: ^8.17.0
+      version: 8.17.0
     adm-zip:
       specifier: ^0.5.17
       version: 0.5.17
@@ -256,7 +256,7 @@ catalogs:
       version: 5.9.3
 
 overrides:
-  esrap: ^2.2.8
+  esrap: ^2.3.0
   semver: ^7.7.4
   babel-preset-solid: 2.0.0-beta.15
   babel-plugin-jsx-dom-expressions: 0.50.0-next.14
@@ -1048,7 +1048,7 @@ importers:
         version: 2.2.0
       '@sveltejs/acorn-typescript':
         specifier: catalog:default
-        version: 1.0.10(acorn@8.16.0)
+        version: 1.0.11(acorn@8.17.0)
       '@types/estree':
         specifier: catalog:default
         version: 1.0.8
@@ -1057,10 +1057,10 @@ importers:
         version: 1.0.5
       acorn:
         specifier: catalog:default
-        version: 8.16.0
+        version: 8.17.0
       esrap:
-        specifier: ^2.2.8
-        version: 2.2.8(@typescript-eslint/types@8.56.1)
+        specifier: ^2.3.0
+        version: 2.3.0(@typescript-eslint/types@8.56.1)
       is-reference:
         specifier: catalog:default
         version: 3.0.3
@@ -1121,8 +1121,8 @@ importers:
         specifier: workspace:*
         version: link:../tsrx
       esrap:
-        specifier: ^2.2.8
-        version: 2.2.8(@typescript-eslint/types@8.56.1)
+        specifier: ^2.3.0
+        version: 2.3.0(@typescript-eslint/types@8.56.1)
       zimmerframe:
         specifier: catalog:default
         version: 1.1.4
@@ -1146,8 +1146,8 @@ importers:
         specifier: workspace:*
         version: link:../tsrx
       esrap:
-        specifier: ^2.2.8
-        version: 2.2.8(@typescript-eslint/types@8.56.1)
+        specifier: ^2.3.0
+        version: 2.3.0(@typescript-eslint/types@8.56.1)
       react:
         specifier: '>=18'
         version: 19.2.4
@@ -1174,8 +1174,8 @@ importers:
         specifier: workspace:*
         version: link:../tsrx
       esrap:
-        specifier: ^2.2.8
-        version: 2.2.8(@typescript-eslint/types@8.56.1)
+        specifier: ^2.3.0
+        version: 2.3.0(@typescript-eslint/types@8.56.1)
       is-reference:
         specifier: catalog:default
         version: 3.0.3
@@ -1211,8 +1211,8 @@ importers:
         specifier: workspace:*
         version: link:../tsrx
       esrap:
-        specifier: ^2.2.8
-        version: 2.2.8(@typescript-eslint/types@8.56.1)
+        specifier: ^2.3.0
+        version: 2.3.0(@typescript-eslint/types@8.56.1)
       solid-js:
         specifier: catalog:default
         version: 2.0.0-beta.15
@@ -1236,8 +1236,8 @@ importers:
         specifier: workspace:*
         version: link:../tsrx
       esrap:
-        specifier: ^2.2.8
-        version: 2.2.8(@typescript-eslint/types@8.56.1)
+        specifier: ^2.3.0
+        version: 2.3.0(@typescript-eslint/types@8.56.1)
       is-reference:
         specifier: catalog:default
         version: 3.0.3
@@ -3405,6 +3405,11 @@ packages:
     peerDependencies:
       acorn: ^8.9.0
 
+  '@sveltejs/acorn-typescript@1.0.11':
+    resolution: {integrity: sha512-LFuZUkjJ9iF7JZye/aG5XM0SFcQ5VyL0oVX4WJ9dc0Va3R3s0OauX1BESVCb+YN/ol8TAfqGDDAQsTG627Y5kw==}
+    peerDependencies:
+      acorn: ^8.9.0
+
   '@swc/helpers@0.5.15':
     resolution: {integrity: sha512-JQ5TuMi45Owi4/BIMAJBoSQoOJu12oOk/gADqlcUL9JEdHB8vyjUSsxqeNXnmXHjYKMi2WcYtezGEEhqUI/E2g==}
 
@@ -4128,6 +4133,11 @@ packages:
     engines: {node: '>=0.4.0'}
     hasBin: true
 
+  acorn@8.17.0:
+    resolution: {integrity: sha512-xRQbDb9BnwDafYNn6Vwl839DYVjqXYb1XVGtWAZ1kcDc6iwAL4hg3B1dZlRiuENFeO2H53gFG3in621AdERVAg==}
+    engines: {node: '>=0.4.0'}
+    hasBin: true
+
   adm-zip@0.5.16:
     resolution: {integrity: sha512-TGw5yVi4saajsSEgz25grObGHEUaDrniwvA2qwSC060KfqGPdglhvPMA2lPIoxs3PQIItj2iag35fONcQqgUaQ==}
     engines: {node: '>=12.0'}
@@ -4789,8 +4799,8 @@ packages:
     resolution: {integrity: sha512-Ap6G0WQwcU/LHsvLwON1fAQX9Zp0A2Y6Y/cJBl9r/JbW90Zyg4/zbG6zzKa2OTALELarYHmKu0GhpM5EO+7T0g==}
     engines: {node: '>=0.10'}
 
-  esrap@2.2.8:
-    resolution: {integrity: sha512-MPweq2EvEGj8jwOI7Hgycw/QIHzqA1EbAM8lG7p+FBfZbZq/hQ6h3AMsqnu/djzisH1KVWNzbb7LSgIVtMlPSg==}
+  esrap@2.3.0:
+    resolution: {integrity: sha512-GQ/7RN8uOtEfNpzZzBMTzW9JBcX42oaSVtPzdF+6cEL8pqIL094iUpr9jzYGn4O4P/1S60dJ6izyT8F4LYARng==}
     peerDependencies:
       '@typescript-eslint/types': ^8.2.0
     peerDependenciesMeta:
@@ -9011,6 +9021,10 @@ snapshots:
     dependencies:
       acorn: 8.16.0
 
+  '@sveltejs/acorn-typescript@1.0.11(acorn@8.17.0)':
+    dependencies:
+      acorn: 8.17.0
+
   '@swc/helpers@0.5.15':
     dependencies:
       tslib: 2.8.1
@@ -9138,7 +9152,7 @@ snapshots:
       '@types/estree': 1.0.8
       '@types/estree-jsx': 1.0.5
       acorn: 8.16.0
-      esrap: 2.2.8(@typescript-eslint/types@8.56.1)
+      esrap: 2.3.0(@typescript-eslint/types@8.56.1)
       is-reference: 3.0.3
       magic-string: 0.30.21
       zimmerframe: 1.1.4
@@ -9838,6 +9852,8 @@ snapshots:
 
   acorn@8.16.0: {}
 
+  acorn@8.17.0: {}
+
   adm-zip@0.5.16: {}
 
   adm-zip@0.5.17: {}
@@ -10491,7 +10507,7 @@ snapshots:
     dependencies:
       estraverse: 5.3.0
 
-  esrap@2.2.8(@typescript-eslint/types@8.56.1):
+  esrap@2.3.0(@typescript-eslint/types@8.56.1):
     dependencies:
       '@jridgewell/sourcemap-codec': 1.5.5
     optionalDependencies:
@@ -11624,7 +11640,7 @@ snapshots:
     dependencies:
       '@tsrx/core': 0.1.40(@typescript-eslint/types@8.56.1)
       devalue: 5.8.1
-      esrap: 2.2.8(@typescript-eslint/types@8.56.1)
+      esrap: 2.3.0(@typescript-eslint/types@8.56.1)
     transitivePeerDependencies:
       - '@typescript-eslint/types'
 

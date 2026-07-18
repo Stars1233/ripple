@@ -63,6 +63,8 @@ export function compile_to_volar_mappings(source, filename, options) {
 		...options,
 		collect: true,
 		loose: !!options?.loose,
+		preserveParens: true,
+		keywordTokens: true,
 		errors,
 		comments,
 	});
