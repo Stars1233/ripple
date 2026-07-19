@@ -212,6 +212,44 @@ declare module 'some-module' {
 			expect(result.errors).toEqual([]);
 		});
 
+		// The typeOnly print strips comments, but comments that ARE TS semantics
+		// (a leading @jsxImportSource pragma retypes every JSX expression in the
+		// file; triple-slash references add libs; @ts-nocheck disables checking)
+		// must survive at the top of the virtual file.
+		it('re-emits preserved leading comments (jsx pragma, references, ts-nocheck)', () => {
+			const source = `/** @jsxImportSource custom-source */
+/// <reference types="node" />
+// @ts-nocheck
+function App() @{
+	<b>{'x'}</b>
+}`;
+			const result = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
+			expect(result.code).toContain('@jsxImportSource custom-source');
+			expect(result.code).toMatch(/\/\/\/\s+<reference types="node" \/>/);
+			expect(result.code).toContain('@ts-nocheck');
+			expect(result.code.indexOf('@jsxImportSource')).toBeLessThan(
+				result.code.indexOf('function App'),
+			);
+			expect(result.errors).toEqual([]);
+		});
+
+		// Synthetic prepends (e.g. the injected Dynamic import for `<{tag}>`)
+		// have no loc. The "leading" check must anchor on the first statement
+		// that maps back to source — otherwise every preservable comment hoists
+		// to the top, and a trailing @ts-nocheck would silence checking for the
+		// whole virtual file.
+		it('does not hoist non-leading pragmas past synthetic loc-less prepends', () => {
+			const source = `/** @jsxImportSource custom-source */
+function App({ tag }: { tag: string }) @{
+	<{tag} class="a">{'x'}</{tag}>
+}
+// @ts-nocheck`;
+			const result = compile_to_volar_mappings(source, 'App.tsrx', { loose: true });
+			expect(result.code).toContain('@jsxImportSource custom-source');
+			expect(result.code).not.toContain('@ts-nocheck');
+			expect(result.errors).toEqual([]);
+		});
+
 		// JSX: esrap prints `<`, `>`, `</`, ` /` without location markers.
 		// Combined with hoisting to module-level statics, the opening
 		// element's start/end positions wouldn't otherwise resolve.
