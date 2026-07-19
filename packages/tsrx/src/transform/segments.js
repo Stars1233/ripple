@@ -60,6 +60,7 @@ import {
 	mapping_data_verify_only,
 	mapping_data_verify_complete,
 	mapping_data_completion_only,
+	mapping_data_string_span,
 	build_line_offsets,
 	get_mapping_from_node,
 } from '../source-map-utils.js';
@@ -585,6 +586,14 @@ export function convert_source_map_to_mappings(
 					}
 					if (node.metadata?.disable_verification) {
 						token.mappingData = { ...mapping_data, verification: false };
+					}
+					// A generated identifier whose source span sits inside a string
+					// literal (e.g. a server-module lowering's namespace reference
+					// carrying the authored `'server'` import specifier): serve
+					// hover/navigation but never semantic tokens, so the span keeps
+					// its TextMate string coloring.
+					if (node.metadata?.string_literal_source_span) {
+						token.mappingData = mapping_data_string_span;
 					}
 					tokens.push(token);
 					add_extra_source_mapping_tokens(node);
@@ -2229,6 +2238,16 @@ export function convert_source_map_to_mappings(
 				// TypeScript external module reference: import foo = require('bar');
 				if (node.expression) {
 					visit(node.expression);
+				}
+				return;
+			} else if (node.type === 'TSImportEqualsDeclaration') {
+				// TypeScript import alias: import foo = ns.bar;
+				// Visit in source order: id, then the referenced entity name
+				if (node.id) {
+					visit(node.id);
+				}
+				if (node.moduleReference) {
+					visit(node.moduleReference);
 				}
 				return;
 			} else if (node.type === 'TSInstantiationExpression') {

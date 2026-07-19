@@ -79,6 +79,14 @@ interface BaseNodeMetaData {
 	source_name?: string;
 	source_length?: number;
 	module_keyword?: 'module' | 'namespace';
+	/**
+	 * Generated identifier whose SOURCE span sits inside an authored string
+	 * literal (e.g. a server-module lowering's namespace reference carrying
+	 * the `'server'` import specifier). The mapping collector serves
+	 * hover/navigation from it but disables semantic tokens so the span
+	 * keeps its string coloring.
+	 */
+	string_literal_source_span?: boolean;
 	is_capitalized?: boolean;
 	commentContainerId?: number;
 	parenthesized?: boolean;
@@ -971,7 +979,13 @@ declare module 'estree' {
 		typeParameters: TSTypeParameterDeclaration | undefined;
 		parameters: Parameter[];
 	}
-	interface TSImportEqualsDeclaration extends AcornTSNode<TSESTree.TSImportEqualsDeclaration> {}
+	interface TSImportEqualsDeclaration extends Omit<
+		AcornTSNode<TSESTree.TSImportEqualsDeclaration>,
+		'id' | 'moduleReference'
+	> {
+		id: AST.Identifier;
+		moduleReference: EntityName | TSExternalModuleReference;
+	}
 	interface TSImportType extends Omit<
 		AcornTSNode<TSESTree.TSImportType>,
 		'argument' | 'qualifier' | 'typeParameters'
