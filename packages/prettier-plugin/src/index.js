@@ -2799,12 +2799,8 @@ function printFunctionExpression(node, path, options, print) {
 		parts.push(' ');
 	}
 
-	// Print parameters using shared function
-	const paramsPart = printFunctionParameters(path, options, print);
-	parts.push(group(paramsPart)); // Handle return type annotation
-	if (node.returnType) {
-		parts.push(': ', path.call(print, 'returnType'));
-	}
+	// Print parameters and return type as a single group
+	parts.push(printFunctionSignature(node, path, options, print));
 
 	parts.push(' ');
 	parts.push(path.call(print, 'body'));
@@ -2852,12 +2848,8 @@ function printArrowFunction(node, path, options, print, args) {
 	) {
 		parts.push(path.call(print, 'params', 0));
 	} else {
-		// Print parameters using shared function
-		const paramsPart = printFunctionParameters(path, options, print);
-		parts.push(group(paramsPart));
-	} // Handle return type annotation
-	if (node.returnType) {
-		parts.push(': ', path.call(print, 'returnType'));
+		// Print parameters and return type as a single group
+		parts.push(printFunctionSignature(node, path, options, print));
 	}
 
 	// For block statements, print the body directly to get proper formatting
@@ -2951,8 +2943,48 @@ function shouldHugTheOnlyFunctionParameter(node) {
 			parameter.type === 'ArrayPattern' ||
 			(parameter.type === 'Identifier' &&
 				!!parameter.typeAnnotation &&
-				parameter.typeAnnotation.type === 'TSTypeAnnotation'))
+				parameter.typeAnnotation.type === 'TSTypeAnnotation' &&
+				isHuggableParameterType(parameter.typeAnnotation.typeAnnotation)))
 	);
+}
+
+/**
+ * Check if a type node is an object-like type (object literal or mapped type)
+ * @param {AST.Node | undefined} node - The type node
+ * @returns {boolean}
+ */
+function isObjectType(node) {
+	return !!node && (node.type === 'TSTypeLiteral' || node.type === 'TSMappedType');
+}
+
+/**
+ * Check if a parameter's type annotation should keep the parameter hugged.
+ * Object-like types hug like vanilla prettier; additionally a type reference
+ * wrapping a single object type (`props: Props<{ ... }>`) hugs, since that is
+ * the common TSRX component-props shape. Other references, like a plain
+ * `initialState: State`, leave the parameter list free to break.
+ * @param {AST.Node | undefined} node - The type node
+ * @returns {boolean}
+ */
+function isHuggableParameterType(node) {
+	if (isObjectType(node)) {
+		return true;
+	}
+	if (node?.type === 'TSIntersectionType') {
+		const types = /** @type {AST.TSIntersectionType} */ (node).types;
+		return types?.length > 0 && isHuggableParameterType(types[types.length - 1]);
+	}
+	if (node?.type === 'TSTypeReference') {
+		const typeArguments =
+			/** @type {AST.TSTypeReference & { typeParameters?: AST.TSTypeParameterInstantiation }} */ (
+				node
+			).typeArguments ??
+			/** @type {AST.TSTypeReference & { typeParameters?: AST.TSTypeParameterInstantiation }} */ (
+				node
+			).typeParameters;
+		return typeArguments?.params?.length === 1 && isObjectType(typeArguments.params[0]);
+	}
+	return false;
 }
 
 /**
@@ -3008,6 +3040,56 @@ function printFunctionParameters(path, options, print) {
 		softline,
 		')',
 	];
+}
+
+/**
+ * Check whether the parameter list should be grouped separately from the return
+ * type, so a breaking return type does not force the parameters to break too.
+ * @param {AST.FunctionExpression | AST.ArrowFunctionExpression | AST.TSDeclareFunction | AST.FunctionDeclaration} functionNode - The function node
+ * @param {Doc} returnTypeDoc - The printed return type
+ * @returns {boolean}
+ */
+function shouldGroupFunctionParameters(functionNode, returnTypeDoc) {
+	const returnTypeNode = functionNode.returnType?.typeAnnotation;
+	const typeParameters = functionNode.typeParameters?.params;
+	if (typeParameters) {
+		if (typeParameters.length > 1) {
+			return false;
+		}
+		if (typeParameters.length === 1) {
+			const typeParameter = typeParameters[0];
+			if (typeParameter.constraint || typeParameter.default) {
+				return false;
+			}
+		}
+	}
+	return (
+		getFunctionParameters(functionNode).length === 1 &&
+		(isObjectType(returnTypeNode) || willBreak(returnTypeDoc))
+	);
+}
+
+/**
+ * Print function parameters together with the return type as a single group, so
+ * the fitter breaks the parameter list before type arguments nested in the
+ * return type, matching vanilla prettier's signature layout.
+ * @param {AST.FunctionExpression | AST.ArrowFunctionExpression | AST.TSDeclareFunction | AST.FunctionDeclaration} node - The function node
+ * @param {AstPath<AST.FunctionExpression | AST.ArrowFunctionExpression | AST.TSDeclareFunction | AST.FunctionDeclaration>} path - The function path
+ * @param {RippleFormatOptions} options - Prettier options
+ * @param {PrintFn} print - Print callback
+ * @returns {Doc}
+ */
+function printFunctionSignature(node, path, options, print) {
+	const paramsPart = printFunctionParameters(path, options, print);
+	if (!node.returnType) {
+		return group(paramsPart);
+	}
+	/** @type {Doc[]} */
+	const returnTypeDoc = [': ', path.call(print, 'returnType')];
+	if (shouldGroupFunctionParameters(node, returnTypeDoc)) {
+		return group([group(paramsPart), ...returnTypeDoc]);
+	}
+	return group([...paramsPart, ...returnTypeDoc]);
 }
 
 /**
@@ -3356,14 +3438,8 @@ function printTSDeclareFunction(node, path, options, print) {
 		}
 	}
 
-	// Print parameters using shared function
-	const paramsPart = printFunctionParameters(path, options, print);
-	parts.push(group(paramsPart));
-
-	// Handle return type annotation
-	if (node.returnType) {
-		parts.push(': ', path.call(print, 'returnType'));
-	}
+	// Print parameters and return type as a single group
+	parts.push(printFunctionSignature(node, path, options, print));
 
 	// TSDeclareFunction ends with semicolon, no body
 	parts.push(';');
@@ -3408,14 +3484,8 @@ function printFunctionDeclaration(node, path, options, print) {
 		}
 	}
 
-	// Print parameters using shared function
-	const paramsPart = printFunctionParameters(path, options, print);
-	parts.push(group(paramsPart));
-
-	// Handle return type annotation
-	if (node.returnType) {
-		parts.push(': ', path.call(print, 'returnType'));
-	}
+	// Print parameters and return type as a single group
+	parts.push(printFunctionSignature(node, path, options, print));
 
 	parts.push(' ');
 	parts.push(path.call(print, 'body'));
@@ -4582,19 +4652,28 @@ function printTSTypeParameterDeclaration(node, path, options, print) {
 	if (!node.params || node.params.length === 0) {
 		return '';
 	}
-	/** @type {Doc[]} */
-	const parts = [];
-	parts.push('<');
 	const paramList = path.map(print, 'params');
-	for (let i = 0; i < paramList.length; i++) {
-		if (i > 0) parts.push(', ');
-		parts.push(paramList[i]);
+
+	// In JSX-shaped files a lone `<T>` on an arrow function is ambiguous with a JSX
+	// element, so a source-level trailing comma (`<T,>`) is syntactically meaningful
+	// there. Keep single-param arrow generics flat and preserve that comma; breaking
+	// them would add a trailing comma that flattens back on the next pass.
+	const parent = /** @type {AST.Node | null} */ (path.getParentNode());
+	if (parent?.type === 'ArrowFunctionExpression' && node.params.length === 1) {
+		const trailing = node.extra?.trailingComma !== undefined ? ',' : '';
+		return ['<', paramList[0], trailing, '>'];
 	}
-	if (node.params.length === 1 && node.extra?.trailingComma !== undefined) {
-		parts.push(',');
-	}
-	parts.push('>');
-	return parts;
+
+	return group([
+		'<',
+		indent([
+			softline,
+			join([',', line], paramList),
+			ifBreak(shouldPrintComma(options, 'all') ? ',' : ''),
+		]),
+		softline,
+		'>',
+	]);
 }
 
 /**
@@ -4641,7 +4720,7 @@ function printTSTypeParameterInstantiation(node, path, options, print) {
 	// Hug a lone object-type argument against the brackets: Foo<{ ... }>
 	if (
 		node.params.length === 1 &&
-		(node.params[0].type === 'TSTypeLiteral' || node.params[0].type === 'TSMappedType') &&
+		isObjectType(node.params[0]) &&
 		!hasComment(/** @type {AST.Node & AST.NodeWithMaybeComments} */ (node.params[0]))
 	) {
 		return ['<', paramList[0], '>'];
@@ -5585,7 +5664,9 @@ function printTSTypeReference(node, path, options, print) {
 	/** @type {Doc[]} */
 	const parts = [path.call(print, 'typeName')];
 
-	// Handle both typeArguments and typeParameters (different AST variations)
+	// Handle both typeArguments and typeParameters (different AST variations).
+	// Both are TSTypeParameterInstantiation nodes, whose printer can break the
+	// argument list when it does not fit.
 	if (node.typeArguments) {
 		parts.push(path.call(print, 'typeArguments'));
 		// @ts-expect-error - acorn-typescript uses typeParameters instead of typeArguments
