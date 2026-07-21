@@ -16,6 +16,7 @@ import { createDocumentHighlightPlugin } from './documentHighlightPlugin.js';
 import { createDocumentSymbolPlugin } from './documentSymbolPlugin.js';
 import {
 	getRippleLanguagePlugin,
+	invalidateCompilerResolutionCaches,
 	invalidateTypeDefinitionCaches,
 	resolveConfig,
 } from '@tsrx/typescript-plugin/src/language.js';
@@ -65,6 +66,8 @@ export function createRippleLanguageServer() {
 	const wrappedFunctions = new WeakSet();
 	/** @type {Set<string>} */
 	const trackedTypeScriptConfigFiles = new Set();
+	/** @type {Set<Set<string>>} */
+	const compilerResolutionDependencySets = new Set();
 	let restartScheduled = false;
 
 	/** Restart the process so Node drops the complete ESM compiler graph. */
@@ -122,13 +125,21 @@ export function createRippleLanguageServer() {
 
 			const initResult = server.initialize(
 				params,
-				createTypeScriptProject(ts, undefined, ({ configFileName, projectHost }) => {
+				createTypeScriptProject(ts, undefined, ({ configFileName, projectHost, sys }) => {
 					wrapCompilerOptionsProvider(projectHost, 'getCompilationSettings');
+					const compilerResolutionDependencies = new Set();
+					const languagePlugin = getRippleLanguagePlugin({
+						ts,
+						configFileName,
+						configHost: sys,
+						dependencies: compilerResolutionDependencies,
+					});
+					compilerResolutionDependencySets.add(compilerResolutionDependencies);
 
 					return {
 						// Keep language-plugin identity aligned with Volar's project
 						// lifecycle. Nested tsconfigs are separate configured projects.
-						languagePlugins: [getRippleLanguagePlugin()],
+						languagePlugins: [languagePlugin],
 						setup({ project }) {
 							wrapCompilerOptionsProvider(
 								project?.typescript?.languageServiceHost,
@@ -172,10 +183,14 @@ export function createRippleLanguageServer() {
 		server.initialized();
 
 		server.fileWatcher.onDidChangeWatchedFiles(({ changes }) => {
+			for (const configDependencies of compilerResolutionDependencySets) {
+				trackTypeScriptConfigDependencies(trackedTypeScriptConfigFiles, { configDependencies });
+			}
 			const effects = handleWorkspaceChanges(
 				changes,
 				{
 					restartLanguageServer,
+					invalidateCompilerResolutionCaches,
 					invalidateTypeDefinitions: invalidateTypeDefinitionCaches,
 					reloadProjects: () => {
 						// Volar recreates disposed projects lazily, so retain the

@@ -151,6 +151,25 @@ describe('language-server workspace state', () => {
 		expect(effects.reloadProjects).toBe(true);
 	});
 
+	it('normalizes compiler resolver dependencies before matching workspace changes', () => {
+		const tracked_config_files = new Set();
+		trackTypeScriptConfigDependencies(tracked_config_files, {
+			configDependencies: new Set(['C:\\Workspace\\Configs\\base.json']),
+		});
+
+		const effects = classifyWorkspaceChanges(
+			[
+				{
+					uri: 'file:///c:/workspace/configs/base.json',
+					type: CHANGED,
+				},
+			],
+			tracked_config_files,
+		);
+
+		expect(effects.reloadProjects).toBe(true);
+	});
+
 	it('restarts the language server when package state changes', () => {
 		const calls = [];
 		const hooks = {
@@ -203,5 +222,33 @@ describe('language-server workspace state', () => {
 		expect(hooks.restartLanguageServer).not.toHaveBeenCalled();
 		expect(hooks.reloadProjects).not.toHaveBeenCalled();
 		expect(hooks.requestRefresh).not.toHaveBeenCalled();
+	});
+
+	it('invalidates compiler resolution caches before reloading a tracked config', () => {
+		const calls = [];
+		const hooks = {
+			restartLanguageServer: vi.fn(),
+			invalidateCompilerResolutionCaches: vi.fn(() => calls.push('invalidate compiler')),
+			invalidateTypeDefinitions: vi.fn(),
+			reloadProjects: vi.fn(() => calls.push('reload')),
+			requestRefresh: vi.fn(() => calls.push('refresh')),
+		};
+		const tracked_config_files = new Set();
+		trackTypeScriptConfigDependencies(tracked_config_files, {
+			configFileName: '/workspace/tsconfig.json',
+			compilerOptions: {
+				configFile: {
+					extendedSourceFiles: ['/workspace/configs/compiler-options.json'],
+				},
+			},
+		});
+
+		handleWorkspaceChanges(
+			[change('/workspace/configs/compiler-options.json')],
+			hooks,
+			tracked_config_files,
+		);
+
+		expect(calls).toEqual(['invalidate compiler', 'reload', 'refresh']);
 	});
 });

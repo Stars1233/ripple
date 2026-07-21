@@ -11,6 +11,7 @@
 /** @typedef {string | { fsPath: string }} ScriptId */
 // Side-effect import: augments @volar/language-core's LanguagePlugin with the `typescript` field.
 /** @typedef {typeof import('@volar/typescript')} _VolarTypeScriptAugmentation */
+/** @typedef {import('./consumer-compiler.js').CompilerResolutionOptions} CompilerResolutionOptions */
 /** @typedef {import('@volar/language-core').LanguagePlugin<ScriptId, VirtualCode>} RippleLanguagePlugin */
 
 /** @typedef {InstanceType<typeof import('./language.js')["TSRXVirtualCode"]>} TSRXVirtualCodeInstance */
@@ -21,6 +22,10 @@ import fs from 'fs';
 import path from 'path';
 import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
+import {
+	reset_consumer_compiler_resolution_caches,
+	resolve_consumer_compiler_for_file,
+} from './consumer-compiler.js';
 import { createLogging, DEBUG } from './utils.js';
 
 const require = createRequire(import.meta.url);
@@ -83,10 +88,18 @@ export function is_ripple_file(file_name) {
 }
 
 /**
+ * @param {CompilerResolutionOptions} [options]
  * @returns {RippleLanguagePlugin}
  */
-export function getRippleLanguagePlugin() {
+export function getRippleLanguagePlugin(options = {}) {
 	log('Creating Ripple language plugin...');
+	const typescript = options.ts ?? ts;
+	/** @type {CompilerResolutionOptions} */
+	const compiler_resolution_options = {
+		...options,
+		ts: typescript,
+		configHost: options.configHost ?? typescript.sys,
+	};
 
 	return {
 		getLanguageId(fileNameOrUri) {
@@ -102,7 +115,7 @@ export function getRippleLanguagePlugin() {
 		createVirtualCode(fileNameOrUri, languageId, snapshot) {
 			if (languageId === 'ripple') {
 				const file_name = normalizeFileNameOrUri(fileNameOrUri);
-				const ripple = get_tsrx_compiler(file_name);
+				const ripple = get_tsrx_compiler(file_name, compiler_resolution_options);
 				if (!ripple) {
 					logError(`Ripple compiler not found for file: ${file_name}`);
 					return undefined;
@@ -991,26 +1004,33 @@ function package_manifest_matches_compiler(package_manifest, compiler_name, pack
 
 /**
  * @param {string} normalized_file_name
+ * @param {CompilerResolutionOptions} [options]
  * @returns {TSRXCompilerModule | undefined}
  */
-function get_tsrx_compiler(normalized_file_name) {
-	const compiler_path = get_compiler_entry_for_file(normalized_file_name);
+function get_tsrx_compiler(normalized_file_name, options) {
+	const compiler_path = get_compiler_entry_for_file(normalized_file_name, options);
 	if (compiler_path) {
 		const compiler_module = require(compiler_path);
-		if (
-			typeof compiler_module?.compile_to_volar_mappings !== 'function' &&
-			typeof compiler_module?.compileToVolarMappings === 'function'
-		) {
-			// Octane's volar entry exports the same contract under a camelCase
-			// name (`compileToVolarMappings`); normalize so already-published
-			// octane versions work without an octane-side release.
-			return {
-				...compiler_module,
-				compile_to_volar_mappings: compiler_module.compileToVolarMappings,
-			};
-		}
-		return compiler_module;
+		return normalize_tsrx_compiler_module(compiler_module);
 	}
+}
+
+/**
+ * Normalize the compiler contract used by Octane and consumer-declared modules.
+ * @param {TSRXCompilerModule & { compileToVolarMappings?: TSRXCompilerModule['compile_to_volar_mappings'] }} compiler_module
+ * @returns {TSRXCompilerModule}
+ */
+function normalize_tsrx_compiler_module(compiler_module) {
+	if (
+		typeof compiler_module?.compile_to_volar_mappings !== 'function' &&
+		typeof compiler_module?.compileToVolarMappings === 'function'
+	) {
+		return {
+			...compiler_module,
+			compile_to_volar_mappings: compiler_module.compileToVolarMappings,
+		};
+	}
+	return compiler_module;
 }
 
 /**
@@ -1072,10 +1092,15 @@ export function find_workspace_compiler_entry_for_file(
 
 /**
  * @param {string} normalized_file_name
+ * @param {CompilerResolutionOptions} [options]
  * @returns {string | undefined}
  */
-export function get_compiler_entry_for_file(normalized_file_name) {
+export function get_compiler_entry_for_file(normalized_file_name, options) {
 	const ext = path.extname(normalized_file_name);
+	const consumer_compiler_path = resolve_consumer_compiler_for_file(normalized_file_name, options);
+	if (consumer_compiler_path !== undefined) {
+		return consumer_compiler_path ?? undefined;
+	}
 	const package_manifest = get_nearest_package_manifest(path.dirname(normalized_file_name));
 
 	const workspace_compiler_path = find_workspace_compiler_entry_for_file(normalized_file_name);
@@ -1129,19 +1154,26 @@ export function get_compiler_entry_for_file(normalized_file_name) {
 
 /**
  * Resolve the tsrx compiler package that owns a `.tsrx` file (e.g. `'@tsrx/ripple'`,
- * `'@tsrx/react'`), based on the nearest `package.json` dependencies. All targets
- * share the `.tsrx` extension, so this is how the editor layer tells them apart —
- * it reuses the exact same resolution as compilation, so tooling and the compiler
- * always agree on the platform. Returns `undefined` when no compiler resolves.
+ * `'@tsrx/react'`) from the exact compiler entry selected for compilation. All
+ * targets share the `.tsrx` extension, so this is how the editor layer tells them
+ * apart. Returns `undefined` for an unresolved or unknown third-party compiler.
  * @param {string} file_name
+ * @param {CompilerResolutionOptions} [options]
  * @returns {string | undefined}
  */
-export function get_tsrx_compiler_name_for_file(file_name) {
-	const entry = get_compiler_entry_for_file(file_name.replace(/\\/g, '/'));
+export function get_tsrx_compiler_name_for_file(file_name, options) {
+	const entry = get_compiler_entry_for_file(file_name.replace(/\\/g, '/'), options);
 	if (!entry) {
 		return undefined;
 	}
 
+	const package_name = get_nearest_package_manifest(path.dirname(entry))?.name;
+	if (COMPILER_CANDIDATES.some(([compiler_name]) => compiler_name === package_name)) {
+		return package_name ?? undefined;
+	}
+
+	// Compatibility fallback for unpackaged compiler fixtures and historical
+	// source layouts that do not include a readable package manifest.
 	const normalized_entry = entry.replace(/\\/g, '/');
 	for (const [
 		compiler_name,
@@ -1163,10 +1195,11 @@ export function get_tsrx_compiler_name_for_file(file_name) {
  * Whether a `.tsrx` file is compiled by the Ripple target (as opposed to
  * React/Solid/Preact/Vue). Used to gate Ripple-runtime-only editor suggestions.
  * @param {string} file_name
+ * @param {CompilerResolutionOptions} [options]
  * @returns {boolean}
  */
-export function is_ripple_platform_file(file_name) {
-	return get_tsrx_compiler_name_for_file(file_name) === '@tsrx/ripple';
+export function is_ripple_platform_file(file_name, options) {
+	return get_tsrx_compiler_name_for_file(file_name, options) === '@tsrx/ripple';
 }
 
 /**
@@ -1258,13 +1291,29 @@ export function getCachedTypeMatches(typeName, text, sourceKey = text) {
 
 /**
  * @param {string} normalized_file_name
+ * @param {CompilerResolutionOptions} [options]
  * @returns {string | undefined}
  */
-export function get_compiler_dir_for_file(normalized_file_name) {
-	const entry = get_compiler_entry_for_file(normalized_file_name);
-	if (entry) {
-		// Walk up from .../src/index.js to the package root
-		return path.dirname(path.dirname(entry));
+export function get_compiler_dir_for_file(normalized_file_name, options) {
+	const entry = get_compiler_entry_for_file(normalized_file_name, options);
+	if (!entry) {
+		return undefined;
+	}
+
+	let current_dir = path.dirname(entry);
+	while (current_dir) {
+		if (fs.existsSync(path.join(current_dir, 'package.json'))) {
+			return current_dir;
+		}
+		if (path.basename(current_dir) === 'node_modules') {
+			return undefined;
+		}
+
+		const parent_dir = path.dirname(current_dir);
+		if (parent_dir === current_dir) {
+			return undefined;
+		}
+		current_dir = parent_dir;
 	}
 }
 
@@ -1277,6 +1326,7 @@ export { get_compiler_dir_for_file as getRippleDirForFile };
 export function invalidateCompilerResolutionCaches() {
 	path2RipplePathMap.clear();
 	pathToPackageManifestCache.clear();
+	reset_consumer_compiler_resolution_caches();
 	loggedCompilationFailures.clear();
 }
 
