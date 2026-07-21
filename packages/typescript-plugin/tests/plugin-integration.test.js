@@ -703,20 +703,51 @@ describe('typescript-plugin language plugin integration', () => {
 		const package_name = 'installed-later-compiler';
 		const package_dir = path.join(workspace, 'node_modules', package_name);
 		const compiler_entry = path.join(package_dir, 'index.cjs');
+		/** @type {Map<string, string>} */
+		const installed_files = new Map();
+		const config_host = {
+			...ts.sys,
+			/** @param {string} candidate */
+			fileExists(candidate) {
+				return installed_files.has(path.resolve(candidate)) || ts.sys.fileExists(candidate);
+			},
+			/** @param {string} candidate */
+			readFile(candidate) {
+				return installed_files.get(path.resolve(candidate)) ?? ts.sys.readFile(candidate);
+			},
+			/** @param {string} candidate */
+			directoryExists(candidate) {
+				const prefix = path.resolve(candidate) + path.sep;
+				return (
+					[...installed_files.keys()].some((file_name) => file_name.startsWith(prefix)) ||
+					ts.sys.directoryExists(candidate)
+				);
+			},
+			/** @param {string} candidate */
+			realpath(candidate) {
+				const normalized_candidate = path.resolve(candidate);
+				const virtual_prefix = normalized_candidate + path.sep;
+				if (
+					installed_files.has(normalized_candidate) ||
+					[...installed_files.keys()].some((file_name) => file_name.startsWith(virtual_prefix))
+				) {
+					return normalized_candidate;
+				}
+				return ts.sys.realpath?.(candidate) ?? normalized_candidate;
+			},
+		};
 		write_config(config_path, compiler_declaration(package_name));
-		const options = { ts, configFileName: config_path, configHost: ts.sys };
+		const options = { ts, configFileName: config_path, configHost: config_host };
 
 		expect(resolve_consumer_compiler_for_file(file_name, options)).toBeNull();
 
-		write_config(path.join(package_dir, 'package.json'), {
-			name: package_name,
-			main: './index.cjs',
-		});
-		fs.writeFileSync(compiler_entry, 'module.exports = {};\n');
-		const resolved_entry = resolve_consumer_compiler_for_file(file_name, options);
-		expect(fs.realpathSync(/** @type {string} */ (resolved_entry))).toBe(
-			fs.realpathSync(compiler_entry),
+		installed_files.set(
+			path.join(package_dir, 'package.json'),
+			JSON.stringify({ name: package_name, main: './index.cjs' }),
 		);
+		installed_files.set(compiler_entry, 'module.exports = {};\n');
+		const resolved_entry = resolve_consumer_compiler_for_file(file_name, options);
+		expect(resolved_entry).toBe(compiler_entry);
 	});
 
 	it('creates virtual code with the vue compiler in a vue-only project', () => {

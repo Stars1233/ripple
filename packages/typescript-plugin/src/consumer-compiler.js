@@ -206,14 +206,41 @@ function is_extends_failure_overridden(layers, failure, declaration_config_path)
 }
 
 /**
+ * Resolve without a module-resolution cache. This is the recovery path when
+ * Node retains a negative package lookup after a dependency is installed.
+ * `noDtsResolution` ensures the runtime entry wins over a package's types.
+ * @param {typeof import('typescript')} typescript
+ * @param {import('./tsconfig-resolution.js').TsconfigHost} host
+ * @param {string} config_path
+ * @param {string} specifier
+ */
+function resolve_uncached_declared_compiler(typescript, host, config_path, specifier) {
+	return typescript.resolveModuleName(
+		specifier,
+		config_path,
+		{
+			module: typescript.ModuleKind.Node16,
+			moduleResolution: typescript.ModuleResolutionKind.Node16,
+			noDtsResolution: true,
+		},
+		host,
+		undefined,
+		undefined,
+		typescript.ModuleKind.CommonJS,
+	).resolvedModule?.resolvedFileName;
+}
+
+/**
  * Resolve the compiler explicitly selected by a consumer tsconfig. Invalid
  * specifiers are stable and cached, while missing packages are retried so
  * tsserver can recover after the dependency is installed.
+ * @param {typeof import('typescript')} typescript
+ * @param {import('./tsconfig-resolution.js').TsconfigHost} host
  * @param {string} config_path
  * @param {string} specifier
  * @returns {string | null}
  */
-function resolve_declared_compiler(config_path, specifier) {
+function resolve_declared_compiler(typescript, host, config_path, specifier) {
 	const cache_key = `${config_path}\0${specifier}`;
 	if (declared_compiler_path_map.has(cache_key)) {
 		return declared_compiler_path_map.get(cache_key) ?? null;
@@ -236,6 +263,22 @@ function resolve_declared_compiler(config_path, specifier) {
 		log('Found declared tsrx compiler at:', compiler_path, 'from tsconfig:', config_path);
 		return compiler_path;
 	} catch {
+		const compiler_path = resolve_uncached_declared_compiler(
+			typescript,
+			host,
+			config_path,
+			specifier,
+		);
+		if (compiler_path !== undefined) {
+			declared_compiler_path_map.set(cache_key, compiler_path);
+			log(
+				'Found declared tsrx compiler after uncached retry at:',
+				compiler_path,
+				'from tsconfig:',
+				config_path,
+			);
+			return compiler_path;
+		}
 		logError(`Unable to resolve declared TSRX compiler "${specifier}" from tsconfig`, config_path);
 		return null;
 	}
@@ -342,7 +385,12 @@ export function resolve_consumer_compiler_for_file(normalized_file_name, options
 		return null;
 	}
 	if (declaration.state === 'declared') {
-		return resolve_declared_compiler(declaration.config_path, declaration.value);
+		return resolve_declared_compiler(
+			typescript,
+			config_host,
+			declaration.config_path,
+			declaration.value,
+		);
 	}
 	return undefined;
 }
