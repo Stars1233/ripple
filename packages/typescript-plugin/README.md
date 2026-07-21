@@ -31,6 +31,55 @@ Text, or command-line `tsc`), add this plugin to your `tsconfig.json`:
 }
 ```
 
+## Compiler selection
+
+All TSRX targets use the `.tsrx` extension. Normally, the compiler is detected
+automatically from the installed target packages and the nearest `package.json`.
+To remove ambiguity when multiple target compilers are installed, or to use a
+third-party compiler, select one explicitly with the top-level `tsrx.compiler`
+option:
+
+```json
+{
+  "tsrx": {
+    "compiler": "@tsrx/ripple"
+  },
+  "compilerOptions": {
+    "jsx": "preserve",
+    "jsxImportSource": "ripple",
+    "plugins": [
+      {
+        "name": "@tsrx/typescript-plugin"
+      }
+    ]
+  }
+}
+```
+
+`compiler` must be a bare package specifier, such as `@tsrx/ripple`,
+`@tsrx/react`, `@tsrx/solid`, `@tsrx/preact`, `@tsrx/vue`, `octane`, or a
+third-party TSRX compiler package. Package subpaths are supported; relative and
+absolute paths are not.
+
+Compiler declarations follow the active TypeScript project's explicit `tsconfig`
+inheritance graph:
+
+- `extends` chains, arrays, JSONC files, and package-based configs are supported.
+- Base configs are applied first. Child configs and later `extends` entries take
+  precedence.
+- The compiler package is resolved relative to the config that supplied the
+  effective declaration.
+- Nested projects do not inherit from unrelated ancestor configs.
+- An invalid or unresolved effective declaration prevents automatic fallback. A
+  valid declaration in a child config still overrides a failed lower-priority
+  base.
+
+The language server, tsserver plugin, and `tsrx-tsc` use the TypeScript project's
+selected config. When that project context is unavailable, resolution starts at
+the nearest `tsconfig.json`. If no `tsrx.compiler` value is declared, the plugin
+falls back to installed target detection, using the nearest `package.json` to
+disambiguate when multiple supported compiler packages are present.
+
 ## What it does
 
 This plugin:
