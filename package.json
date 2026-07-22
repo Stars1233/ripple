@@ -5,10 +5,10 @@
   "description": "",
   "author": "Dominic Gannaway",
   "license": "MIT",
-  "packageManager": "pnpm@11.1.1",
+  "packageManager": "pnpm@11.15.1",
   "engines": {
     "node": ">=22.0.0",
-    "pnpm": "11.1.1",
+    "pnpm": "11.15.1",
     "npm": ">=11.6.2"
   },
   "engineStrict": true,
@@ -41,7 +41,7 @@
     "@tsrx/vue": "workspace:*",
     "@ripple-ts/vite-plugin": "workspace:*",
     "@types/node": "catalog:default",
-    "@typescript/native-preview": "7.0.0-dev.20260705.1",
+    "@typescript/native-preview": "7.0.0-dev.20260707.2",
     "eslint": "catalog:default",
     "jsdom": "catalog:default",
     "linkedom": "catalog:default",
