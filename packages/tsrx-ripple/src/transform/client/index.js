@@ -59,6 +59,7 @@ import {
 	createElementRefTargetTypeForName as create_element_ref_target_type_for_name,
 	wrapEdgeWhitespace as wrap_edge_whitespace,
 	isTemplateValuePosition,
+	withDeferredImports,
 } from '@tsrx/core';
 const b = builders;
 import {
@@ -551,11 +552,11 @@ function is_stringish_expression(expression, state, visited = new Set()) {
 }
 
 /**
- * @param {AST.ImportDeclaration} node
+ * @param {AST.TSRXImportDeclaration} node
  * @returns {string | null}
  */
 function get_submodule_import_source_name(node) {
-	const source = /** @type {AST.Literal | AST.Identifier} */ (node.source);
+	const source = node.source;
 	return source.type === 'Identifier' ? source.name : null;
 }
 
@@ -603,7 +604,7 @@ function create_server_rpc_stub(filename, imported_name) {
 }
 
 /**
- * @param {AST.ImportDeclaration} node
+ * @param {AST.TSRXImportDeclaration} node
  * @param {TransformClientState} state
  * @returns {AST.Statement[]}
  */
@@ -6113,7 +6114,7 @@ function create_tsx_with_typescript_support(comments) {
 	// boundaryTokens: this language only prints the to_ts (volar) view — maps
 	// are consumed positionally by the language tooling, never shipped.
 	const base_tsx = /** @type {Visitors<AST.Node, TransformClientState>} */ (
-		tsx({ boundaryTokens: true })
+		withDeferredImports(tsx({ boundaryTokens: true }))
 	);
 
 	// Track which comments have been written (by index)
@@ -6764,6 +6765,10 @@ function create_tsx_with_typescript_support(comments) {
 			handle_function(node, context);
 		},
 		ImportDeclaration(node, context) {
+			if (node.phase === 'defer') {
+				base_tsx.ImportDeclaration?.(node, context);
+				return;
+			}
 			const loc = /** @type {AST.SourceLocation} */ (node.loc);
 			// Write 'import' keyword with source location
 			// to mark the beginning of the import statement for a full import mapping
@@ -7197,7 +7202,7 @@ export function transform_client(filename, source, analysis, to_ts, minify_css, 
 
 	const language_handler = to_ts
 		? create_tsx_with_typescript_support(analysis.comments)
-		: /** @type {Visitors<AST.Node, TransformClientState>} */ (tsx());
+		: /** @type {Visitors<AST.Node, TransformClientState>} */ (withDeferredImports(tsx()));
 
 	const printed = print(program, language_handler, {
 		sourceMapContent: source,
