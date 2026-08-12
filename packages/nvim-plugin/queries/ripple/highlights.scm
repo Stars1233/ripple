@@ -256,10 +256,16 @@
   "as"
 ] @keyword.control.import
 
+; Type assertions (`value as const`) are not import syntax; re-scope their
+; `as` after the group above so this more specific pattern takes precedence.
+(as_expression "as" @keyword)
+
 ; Other keywords
 [
   "function"
   "class"
+  "interface"
+  "type"
   "extends"
   "implements"
   "new"
@@ -294,6 +300,9 @@
 ; Properties
 (property_signature
   name: (property_name) @property)
+
+(method_signature
+  name: (property_name) @function.method)
 
 (pair
   key: (property_name) @property)
