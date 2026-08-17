@@ -1,7 +1,9 @@
 import type { BunPlugin } from 'bun';
+import type { RuntimeImportMode } from '@tsrx/solid';
 
 export interface TsrxSolidBunPluginOptions {
-	runtimeImports?: 'compiler' | 'direct';
+	/** Direct mode requires `@tsrx/solid-runtime` as a direct production dependency. */
+	runtimeImports?: RuntimeImportMode;
 	include?: RegExp;
 	exclude?: RegExp | RegExp[];
 	emitCss?: boolean;

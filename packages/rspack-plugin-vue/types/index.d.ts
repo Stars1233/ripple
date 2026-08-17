@@ -1,4 +1,5 @@
 import type { Compiler, RspackPluginInstance } from '@rspack/core';
+import type { RuntimeImportMode } from '@tsrx/vue';
 
 export interface TsrxVueRspackVaporOptions {
 	macros?: boolean | object;
@@ -9,7 +10,8 @@ export interface TsrxVueRspackVaporOptions {
 
 export interface TsrxVueRspackPluginOptions {
 	vapor?: TsrxVueRspackVaporOptions;
-	runtimeImports?: 'compiler' | 'direct';
+	/** Direct mode requires `@tsrx/vue-runtime` as a direct production dependency. */
+	runtimeImports?: RuntimeImportMode;
 }
 
 export declare class TsrxVueRspackPlugin implements RspackPluginInstance {

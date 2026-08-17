@@ -1,3 +1,5 @@
+import type { RuntimeImportMode } from '@tsrx/react';
+
 export interface NextTurbopackConfig {
 	turbopack?: {
 		root?: string;
@@ -10,7 +12,8 @@ export interface NextTurbopackConfig {
 }
 
 export interface TsrxReactTurbopackOptions {
-	runtimeImports?: 'compiler' | 'direct';
+	/** Direct mode requires `@tsrx/react-runtime` as a direct production dependency. */
+	runtimeImports?: RuntimeImportMode;
 }
 
 export interface TsrxReactTurbopackLoader {
