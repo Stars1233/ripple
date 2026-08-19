@@ -25,8 +25,31 @@ var all_registered_events = new Set();
 /** @type {Set<(events: Array<string>) => void>} */
 var root_event_handles = new Set();
 
-/** @type {Element | null} */
-var root_target = null;
+/**
+ * Active root delegation targets, ref-counted per target. Multiple callers of
+ * `handle_root_events` can share one target element — sibling Portals both
+ * targeting `document.body`, a Portal targeting the app's mount target, or
+ * nested mounts. The shared delegated listeners for a target may only be torn
+ * down once every caller for that target has released it, otherwise
+ * unmounting one Portal silently kills event delegation for its siblings.
+ * @type {Map<Element, { count: number, registered_events: Set<string> }>}
+ */
+var root_target_refs = new Map();
+
+/**
+ * Delegated handling only works for elements strictly below a root delegation
+ * target: the root listener's propagation walk never visits the target itself
+ * or anything above it, so a delegated handler stored there would never fire.
+ * @param {EventTarget} element
+ */
+function is_root_target_or_above(element) {
+	for (var target of root_target_refs.keys()) {
+		if (element === target || /** @type {Element} */ (element).contains?.(target)) {
+			return true;
+		}
+	}
+	return false;
+}
 
 /**
  * @param {AddEventOptions} options
@@ -63,9 +86,8 @@ export function on(element, type, handler, options = {}) {
 		element === window ||
 		element === document ||
 		element === document.body ||
-		element === root_target ||
 		element instanceof MediaQueryList ||
-		/** @type {Element} */ (element).contains(root_target)
+		is_root_target_or_above(element)
 	) {
 		opts.delegated = false;
 	}
@@ -381,9 +403,13 @@ export function delegate(events) {
 
 /** @param {Element} target */
 export function handle_root_events(target) {
-	/** @type {Set<string>} */
-	var registered_events = new Set();
-	root_target = target;
+	var ref = root_target_refs.get(target) ?? {
+		count: 0,
+		registered_events: /** @type {Set<string>} */ (new Set()),
+	};
+	ref.count += 1;
+	root_target_refs.set(target, ref);
+	var registered_events = ref.registered_events;
 
 	/**
 	 * @typedef {Object} EventHandleOptions
@@ -417,14 +443,26 @@ export function handle_root_events(target) {
 	event_handle(array_from(all_registered_events));
 	root_event_handles.add(event_handle);
 
+	var released = false;
+
 	return () => {
+		if (released) return;
+		released = true;
+
+		root_event_handles.delete(event_handle);
+
+		// The map entry for `target` is always this `ref`: it is only deleted
+		// when the count hits 0, which requires this cleanup to have run.
+		ref.count -= 1;
+		if (ref.count > 0) return;
+
+		// Last caller for this target: actually tear down the shared listeners.
+		root_target_refs.delete(target);
 		for (var event_name of registered_events) {
 			target.removeEventListener(
 				event_name,
 				/** @type {EventListener} */ (handle_event_propagation),
 			);
 		}
-		root_event_handles.delete(event_handle);
-		root_target = null;
 	};
 }

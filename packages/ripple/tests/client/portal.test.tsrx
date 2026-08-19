@@ -137,6 +137,113 @@ describe('Portal', () => {
 		document.body.removeChild(target2);
 	});
 
+	it(
+		'two portals sharing the same target: closing one does not break click delegation for the other',
+		() => {
+			// Regression test: handle_root_events used to have no ref-counting per
+			// target. When two Portals both targeted document.body (e.g. a Modal
+			// and a SideSheet), closing/unmounting the first Portal would tear
+			// down the shared delegated event listeners for *all* portals on that
+			// target, silently breaking clicks inside any portal still open.
+			function TestSharedTargetPortals() @{
+				let &[modalOpen] = track(true);
+				let &[sheetOpen] = track(true);
+				let &[sheetClicks] = track(0);
+				<>
+					@if (modalOpen) {
+						<Portal target={document.body}>
+							<div class="test-portal test-modal">
+								<button
+									class="close-modal"
+									onClick={() => (modalOpen = false)}
+								>{'Close modal'}</button>
+							</div>
+						</Portal>
+					}
+					@if (sheetOpen) {
+						<Portal target={document.body}>
+							<div class="test-portal test-sheet">
+								<span class="sheet-clicks">{String(sheetClicks)}</span>
+								<button
+									class="sheet-btn"
+									onClick={() => {
+										sheetClicks++;
+									}}
+								>{'Sheet button'}</button>
+							</div>
+						</Portal>
+					}
+				</>
+			}
+
+			render(TestSharedTargetPortals);
+
+			expect(document.body.querySelector('.close-modal')).toBeTruthy();
+			expect(document.body.querySelector('.sheet-btn')).toBeTruthy();
+
+			// Close the modal portal - its cleanup must not tear down the shared
+			// document.body event delegation that the still-open sheet portal relies on.
+			document.body.querySelector('.close-modal').click();
+			flushSync();
+
+			expect(document.body.querySelector('.close-modal')).toBeNull();
+			const sheetBtn = document.body.querySelector('.sheet-btn');
+			expect(sheetBtn).toBeTruthy();
+			expect(document.body.querySelector('.sheet-clicks').textContent).toBe('0');
+
+			sheetBtn.click();
+			flushSync();
+
+			// This is the actual regression check: before the fix, the shared
+			// document.body listener was removed when the modal portal's cleanup
+			// ran, so this click would never reach the handler and the count
+			// would stay at 0.
+			expect(document.body.querySelector('.sheet-clicks').textContent).toBe('1');
+		},
+	);
+
+	it('retargets portal when target changes and keeps click delegation working', () => {
+		const target1 = document.createElement('div');
+		const target2 = document.createElement('div');
+		document.body.appendChild(target1);
+		document.body.appendChild(target2);
+
+		function TestRetargetPortal() @{
+			let &[useSecond] = track(false);
+			let &[clicks] = track(0);
+			<>
+				<button class="swap" onClick={() => (useSecond = true)}>{'Swap'}</button>
+				<Portal target={useSecond ? target2 : target1}>
+					<div class="test-portal">
+						<span class="clicks">{String(clicks)}</span>
+						<button class="portal-btn" onClick={() => clicks++}>{'Click'}</button>
+					</div>
+				</Portal>
+			</>
+		}
+
+		render(TestRetargetPortal);
+
+		expect(target1.querySelector('.portal-btn')).toBeTruthy();
+		target1.querySelector('.portal-btn').click();
+		flushSync();
+		expect(target1.querySelector('.clicks').textContent).toBe('1');
+
+		container.querySelector('.swap').click();
+		flushSync();
+
+		// Content moved to the new target, and delegation must follow it there.
+		expect(target1.querySelector('.portal-btn')).toBeNull();
+		expect(target2.querySelector('.portal-btn')).toBeTruthy();
+
+		target2.querySelector('.portal-btn').click();
+		flushSync();
+		expect(target2.querySelector('.clicks').textContent).toBe('2');
+
+		document.body.removeChild(target1);
+		document.body.removeChild(target2);
+	});
+
 	it('handles portal with reactive content', () => {
 		function TestReactivePortal() @{
 			let &[count] = track(0);
