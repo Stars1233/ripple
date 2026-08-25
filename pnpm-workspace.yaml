@@ -4,6 +4,16 @@
 minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
   - '@sveltejs/acorn-typescript@1.0.13'
+  - '@tsrx/core@0.1.61'
+  - '@tsrx/eslint-parser@0.3.126'
+  - '@tsrx/eslint-plugin@0.3.126'
+  - '@tsrx/language-server@0.3.126'
+  - '@tsrx/prettier-plugin@0.3.126'
+  - '@tsrx/react@0.2.61'
+  - '@tsrx/solid@0.1.61'
+  - '@tsrx/typescript-plugin@0.3.126'
+  - '@tsrx/vite-plugin-react@0.0.94'
+  - '@tsrx/vite-plugin-solid@0.0.91'
 minimumReleaseAgeIgnoreMissingTime: true
 minimumReleaseAgeStrict: false
 trustPolicy: no-downgrade
@@ -14,13 +24,10 @@ dangerouslyAllowAllBuilds: false
 pmOnFail: download
 
 allowBuilds:
-  '@vscode/vsce-sign': true
   bun: true
   esbuild: true
-  keytar: true
   sharp: true
   tldjs: true
-  tree-sitter-cli: true
 
 # variables used in the catalog
 prettier_common: &prettier_common ^3.9.6
@@ -30,12 +37,9 @@ esrap_common: &esrap_common ^2.3.2
 
 packages:
   - packages/*
-  - playground/*
+  - playground/ripple
   - website
-  - website-mcp
-  - grammars/tree-sitter
   - website-new
-  - website-tsrx
   - benchmarks
   - benchmarks/recursive-context
   - benchmarks/recursive-context/*
@@ -65,39 +69,29 @@ overrides:
 catalogs:
   default:
     '@babel/core': ^7.29.0
-    '@babel/preset-typescript': ^7.28.5
     '@changesets/changelog-github': ^0.7.0
     '@changesets/cli': ^2.31.0
-    '@jridgewell/sourcemap-codec': ^1.5.5
-    '@modelcontextprotocol/sdk': ^1.29.0
-    '@noble/hashes': ^2.2.0
     '@rollup/pluginutils': ^5.3.0
-    '@sveltejs/acorn-typescript': ^1.0.13
     '@solidjs/web': '2.0.0-beta.15'
     '@tailwindcss/vite': ^4.1.12
-    '@types/adm-zip': ^0.5.8
-    '@types/babel__core': ^7.20.5
     '@types/bun': ^1.3.9
-    '@types/eslint': ^9.6.1
     '@types/estree': ^1.0.8
     '@types/estree-jsx': ^1.0.5
     '@types/node': ^24.3.0
     '@types/prompts': ^2.4.9
-    '@types/react': ^19.2.2
-    '@types/react-dom': ^19.2.2
-    '@types/vscode': ^1.116.0
+    '@tsrx/core': ^0.1.61
+    '@tsrx/eslint-plugin': ^0.3.126
+    '@tsrx/language-server': ^0.3.126
+    '@tsrx/prettier-plugin': ^0.3.126
+    '@tsrx/react': ^0.2.61
+    '@tsrx/solid': ^0.1.61
+    '@tsrx/typescript-plugin': ^0.3.126
+    '@tsrx/vite-plugin-react': ^0.0.94
+    '@tsrx/vite-plugin-solid': ^0.0.91
     '@typescript-eslint/parser': *ts_eslint_parser
     '@typescript-eslint/types': ^8.40.0
     '@vercel/nft': ^1.3.2
     '@volar/language-core': ~2.4.28
-    '@volar/language-service': ~2.4.28
-    '@volar/language-server': ~2.4.28
-    '@volar/source-map': ~2.4.28
-    '@volar/typescript': ~2.4.28
-    '@volar/vscode': ~2.4.28
-    '@vscode/vsce': ^3.9.1
-    acorn: ^8.17.0
-    adm-zip: ^0.5.17
     babel-preset-solid: '2.0.0-beta.15'
     clsx: ^2.1.1
     commander: ^14.0.3
@@ -111,14 +105,10 @@ catalogs:
     kleur: ^4.1.5
     linkedom: ^0.18.12
     livecodes: 0.13.0
-    magic-string: ^0.30.18
     marked: ^17.0.3
-    muggle-string: ^0.4.1
     ora: ^9.3.0
-    ovsx: ^0.10.12
     playwright: ^1.61.0
     polka: ^1.0.0-next.25
-    preact: ^10.27.0
     prettier: *prettier_common
     prompts: ^2.4.2
     react: ^19.2.0
@@ -129,7 +119,6 @@ catalogs:
     solid-js: '2.0.0-beta.15'
     source-map: ^0.7.6
     tsdown: ^0.22.0
-    tsup: ^8.3.5
     type-fest: ^5.6.0
     typescript: *ts_common
     uvu: ^0.5.6
@@ -138,14 +127,8 @@ catalogs:
     vitepress-plugin-npm-commands: ^0.9.0
     vitepress-plugin-tabs: ^0.8.0
     vitest: ^4.1.6
-    volar-service-css: 0.0.70
-    volar-service-typescript: 0.0.70
-    vscode-languageclient: ^9.0.1
-    vscode-languageserver-textdocument: ^1.0.12
     vscode-languageserver-types: ^3.17.5
-    vscode-uri: ^3.1.0
     wait-on: ^9.0.10
-    zod: ^4.3.6
     zimmerframe: ^1.1.2
   peer:
     '@typescript-eslint/parser': *ts_eslint_parser
@@ -153,6 +136,4 @@ catalogs:
     prettier: '>=2.0.0'
     ripple: '*'
     tailwindcss: ^4.1.12
-    typescript: *ts_common
-  vscode:
     typescript: *ts_common
