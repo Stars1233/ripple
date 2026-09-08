@@ -46,26 +46,27 @@ export function MixedControlFlowStatic() {
 											var div = root_1();
 
 											{
-												var expression = _$_.child(div, true);
+												var expression = _$_.hydrating ? _$_.hydrate_child(true) : div.firstChild;
 
 												_$_.pop(div);
 											}
 
 											_$_.render(
 												(__prev) => {
-													var __a = `A-${_$_.get(pattern).id}`;
+													var __pattern = _$_.get(pattern);
+													var __a = `A-${__pattern.id}`;
 
 													if (__prev.a !== __a) {
 														_$_.set_text(expression, __prev.a = __a);
 													}
 
-													var __b = `row row-${_$_.get(pattern).id} kind-a`;
+													var __b = `row row-${__pattern.id} kind-a`;
 
 													if (__prev.b !== __b) {
 														_$_.set_class(div, __prev.b = __b, void 0, true);
 													}
 												},
-												{ a: ' ', b: Symbol() }
+												{ a: ' ', b: _$_.UNINITIALIZED }
 											);
 
 											_$_.append(__anchor, div);
@@ -91,26 +92,27 @@ export function MixedControlFlowStatic() {
 											var div_2 = root_3();
 
 											{
-												var expression_1 = _$_.child(div_2, true);
+												var expression_1 = _$_.hydrating ? _$_.hydrate_child(true) : div_2.firstChild;
 
 												_$_.pop(div_2);
 											}
 
 											_$_.render(
 												(__prev) => {
-													var __a = `B-${_$_.get(pattern).id}`;
+													var __pattern_1 = _$_.get(pattern);
+													var __a = `B-${__pattern_1.id}`;
 
 													if (__prev.a !== __a) {
 														_$_.set_text(expression_1, __prev.a = __a);
 													}
 
-													var __b = `row row-${_$_.get(pattern).id} kind-b`;
+													var __b = `row row-${__pattern_1.id} kind-b`;
 
 													if (__prev.b !== __b) {
 														_$_.set_class(div_2, __prev.b = __b, void 0, true);
 													}
 												},
-												{ a: ' ', b: Symbol() }
+												{ a: ' ', b: _$_.UNINITIALIZED }
 											);
 
 											_$_.append(__anchor, div_2);
@@ -185,19 +187,19 @@ export function MixedControlFlowReactive() {
 				_$_.set(lazy, !lazy.value);
 			};
 
-			var button_1 = _$_.sibling(button);
+			var button_1 = _$_.hydrating ? _$_.hydrate_sibling() : button.nextSibling;
 
 			button_1.__click = () => {
 				_$_.set(lazy_1, lazy_1.value === 'a' ? 'b' : 'a');
 			};
 
-			var button_2 = _$_.sibling(button_1);
+			var button_2 = _$_.hydrating ? _$_.hydrate_sibling() : button_1.nextSibling;
 
 			button_2.__click = () => {
 				_$_.set(lazy_2, [...lazy_2.value, { id: 3, label: 'Three' }]);
 			};
 
-			var node = _$_.sibling(button_2);
+			var node = _$_.hydrating ? _$_.hydrate_sibling() : button_2.nextSibling;
 
 			{
 				var consequent_1 = (__anchor) => {
@@ -216,26 +218,27 @@ export function MixedControlFlowReactive() {
 												var p = root_8();
 
 												{
-													var expression_2 = _$_.child(p, true);
+													var expression_2 = _$_.hydrating ? _$_.hydrate_child(true) : p.firstChild;
 
 													_$_.pop(p);
 												}
 
 												_$_.render(
 													(__prev) => {
-														var __a = `A:${_$_.get(pattern_1).label}`;
+														var __pattern_1_1 = _$_.get(pattern_1);
+														var __a = `A:${__pattern_1_1.label}`;
 
 														if (__prev.a !== __a) {
 															_$_.set_text(expression_2, __prev.a = __a);
 														}
 
-														var __b = `item item-${_$_.get(pattern_1).id}`;
+														var __b = `item item-${__pattern_1_1.id}`;
 
 														if (__prev.b !== __b) {
 															_$_.set_class(p, __prev.b = __b, void 0, true);
 														}
 													},
-													{ a: ' ', b: Symbol() }
+													{ a: ' ', b: _$_.UNINITIALIZED }
 												);
 
 												_$_.append(__anchor, p);
@@ -257,26 +260,27 @@ export function MixedControlFlowReactive() {
 												var p_2 = root_10();
 
 												{
-													var expression_3 = _$_.child(p_2, true);
+													var expression_3 = _$_.hydrating ? _$_.hydrate_child(true) : p_2.firstChild;
 
 													_$_.pop(p_2);
 												}
 
 												_$_.render(
 													(__prev) => {
-														var __a = `B:${_$_.get(pattern_1).label}`;
+														var __pattern_1_2 = _$_.get(pattern_1);
+														var __a = `B:${__pattern_1_2.label}`;
 
 														if (__prev.a !== __a) {
 															_$_.set_text(expression_3, __prev.a = __a);
 														}
 
-														var __b = `item item-${_$_.get(pattern_1).id}`;
+														var __b = `item item-${__pattern_1_2.id}`;
 
 														if (__prev.b !== __b) {
 															_$_.set_class(p_2, __prev.b = __b, void 0, true);
 														}
 													},
-													{ a: ' ', b: Symbol() }
+													{ a: ' ', b: _$_.UNINITIALIZED }
 												);
 
 												_$_.append(__anchor, p_2);
@@ -342,7 +346,7 @@ export function MixedControlFlowAsyncPending() {
 		_$_.expression(node_3, () => _$_.tsrx_element((__anchor, __block) => {
 			var fragment_3 = root_13();
 			var div_5 = _$_.first_child_frag(fragment_3);
-			var node_2 = _$_.sibling(div_5);
+			var node_2 = _$_.hydrating ? _$_.hydrate_sibling() : div_5.nextSibling;
 
 			_$_.for(
 				node_2,
@@ -364,7 +368,7 @@ export function MixedControlFlowAsyncPending() {
 											_$_.set_class(div_6, `pending-row pending-row-${row}`, void 0, true);
 
 											{
-												var expression_4 = _$_.child(div_6, true);
+												var expression_4 = _$_.hydrating ? _$_.hydrate_child(true) : div_6.firstChild;
 
 												expression_4.nodeValue = `pending ${row}`;
 												_$_.pop(div_6);
@@ -427,7 +431,7 @@ function AsyncRow({ label }) {
 		var div_8 = root_16();
 
 		{
-			var expression_5 = _$_.child(div_8);
+			var expression_5 = _$_.hydrating ? _$_.hydrate_child() : div_8.firstChild;
 
 			_$_.expression(expression_5, () => lazy_3.value);
 			_$_.pop(div_8);

@@ -27,42 +27,46 @@ import { array_from, is_array } from '@tsrx/core/runtime/language-helpers';
  * @returns {Block}
  */
 function create_item(anchor, value, index, render_fn, is_indexed, is_keyed) {
-	var b = branch(() => {
-		var tracked_index;
-		/** @type {V | Tracked} */
-		var tracked_value = value;
+	var block = /** @type {Block} */ (active_block);
+	var tracked_index = is_indexed ? tracked(index, block) : undefined;
+	var tracked_value = is_keyed ? tracked(value, block) : value;
+	var state = {
+		start: null,
+		end: null,
+		i: tracked_index,
+		v: tracked_value,
+	};
 
-		if (is_indexed || is_keyed) {
-			var block = /** @type {Block} */ (active_block);
+	// Passed through module state rather than a per-item closure; run_item
+	// reads them before rendering, so nested loops cannot observe a stale pair.
+	item_anchor = anchor;
+	item_render_fn = render_fn;
+	var b = branch(run_item, 0, state);
 
-			if (block.s === null) {
-				if (is_indexed) {
-					tracked_index = tracked(index, block);
-				}
-				if (is_keyed) {
-					tracked_value = tracked(value, block);
-				}
-
-				block.s = {
-					start: null,
-					end: null,
-					i: tracked_index,
-					v: tracked_value,
-				};
-			} else {
-				if (is_indexed) {
-					tracked_index = block.s.i;
-				}
-				if (is_keyed) {
-					tracked_index = block.s.v;
-				}
-			}
-			render_fn(anchor, tracked_value, tracked_index);
-		} else {
-			render_fn(anchor, tracked_value);
-		}
-	});
+	// The item's tracked value and index are owned by the item block itself.
+	if (is_keyed) {
+		/** @type {Tracked} */ (tracked_value).b = b;
+	}
+	if (is_indexed) {
+		/** @type {Tracked} */ (tracked_index).b = b;
+	}
 	return b;
+}
+
+/** @type {Node | null} */
+var item_anchor = null;
+/** @type {((anchor: Node, value: any, index?: any) => Block) | null} */
+var item_render_fn = null;
+
+/**
+ * @param {{ i: Tracked | undefined, v: any }} state
+ */
+function run_item(state) {
+	var render_fn = /** @type {(anchor: Node, value: any, index?: any) => Block} */ (item_render_fn);
+	var anchor = /** @type {Node} */ (item_anchor);
+	item_render_fn = null;
+	item_anchor = null;
+	render_fn(anchor, state.v, state.i);
 }
 
 /**
@@ -316,7 +320,10 @@ function update_index(block, index) {
  * @returns {void}
  */
 function update_value(block, value) {
-	set(block.s.v, value);
+	var tracked_value = block.s.v;
+	if (tracked_value.__v !== value) {
+		set(tracked_value, value);
+	}
 }
 
 /**
@@ -345,10 +352,6 @@ function reconcile_by_key(
 	var state = block.s;
 
 	// Variables used in conditional branches - declare with initial values
-	/** @type {number} */
-	var a_start = 0;
-	/** @type {number} */
-	var b_start = 0;
 	/** @type {number} */
 	var a_left = 0;
 	/** @type {number} */
@@ -425,39 +428,31 @@ function reconcile_by_key(
 
 	var a_blocks = state.blocks;
 	var a_keys = state.keys;
-	var a_val = a[j];
-	var b_val = b[j];
-	var a_key = a_keys[j];
-	var b_key = b_keys[j];
+	var a_start = 0;
+	var b_start = 0;
 	var a_end = a_length - 1;
 	var b_end = b_length - 1;
+	var b_val;
 	var b_block;
 
-	outer: {
-		while (a_key === b_key) {
-			a[j] = b_val;
-			b_block = b_blocks[j] = a_blocks[j];
+	// Match from both ends first, including the two end-crossing cases: an old
+	// item that moved to the far end of the new list, and a run whose ends were
+	// exchanged (a reversal, or a swap of two items). Those complete with plain
+	// moves; only what is left afterwards needs the map and LIS below.
+	while (a_start <= a_end && b_start <= b_end) {
+		if (a_keys[a_start] === b_keys[b_start]) {
+			b_val = b[b_start];
+			b_block = b_blocks[b_start] = a_blocks[a_start];
 			if (is_indexed) {
-				update_index(b_block, j);
+				update_index(b_block, b_start);
 			}
 			update_value(b_block, b_val);
-			++j;
-			if (j > a_end || j > b_end) {
-				break outer;
-			}
-			a_val = a[j];
-			b_val = b[j];
-			a_key = a_keys[j];
-			b_key = b_keys[j];
+			a_start++;
+			b_start++;
+			continue;
 		}
-
-		a_val = a[a_end];
-		b_val = b[b_end];
-		a_key = a_keys[a_end];
-		b_key = b_keys[b_end];
-
-		while (a_key === b_key) {
-			a[a_end] = b_val;
+		if (a_keys[a_end] === b_keys[b_end]) {
+			b_val = b[b_end];
 			b_block = b_blocks[b_end] = a_blocks[a_end];
 			if (is_indexed) {
 				update_index(b_block, b_end);
@@ -465,36 +460,64 @@ function reconcile_by_key(
 			update_value(b_block, b_val);
 			a_end--;
 			b_end--;
-			if (j > a_end || j > b_end) {
-				break outer;
-			}
-			a_val = a[a_end];
-			b_val = b[b_end];
-			a_key = a_keys[a_end];
-			b_key = b_keys[b_end];
+			continue;
 		}
+		if (a_start === a_end || a_blocks[a_start].s.start === null) {
+			break;
+		}
+		if (a_keys[a_end] === b_keys[b_start]) {
+			// Last old item is the next new one: move it in front of the old run.
+			b_val = b[b_start];
+			b_block = b_blocks[b_start] = a_blocks[a_end];
+			if (is_indexed) {
+				update_index(b_block, b_start);
+			}
+			update_value(b_block, b_val);
+			move(b_block, /** @type {ChildNode} */ (a_blocks[a_start].s.start));
+			a_end--;
+			b_start++;
+			continue;
+		}
+		if (a_keys[a_start] === b_keys[b_end]) {
+			// First old item is the last new one: move it behind the old run.
+			b_val = b[b_end];
+			b_block = b_blocks[b_end] = a_blocks[a_start];
+			if (is_indexed) {
+				update_index(b_block, b_end);
+			}
+			update_value(b_block, b_val);
+			move(b_block, block_start(b_blocks, b_end + 1, b_length, anchor));
+			a_start++;
+			b_end--;
+			continue;
+		}
+		break;
 	}
 
 	var fast_path_removal = false;
 
-	if (j > a_end) {
-		if (j <= b_end) {
-			var insert_target = block_start(a_blocks, a_end + 1, a_length, anchor);
-			while (j <= b_end) {
-				b_val = b[j];
-				b_blocks[j] = create_item(insert_target, b_val, j, render_fn, is_indexed, true);
-				j++;
+	if (a_start > a_end) {
+		if (b_start <= b_end) {
+			var target_node = block_start(b_blocks, b_end + 1, b_length, anchor);
+			while (b_start <= b_end) {
+				b_blocks[b_start] = create_item(
+					target_node,
+					b[b_start],
+					b_start,
+					render_fn,
+					is_indexed,
+					true,
+				);
+				b_start++;
 			}
 		}
-	} else if (j > b_end) {
-		while (j <= a_end) {
-			destroy_block(a_blocks[j++]);
+	} else if (b_start > b_end) {
+		while (a_start <= a_end) {
+			destroy_block(a_blocks[a_start++]);
 		}
 	} else {
-		a_start = j;
-		b_start = j;
-		a_left = a_end - j + 1;
-		b_left = b_end - j + 1;
+		a_left = a_end - a_start + 1;
+		b_left = b_end - b_start + 1;
 		sources = new Int32Array(b_left + 1);
 		moved = false;
 		pos = 0;
@@ -506,13 +529,9 @@ function reconcile_by_key(
 		// When sizes are small, just loop them through
 		if (b_length < 4 || (a_left | b_left) < 32) {
 			for (i = a_start; i <= a_end; ++i) {
-				a_val = a[i];
-				a_key = a_keys[i];
 				if (patched < b_left) {
 					for (j = b_start; j <= b_end; j++) {
-						b_val = b[j];
-						b_key = b_keys[j];
-						if (a_key === b_key) {
+						if (a_keys[i] === b_keys[j]) {
 							sources[j - b_start] = i + 1;
 							if (fast_path_removal) {
 								fast_path_removal = false;
@@ -525,6 +544,7 @@ function reconcile_by_key(
 							} else {
 								pos = j;
 							}
+							b_val = b[j];
 							b_block = b_blocks[j] = a_blocks[i];
 							if (is_indexed) {
 								update_index(b_block, j);
@@ -549,11 +569,8 @@ function reconcile_by_key(
 			}
 
 			for (i = a_start; i <= a_end; ++i) {
-				a_val = a[i];
-				a_key = a_keys[i];
-
 				if (patched < b_left) {
-					j = map.get(a_key);
+					j = map.get(a_keys[i]);
 
 					if (j !== undefined) {
 						if (fast_path_removal) {
@@ -568,12 +585,12 @@ function reconcile_by_key(
 						} else {
 							pos = j;
 						}
-						block = b_blocks[j] = a_blocks[i];
 						b_val = b[j];
+						b_block = b_blocks[j] = a_blocks[i];
 						if (is_indexed) {
-							update_index(block, j);
+							update_index(b_block, j);
 						}
-						update_value(block, b_val);
+						update_value(b_block, b_val);
 						++patched;
 					} else if (!fast_path_removal) {
 						destroy_block(a_blocks[i]);
@@ -594,6 +611,25 @@ function reconcile_by_key(
 		var seq = lis_algorithm(sources);
 		j = seq.length - 1;
 
+		// When most surviving items have to move anyway, re-lay the whole range
+		// in order before a fixed target: inserting before the same node is
+		// noticeably cheaper per item than moving into arbitrary positions.
+		if ((patched - seq.length) * 3 > b_left * 2) {
+			var relay_target = block_start(b_blocks, b_end + 1, b_length, anchor);
+			for (i = 0; i < b_left; i++) {
+				pos = i + b_start;
+				if (sources[i] === 0) {
+					b_blocks[pos] = create_item(relay_target, b[pos], pos, render_fn, is_indexed, true);
+				} else {
+					move(b_blocks[pos], relay_target);
+				}
+			}
+			state.array = b;
+			state.blocks = b_blocks;
+			state.keys = b_keys;
+			return;
+		}
+
 		for (i = b_left - 1; i >= 0; i--) {
 			if (sources[i] === 0) {
 				pos = i + b_start;
@@ -604,7 +640,6 @@ function reconcile_by_key(
 				b_blocks[pos] = create_item(target, b_val, pos, render_fn, is_indexed, true);
 			} else if (j < 0 || i !== seq[j]) {
 				pos = i + b_start;
-				b_val = b[pos];
 				next_pos = pos + 1;
 
 				var target = block_start(b_blocks, next_pos, b_length, anchor);
@@ -646,10 +681,6 @@ function reconcile_by_ref(anchor, block, b, render_fn, is_controlled, is_indexed
 	var state = block.s;
 
 	// Variables used in conditional branches - declare with initial values
-	/** @type {number} */
-	var a_start = 0;
-	/** @type {number} */
-	var b_start = 0;
 	/** @type {number} */
 	var a_left = 0;
 	/** @type {number} */
@@ -722,66 +753,92 @@ function reconcile_by_ref(anchor, block, b, render_fn, is_controlled, is_indexed
 	}
 
 	var a_blocks = state.blocks;
-	var a_val = a[j];
-	var b_val = b[j];
+	var a_start = 0;
+	var b_start = 0;
 	var a_end = a_length - 1;
 	var b_end = b_length - 1;
+	var b_val;
 	var b_block;
 
-	outer: {
-		while (a_val === b_val) {
-			a[j] = b_val;
-			b_block = b_blocks[j] = a_blocks[j];
+	// Match from both ends first, including the two end-crossing cases: an old
+	// item that moved to the far end of the new list, and a run whose ends were
+	// exchanged (a reversal, or a swap of two items). Those complete with plain
+	// moves; only what is left afterwards needs the map and LIS below.
+	while (a_start <= a_end && b_start <= b_end) {
+		if (a[a_start] === b[b_start]) {
+			b_val = b[b_start];
+			b_block = b_blocks[b_start] = a_blocks[a_start];
 			if (is_indexed) {
-				update_index(b_block, j);
+				update_index(b_block, b_start);
 			}
-			++j;
-			if (j > a_end || j > b_end) {
-				break outer;
-			}
-			a_val = a[j];
-			b_val = b[j];
+			a_start++;
+			b_start++;
+			continue;
 		}
-
-		a_val = a[a_end];
-		b_val = b[b_end];
-
-		while (a_val === b_val) {
-			a[a_end] = b_val;
+		if (a[a_end] === b[b_end]) {
+			b_val = b[b_end];
 			b_block = b_blocks[b_end] = a_blocks[a_end];
 			if (is_indexed) {
 				update_index(b_block, b_end);
 			}
 			a_end--;
 			b_end--;
-			if (j > a_end || j > b_end) {
-				break outer;
-			}
-			a_val = a[a_end];
-			b_val = b[b_end];
+			continue;
 		}
+		if (a_start === a_end || a_blocks[a_start].s.start === null) {
+			break;
+		}
+		if (a[a_end] === b[b_start]) {
+			// Last old item is the next new one: move it in front of the old run.
+			b_val = b[b_start];
+			b_block = b_blocks[b_start] = a_blocks[a_end];
+			if (is_indexed) {
+				update_index(b_block, b_start);
+			}
+			move(b_block, /** @type {ChildNode} */ (a_blocks[a_start].s.start));
+			a_end--;
+			b_start++;
+			continue;
+		}
+		if (a[a_start] === b[b_end]) {
+			// First old item is the last new one: move it behind the old run.
+			b_val = b[b_end];
+			b_block = b_blocks[b_end] = a_blocks[a_start];
+			if (is_indexed) {
+				update_index(b_block, b_end);
+			}
+			move(b_block, block_start(b_blocks, b_end + 1, b_length, anchor));
+			a_start++;
+			b_end--;
+			continue;
+		}
+		break;
 	}
 
 	var fast_path_removal = false;
 
-	if (j > a_end) {
-		if (j <= b_end) {
-			var insert_target = block_start(a_blocks, a_end + 1, a_length, anchor);
-			while (j <= b_end) {
-				b_val = b[j];
-				b_blocks[j] = create_item(insert_target, b_val, j, render_fn, is_indexed, false);
-				j++;
+	if (a_start > a_end) {
+		if (b_start <= b_end) {
+			var target_node = block_start(b_blocks, b_end + 1, b_length, anchor);
+			while (b_start <= b_end) {
+				b_blocks[b_start] = create_item(
+					target_node,
+					b[b_start],
+					b_start,
+					render_fn,
+					is_indexed,
+					false,
+				);
+				b_start++;
 			}
 		}
-	} else if (j > b_end) {
-		while (j <= a_end) {
-			destroy_block(a_blocks[j++]);
+	} else if (b_start > b_end) {
+		while (a_start <= a_end) {
+			destroy_block(a_blocks[a_start++]);
 		}
 	} else {
-		a_start = j;
-		b_start = j;
-		a_left = a_end - j + 1;
-		b_left = b_end - j + 1;
+		a_left = a_end - a_start + 1;
+		b_left = b_end - b_start + 1;
 		sources = new Int32Array(b_left + 1);
 		moved = false;
 		pos = 0;
@@ -793,11 +850,9 @@ function reconcile_by_ref(anchor, block, b, render_fn, is_controlled, is_indexed
 		// When sizes are small, just loop them through
 		if (b_length < 4 || (a_left | b_left) < 32) {
 			for (i = a_start; i <= a_end; ++i) {
-				a_val = a[i];
 				if (patched < b_left) {
 					for (j = b_start; j <= b_end; j++) {
-						b_val = b[j];
-						if (a_val === b_val) {
+						if (a[i] === b[j]) {
 							sources[j - b_start] = i + 1;
 							if (fast_path_removal) {
 								fast_path_removal = false;
@@ -810,6 +865,7 @@ function reconcile_by_ref(anchor, block, b, render_fn, is_controlled, is_indexed
 							} else {
 								pos = j;
 							}
+							b_val = b[j];
 							b_block = b_blocks[j] = a_blocks[i];
 							if (is_indexed) {
 								update_index(b_block, j);
@@ -833,10 +889,8 @@ function reconcile_by_ref(anchor, block, b, render_fn, is_controlled, is_indexed
 			}
 
 			for (i = a_start; i <= a_end; ++i) {
-				a_val = a[i];
-
 				if (patched < b_left) {
-					j = map.get(a_val);
+					j = map.get(a[i]);
 
 					if (j !== undefined) {
 						if (fast_path_removal) {
@@ -851,9 +905,10 @@ function reconcile_by_ref(anchor, block, b, render_fn, is_controlled, is_indexed
 						} else {
 							pos = j;
 						}
-						block = b_blocks[j] = a_blocks[i];
+						b_val = b[j];
+						b_block = b_blocks[j] = a_blocks[i];
 						if (is_indexed) {
-							update_index(block, j);
+							update_index(b_block, j);
 						}
 						++patched;
 					} else if (!fast_path_removal) {
@@ -875,6 +930,24 @@ function reconcile_by_ref(anchor, block, b, render_fn, is_controlled, is_indexed
 		var seq = lis_algorithm(sources);
 		j = seq.length - 1;
 
+		// When most surviving items have to move anyway, re-lay the whole range
+		// in order before a fixed target: inserting before the same node is
+		// noticeably cheaper per item than moving into arbitrary positions.
+		if ((patched - seq.length) * 3 > b_left * 2) {
+			var relay_target = block_start(b_blocks, b_end + 1, b_length, anchor);
+			for (i = 0; i < b_left; i++) {
+				pos = i + b_start;
+				if (sources[i] === 0) {
+					b_blocks[pos] = create_item(relay_target, b[pos], pos, render_fn, is_indexed, false);
+				} else {
+					move(b_blocks[pos], relay_target);
+				}
+			}
+			state.array = b;
+			state.blocks = b_blocks;
+			return;
+		}
+
 		for (i = b_left - 1; i >= 0; i--) {
 			if (sources[i] === 0) {
 				pos = i + b_start;
@@ -885,7 +958,6 @@ function reconcile_by_ref(anchor, block, b, render_fn, is_controlled, is_indexed
 				b_blocks[pos] = create_item(target, b_val, pos, render_fn, is_indexed, false);
 			} else if (j < 0 || i !== seq[j]) {
 				pos = i + b_start;
-				b_val = b[pos];
 				next_pos = pos + 1;
 
 				var target = block_start(b_blocks, next_pos, b_length, anchor);

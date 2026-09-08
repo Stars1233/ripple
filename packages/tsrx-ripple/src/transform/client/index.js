@@ -30,6 +30,7 @@ import tsx from 'esrap/languages/tsx';
 import {
 	builders,
 	clone_ast_node,
+	extractPaths,
 	IS_CONTROLLED,
 	IS_INDEXED,
 	ROOT_CONTROLLED,
@@ -912,6 +913,8 @@ function apply_updates(init, update, state) {
 			}
 		}
 
+		hoist_repeated_tracked_reads(render_statements, state);
+
 		init.push(
 			b.stmt(
 				b.call(
@@ -922,6 +925,124 @@ function apply_updates(init, update, state) {
 			),
 		);
 	}
+}
+
+/**
+ * @param {AST.Node} node
+ * @returns {string | null} the identifier read by a `_$_.get(identifier)` call
+ */
+function get_tracked_read_name(node) {
+	if (node.type !== 'CallExpression' || node.arguments.length !== 1) {
+		return null;
+	}
+	const callee = node.callee;
+	// The builder emits `_$_.get` either as a dotted identifier or a member.
+	const is_get =
+		(callee.type === 'Identifier' && callee.name === '_$_.get') ||
+		(callee.type === 'MemberExpression' &&
+			callee.object.type === 'Identifier' &&
+			callee.object.name === '_$_' &&
+			callee.property.type === 'Identifier' &&
+			callee.property.name === 'get');
+	const argument = node.arguments[0];
+	return is_get && argument.type === 'Identifier' ? argument.name : null;
+}
+
+/**
+ * A grouped render reads the same tracked identifier (typically a `@for`
+ * item) once per update it appears in. Where the render body reads it
+ * unconditionally anyway, read it once up front and reuse the value. Reads
+ * inside nested functions keep their own subscription and are left alone; an
+ * identifier read only on a conditional path (a ternary branch, the right
+ * side of `&&` / `||`) is not hoisted, since the read may be guarded — for
+ * example against a pending `trackAsync` value.
+ * @param {AST.Statement[]} statements
+ * @param {TransformClientState} state
+ */
+function hoist_repeated_tracked_reads(statements, state) {
+	/** @type {Map<string, { unconditional: number; total: number }>} */
+	const counts = new Map();
+
+	/** @type {Visitors<AST.Node, { conditional: boolean }>} */
+	const counting_visitors = {
+		_(node, { state, next }) {
+			const name = get_tracked_read_name(node);
+			if (name !== null) {
+				let count = counts.get(name);
+				if (count === undefined) {
+					count = { unconditional: 0, total: 0 };
+					counts.set(name, count);
+				}
+				count.total += 1;
+				if (!state.conditional) count.unconditional += 1;
+				return;
+			}
+			next();
+		},
+		ConditionalExpression(node, { state, visit }) {
+			visit(node.test, state);
+			visit(node.consequent, { conditional: true });
+			visit(node.alternate, { conditional: true });
+		},
+		LogicalExpression(node, { state, visit }) {
+			visit(node.left, state);
+			visit(node.right, { conditional: true });
+		},
+		IfStatement(node, { state, visit }) {
+			visit(node.test, state);
+			visit(node.consequent, { conditional: true });
+			if (node.alternate) visit(node.alternate, { conditional: true });
+		},
+		ArrowFunctionExpression() {},
+		FunctionExpression() {},
+		FunctionDeclaration() {},
+	};
+
+	for (const statement of statements) {
+		walk(statement, { conditional: false }, counting_visitors);
+	}
+
+	/** @type {Map<string, AST.Identifier>} */
+	const hoisted = new Map();
+	for (const [name, count] of counts) {
+		if (count.total > 1 && count.unconditional > 0) {
+			hoisted.set(name, b.id(state.scope.generate('__' + name)));
+		}
+	}
+	if (hoisted.size === 0) {
+		return;
+	}
+
+	/** @type {Visitors<AST.Node, null>} */
+	const replacing_visitors = {
+		_(node, { next }) {
+			const name = get_tracked_read_name(node);
+			if (name !== null) {
+				const id = hoisted.get(name);
+				return id === undefined ? node : id;
+			}
+			return next();
+		},
+		ArrowFunctionExpression(node) {
+			return node;
+		},
+		FunctionExpression(node) {
+			return node;
+		},
+		FunctionDeclaration(node) {
+			return node;
+		},
+	};
+
+	for (let i = 0; i < statements.length; i++) {
+		statements[i] = /** @type {AST.Statement} */ (walk(statements[i], null, replacing_visitors));
+	}
+
+	const declarations = [];
+	for (const [name, id] of hoisted) {
+		declarations.push(b.var(id, b.call('_$_.get', b.id(name))));
+	}
+	statements.unshift(...declarations);
 }
 
 /**
@@ -1662,6 +1783,7 @@ const visit_for_of_statement = (node, context) => {
 		/** @type {AST.VariableDeclaration} */ (node.left).declarations[0].id;
 	const body_scope = /** @type {ScopeInterface} */ (context.state.scopes.get(node.body));
 	const body_nodes = /** @type {AST.BlockStatement} */ (node.body).body;
+	const selector_for = create_selector_for_state(node, body_scope, context.state);
 	/** @type {AST.Statement[]} */
 	const body = transform_body(body_nodes, {
 		...context,
@@ -1670,8 +1792,14 @@ const visit_for_of_statement = (node, context) => {
 			scope: body_scope,
 			namespace: context.state.namespace,
 			flush_node: null,
+			selector_for,
 		},
 	});
+
+	// Selectors are created once per loop, ahead of the loop itself.
+	for (const { id: selector_id, source } of selector_for.selectors) {
+		context.state.init?.push(b.const(selector_id, b.call('_$_.selector', b.thunk(source))));
+	}
 
 	const empty_scope = node.empty
 		? context.state.scopes.get(node.empty) || context.state.scope
@@ -1723,6 +1851,249 @@ const visit_for_of_statement = (node, context) => {
 		),
 	);
 };
+
+/** @import { SelectorForState } from '../../../types/transform-state' */
+
+/**
+ * The per-loop bookkeeping for selector lowering: the loop item's bindings
+ * and the scope the loop is declared in, plus the selectors its body needs.
+ * @param {AST.ForOfStatement | AST.JSXForOfExpression} node
+ * @param {ScopeInterface} body_scope
+ * @param {TransformClientState} state
+ * @returns {SelectorForState}
+ */
+function create_selector_for_state(node, body_scope, state) {
+	/** @type {Set<Binding>} */
+	const pattern_bindings = new Set();
+	const left = node.left;
+
+	if (left.type === 'VariableDeclaration') {
+		for (const declarator of left.declarations) {
+			for (const path of extractPaths(declarator.id)) {
+				const binding = body_scope.get(/** @type {AST.Identifier} */ (path.node).name);
+				if (binding !== null) {
+					pattern_bindings.add(binding);
+				}
+			}
+		}
+	}
+
+	return { pattern_bindings, outer_scope: state.scope, selectors: [] };
+}
+
+/**
+ * Whether an operand of a comparison is side-effect free and cheap enough to
+ * re-evaluate: identifiers, literals, member chains, and pure operators.
+ * Collects the identifiers it references.
+ * @param {AST.Node} node
+ * @param {AST.Identifier[]} references
+ * @returns {boolean}
+ */
+function collect_pure_operand_references(node, references) {
+	switch (node.type) {
+		case 'Identifier':
+			references.push(node);
+			return true;
+		case 'Literal':
+			return true;
+		case 'TemplateLiteral':
+			return node.expressions.every((expression) =>
+				collect_pure_operand_references(expression, references),
+			);
+		case 'MemberExpression':
+			return (
+				collect_pure_operand_references(node.object, references) &&
+				(!node.computed || collect_pure_operand_references(node.property, references))
+			);
+		case 'ChainExpression':
+		case 'ParenthesizedExpression':
+		case 'TSNonNullExpression':
+		case 'TSInstantiationExpression':
+		case 'TSAsExpression':
+		case 'TSTypeAssertion':
+		case 'TSSatisfiesExpression':
+			return collect_pure_operand_references(node.expression, references);
+		case 'UnaryExpression':
+			return (
+				node.operator !== 'delete' && collect_pure_operand_references(node.argument, references)
+			);
+		case 'BinaryExpression':
+		case 'LogicalExpression':
+			return (
+				collect_pure_operand_references(node.left, references) &&
+				collect_pure_operand_references(node.right, references)
+			);
+		case 'ConditionalExpression':
+			return (
+				collect_pure_operand_references(node.test, references) &&
+				collect_pure_operand_references(node.consequent, references) &&
+				collect_pure_operand_references(node.alternate, references)
+			);
+		default:
+			return false;
+	}
+}
+
+/**
+ * @param {ScopeInterface | null} owner
+ * @param {ScopeInterface} scope
+ * @returns {boolean}
+ */
+function is_scope_or_ancestor(owner, scope) {
+	/** @type {ScopeInterface | null} */
+	let current = scope;
+	while (current !== null) {
+		if (current === owner) {
+			return true;
+		}
+		current = current.parent;
+	}
+	return false;
+}
+
+/**
+ * Lower `outer === item` (or `!==`) inside a `@for` render expression to a
+ * selector lookup, so a change of the outer value only re-renders the items
+ * for its previous and next key. One side must read outer reactive state that
+ * is visible where the loop is declared; the other must involve the loop item.
+ * @param {AST.BinaryExpression} node
+ * @param {TransformClientContext} context
+ * @returns {AST.Expression | null}
+ */
+function visit_selector_comparison(node, context) {
+	const state = context.state;
+	const selector_for = state.selector_for;
+	const root = state.selector_root;
+
+	if (
+		selector_for === undefined ||
+		root === undefined ||
+		state.to_ts ||
+		(node.operator !== '===' && node.operator !== '!==')
+	) {
+		return null;
+	}
+
+	// Only comparisons evaluated directly by the render expression qualify;
+	// a callback inside it may run outside the render block.
+	if (node !== root) {
+		const path = context.path;
+		let found = false;
+		for (let i = path.length - 1; i >= 0; i -= 1) {
+			const ancestor = path[i];
+			if (ancestor === root) {
+				found = true;
+				break;
+			}
+			if (
+				ancestor.type === 'ArrowFunctionExpression' ||
+				ancestor.type === 'FunctionExpression' ||
+				ancestor.type === 'FunctionDeclaration'
+			) {
+				return null;
+			}
+		}
+		if (!found) {
+			return null;
+		}
+	}
+
+	const left = /** @type {AST.Expression} */ (node.left);
+	const right = node.right;
+	/** @type {AST.Identifier[]} */
+	const left_references = [];
+	/** @type {AST.Identifier[]} */
+	const right_references = [];
+	if (
+		!collect_pure_operand_references(left, left_references) ||
+		!collect_pure_operand_references(right, right_references)
+	) {
+		return null;
+	}
+
+	/**
+	 * @param {AST.Identifier[]} references
+	 * @returns {'item' | 'outer' | 'local'}
+	 */
+	const classify = (references) => {
+		let uses_item = false;
+		for (const reference of references) {
+			const binding = state.scope.get(reference.name);
+			if (binding === null) {
+				continue;
+			}
+			if (selector_for.pattern_bindings.has(binding)) {
+				uses_item = true;
+				continue;
+			}
+			if (!is_scope_or_ancestor(state.scope.owner(reference.name), selector_for.outer_scope)) {
+				return 'local';
+			}
+		}
+		return uses_item ? 'item' : 'outer';
+	};
+
+	const left_kind = classify(left_references);
+	const right_kind = classify(right_references);
+	/** @type {AST.Expression} */
+	let outer;
+	/** @type {AST.Expression} */
+	let item;
+	if (left_kind === 'outer' && right_kind === 'item') {
+		outer = left;
+		item = right;
+	} else if (left_kind === 'item' && right_kind === 'outer') {
+		outer = right;
+		item = left;
+	} else {
+		return null;
+	}
+
+	const outer_metadata = { tracking: false };
+	const item_metadata = { tracking: false };
+	const outer_expression = /** @type {AST.Expression} */ (
+		context.visit(outer, { ...state, metadata: outer_metadata })
+	);
+	const item_expression = /** @type {AST.Expression} */ (
+		context.visit(item, { ...state, metadata: item_metadata })
+	);
+
+	// The enclosing render expression tracks whatever either side tracked.
+	if (state.metadata?.tracking === false && (outer_metadata.tracking || item_metadata.tracking)) {
+		state.metadata.tracking = true;
+	}
+
+	if (!outer_metadata.tracking) {
+		// A static outer value needs no selector; keep the plain comparison.
+		return outer === left
+			? b.binary(node.operator, outer_expression, item_expression)
+			: b.binary(node.operator, item_expression, outer_expression);
+	}
+
+	const selector_id = b.id(selector_for.outer_scope.generate('selector'));
+	selector_for.selectors.push({ id: selector_id, source: outer_expression });
+
+	const match = b.call('_$_.selector_match', selector_id, item_expression);
+	return node.operator === '===' ? match : b.unary('!', match);
+}
+
+/**
+ * A DOM traversal read, inline so each template position has its own
+ * property-read site (one inline cache per site instead of one shared,
+ * megamorphic site inside a helper). While hydrating the read is replaced by
+ * the hydration cursor, exactly as the `child` / `sibling` helpers do.
+ * @param {'child' | 'sibling'} operation
+ * @param {AST.Expression} node
+ * @param {boolean | undefined} is_text
+ * @returns {AST.Expression}
+ */
+function inline_traversal(operation, node, is_text) {
+	return b.conditional(
+		b.member(b.id('_$_'), b.id('hydrating')),
+		b.call(operation === 'child' ? '_$_.hydrate_child' : '_$_.hydrate_sibling', is_text && b.true),
+		b.member(node, b.id(operation === 'child' ? 'firstChild' : 'nextSibling')),
+	);
+}
 
 /** @type {Visitors<AST.Node, TransformClientState>} */
 const visitors = {
@@ -2850,7 +3221,7 @@ const visitors = {
 					const id = state.flush_node?.();
 					const metadata = { tracking: false };
 					const expression = /** @type {AST.Expression} */ (
-						visit(attr_value, { ...state, metadata })
+						visit(attr_value, { ...state, metadata, selector_root: attr_value })
 					);
 
 					const hash_arg = scope_class ?? undefined;
@@ -2861,7 +3232,7 @@ const visitors = {
 								b.stmt(b.call('_$_.set_class', id, key, hash_arg, b.literal(is_html_class))),
 							expression,
 							identity: attr_value,
-							initial: b.call(b.id('Symbol')),
+							initial: b.member(b.id('_$_'), b.id('UNINITIALIZED')),
 						});
 					} else {
 						state.init?.push(
@@ -2895,7 +3266,7 @@ const visitors = {
 					const id = state.flush_node?.();
 					const metadata = { tracking: false };
 					const expression = /** @type {AST.Expression} */ (
-						visit(attr_value, { ...state, metadata })
+						visit(attr_value, { ...state, metadata, selector_root: attr_value })
 					);
 
 					if (metadata.tracking) {
@@ -3498,6 +3869,10 @@ const visitors = {
 	},
 
 	BinaryExpression(node, context) {
+		const selector = visit_selector_comparison(node, context);
+		if (selector !== null) {
+			return selector;
+		}
 		return b.binary(
 			node.operator,
 			/** @type {AST.Expression} */ (context.visit(node.left)),
@@ -5550,6 +5925,7 @@ function transform_children(children, context) {
 						...state,
 						flush_node: null,
 						metadata,
+						selector_root: get_template_expression(node, false),
 					})
 				);
 				is_create_text_only = normalized.length === 1 && expression.type === 'Literal';
@@ -5571,7 +5947,7 @@ function transform_children(children, context) {
 					return cached;
 				} else if (current_prev !== null) {
 					const id = get_id(node);
-					state.init?.push(b.var(id, b.call('_$_.sibling', current_prev(), is_text && b.true)));
+					state.init?.push(b.var(id, inline_traversal('sibling', current_prev(), is_text)));
 					cached = id;
 					return id;
 				} else if (initial !== null) {
@@ -5588,7 +5964,16 @@ function transform_children(children, context) {
 					}
 
 					const id = get_id(node);
-					state.init?.push(b.var(id, b.call('_$_.child', state.flush_node?.(), is_text && b.true)));
+					state.init?.push(
+						b.var(
+							id,
+							inline_traversal(
+								'child',
+								/** @type {AST.Expression} */ (state.flush_node?.()),
+								is_text,
+							),
+						),
+					);
 					cached = id;
 					return id;
 				} else {
