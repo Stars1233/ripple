@@ -95,7 +95,7 @@ const lines = [
 	`Workload SHA-256: \`${meta.workloadSha256}\`.`,
 	`Lockfile SHA-256: \`${meta.lockfileSha256}\`.`,
 	'',
-	'These are baseline observations before Ripple optimization. Scores below are medians of the per-run headline scores; the range shows run-to-run variation. The p95 column is the median of the per-run p95 values. RME remains a per-run diagnostic; neither is proof of a timing win. Each framework column is that framework's score relative to Ripple's (Ripple = 1): above 1 the framework is slower than Ripple, below 1 it is faster. For timings below 0.01 ms or a zero Ripple score, the column shows the framework's score minus Ripple's instead (positive means slower than Ripple). N/A means that operation has no matching competitor fixture.',
+	"These are baseline observations before Ripple optimization. Scores below are medians of the per-run headline scores; the range shows run-to-run variation. The p95 column is the median of the per-run p95 values. RME remains a per-run diagnostic; neither is proof of a timing win. Each framework column is that framework's score relative to Ripple's (Ripple = 1): above 1 the framework is slower than Ripple, below 1 it is faster. For timings below 0.01 ms or a zero Ripple score, the column shows the framework's score minus Ripple's instead (positive means slower than Ripple). N/A means that operation has no matching competitor fixture.",
 	'',
 	'## Verified environment',
 	'',
