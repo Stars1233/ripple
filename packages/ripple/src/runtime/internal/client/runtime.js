@@ -36,6 +36,8 @@ import {
 	DIRECT_CHILD_BLOCK,
 	SCHEDULED,
 	SELECTOR,
+	IF_BLOCK,
+	RELEASED,
 } from './constants.js';
 import {
 	begin_boundary_request,
@@ -379,8 +381,10 @@ export function run_block(block, first_run = false) {
 		active_component = block.co;
 
 		if (!first_run) {
-			// A list's children are all item branches, so there is nothing to sweep.
-			if ((block.f & FOR_BLOCK) === 0) {
+			// A list's children are all item branches, so there is nothing to
+			// sweep; an if block's children are its branch, which it replaces
+			// itself only when the condition changes.
+			if ((block.f & (FOR_BLOCK | IF_BLOCK)) === 0) {
 				destroy_non_branch_children(block);
 			}
 			run_teardown(block);
@@ -945,8 +949,7 @@ export function unlink_subscriber(dependency) {
 		}
 		tracked.sb = next;
 		if (next === null && (tracked.f & SELECTOR) !== 0) {
-			// Last subscriber gone: release the selector's per-key entry.
-			/** @type {SelectorAccessors} */ (tracked.a).m.delete(tracked.h);
+			release_selector_key(/** @type {Tracked} */ (tracked));
 		}
 	}
 	if (next !== null) {
@@ -956,8 +959,42 @@ export function unlink_subscriber(dependency) {
 }
 
 /**
- * @typedef {{ get: undefined; set: undefined; m: Map<any, Tracked> }} SelectorAccessors
+ * `n` counts released keys still in the map.
+ * @typedef {{ get: undefined; set: undefined; m: Map<any, Tracked>; n: number }} SelectorAccessors
  */
+
+/** Released selector keys kept for reuse before the map is swept. */
+var SELECTOR_SWEEP_THRESHOLD = 1024;
+
+/**
+ * The last subscriber of a selector key left. The entry stays in the map so
+ * a key that comes back (a list re-rendering the same items) reuses it
+ * instead of allocating and inserting again; once enough released keys pile
+ * up they are swept out, so the map stays bounded.
+ * @param {Tracked} tracked
+ */
+function release_selector_key(tracked) {
+	var accessors = /** @type {SelectorAccessors} */ (tracked.a);
+	tracked.f |= RELEASED;
+	if (++accessors.n > SELECTOR_SWEEP_THRESHOLD) {
+		var m = accessors.m;
+		for (var [key, t] of m) {
+			if ((t.f & RELEASED) !== 0) {
+				m.delete(key);
+			}
+		}
+		accessors.n = 0;
+	}
+}
+
+/**
+ * A key found in the map again after its subscribers had all left.
+ * @param {Tracked} tracked
+ */
+export function revive_selector_key(tracked) {
+	tracked.f ^= RELEASED;
+	/** @type {SelectorAccessors} */ (tracked.a).n--;
+}
 
 /**
  * A tracked match flag for one selector key. The selector's shared accessor
