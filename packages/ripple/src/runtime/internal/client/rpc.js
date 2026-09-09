@@ -1,11 +1,11 @@
-import * as devalue from 'devalue';
+import { encode, revive } from './transport.js';
 
 /**
  * @param {string} hash
  * @param {any[]} args
  */
 export async function rpc(hash, args) {
-	const body = devalue.stringify(args);
+	const body = encode(args);
 	/** @type {Response} */
 	let response;
 
@@ -55,5 +55,5 @@ export async function rpc(hash, args) {
 		);
 	}
 
-	return devalue.parse(data).value;
+	return revive(data).value;
 }
