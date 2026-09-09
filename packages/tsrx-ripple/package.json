@@ -20,6 +20,10 @@
     },
     "./types/rpc": {
       "types": "./types/rpc.d.ts"
+    },
+    "./typescript": {
+      "types": "./types/typescript.d.ts",
+      "default": "./src/typescript.js"
     }
   },
   "dependencies": {
@@ -40,5 +44,13 @@
   "files": [
     "src",
     "types"
-  ]
+  ],
+  "peerDependencies": {
+    "typescript": "catalog:peer"
+  },
+  "peerDependenciesMeta": {
+    "typescript": {
+      "optional": true
+    }
+  }
 }
