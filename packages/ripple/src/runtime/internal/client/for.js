@@ -1,4 +1,4 @@
-/** @import { Block, Tracked } from '#client' */
+/** @import { AppendIntoAnchor, Block, Tracked } from '#client' */
 
 import { IS_CONTROLLED, IS_INDEXED, ROOT_CONTROLLED } from '../../../constants.js';
 import {
@@ -7,11 +7,18 @@ import {
 	destroy_block_children,
 	get_first_node,
 	get_last_node,
+	own_anchor,
 	render,
 } from './blocks.js';
 import { FOR_BLOCK, TRACKED_ARRAY } from './constants.js';
 import { hydrate_next, hydrate_node, hydrating, set_hydrate_node } from './hydration.js';
-import { create_text, get_first_child, get_last_child, next_sibling } from './operations.js';
+import {
+	create_text,
+	get_first_child,
+	get_last_child,
+	next_sibling,
+	resolve_anchor,
+} from './operations.js';
 import { append } from './template.js';
 import { active_block, set, tracked, untrack } from './runtime.js';
 import { array_from, is_array } from '@tsrx/core/runtime/language-helpers';
@@ -168,7 +175,7 @@ function collection_to_array(collection) {
 
 /**
  * @template V
- * @param {Element} node
+ * @param {Element | AppendIntoAnchor} node
  * @param {() => V[] | Iterable<V>} get_collection
  * @param {(anchor: Node, value: V | Tracked, index?: any) => Block} render_fn
  * @param {number} flags
@@ -179,7 +186,9 @@ export function for_block(node, get_collection, render_fn, flags, render_empty) 
 	var is_controlled = (flags & IS_CONTROLLED) !== 0;
 	var is_indexed = (flags & IS_INDEXED) !== 0;
 	var root_controlled = (flags & ROOT_CONTROLLED) !== 0;
-	var anchor = /** @type {Element | Text} */ (node);
+	// A root-controlled list receives the component's `__anchor`, which may be
+	// an append-into sentinel; moves and end insertions need a real node.
+	var anchor = /** @type {Element | Text} */ (root_controlled ? resolve_anchor(node) : node);
 	/** @type {Node | undefined} */
 	var boundary;
 
@@ -188,7 +197,7 @@ export function for_block(node, get_collection, render_fn, flags, render_empty) 
 			var parent_node = /** @type {Element} */ (node);
 			/** @type {Element | Text} */ (set_hydrate_node(get_first_child(parent_node)));
 		} else {
-			anchor = node.appendChild(create_text());
+			anchor = /** @type {Element} */ (node).appendChild(create_text());
 		}
 	}
 
@@ -217,7 +226,11 @@ export function for_block(node, get_collection, render_fn, flags, render_empty) 
 		FOR_BLOCK,
 	);
 
+	own_anchor(node, anchor);
+
 	if (hydrating && root_controlled) {
+		// The original `node`: for a sentinel, `hydrate_append` performs the
+		// cursor advance that stands in for the eliminated sibling navigation.
 		append(/** @type {ChildNode} */ (node), /** @type {Node} */ (boundary));
 	}
 }
@@ -225,7 +238,7 @@ export function for_block(node, get_collection, render_fn, flags, render_empty) 
 /**
  * @template V
  * @template K
- * @param {Element} node
+ * @param {Element | AppendIntoAnchor} node
  * @param {() => V[] | Iterable<V>} get_collection
  * @param {(anchor: Node, value: V | Tracked, index?: any) => Block} render_fn
  * @param {number} flags
@@ -237,7 +250,7 @@ export function for_block_keyed(node, get_collection, render_fn, flags, get_key,
 	var is_controlled = (flags & IS_CONTROLLED) !== 0;
 	var is_indexed = (flags & IS_INDEXED) !== 0;
 	var root_controlled = (flags & ROOT_CONTROLLED) !== 0;
-	var anchor = /** @type {Element | Text} */ (node);
+	var anchor = /** @type {Element | Text} */ (root_controlled ? resolve_anchor(node) : node);
 	/** @type {Node | undefined} */
 	var boundary;
 
@@ -248,7 +261,7 @@ export function for_block_keyed(node, get_collection, render_fn, flags, get_key,
 			/** @type {Element | Text} */ (set_hydrate_node(get_first_child(parent_node)));
 			anchor = /** @type {Element | Text} */ (get_last_child(parent_node));
 		} else {
-			anchor = node.appendChild(create_text());
+			anchor = /** @type {Element} */ (node).appendChild(create_text());
 		}
 	}
 
@@ -277,12 +290,23 @@ export function for_block_keyed(node, get_collection, render_fn, flags, get_key,
 					render_empty,
 				);
 			});
+
+			// The hydrated anchor is the block's start marker; later inserts and
+			// end moves must go before the cursor, which now sits after the
+			// hydrated items (the same re-anchoring `for_block` does).
+			if (hydrating) {
+				anchor = /** @type {Element | Text} */ (hydrate_node);
+			}
 		},
 		null,
 		FOR_BLOCK,
 	);
 
+	own_anchor(node, anchor);
+
 	if (hydrating && root_controlled) {
+		// The original `node`: for a sentinel, `hydrate_append` performs the
+		// cursor advance that stands in for the eliminated sibling navigation.
 		append(/** @type {ChildNode} */ (node), /** @type {Node} */ (boundary));
 	}
 }
@@ -338,8 +362,61 @@ function update_value(block, value) {
  * @param {(item: V) => K} get_key
  * @param {(anchor: Node) => void} [render_empty]
  * @returns {void}
+ *
+ * The first run only creates items, so it lives in this small function and
+ * the diff below is compiled only once a list actually changes.
  */
 function reconcile_by_key(
+	anchor,
+	block,
+	b,
+	render_fn,
+	is_controlled,
+	is_indexed,
+	get_key,
+	render_empty,
+) {
+	var b_length = b.length;
+
+	if (block.s === null && b_length > 0) {
+		var b_blocks = Array(b_length);
+		var b_keys = b.map(get_key);
+
+		for (var j = 0; j < b_length; j++) {
+			b_blocks[j] = create_item(anchor, b[j], j, render_fn, is_indexed, true);
+		}
+
+		block.s = { array: b, blocks: b_blocks, keys: b_keys, empty: null };
+		return;
+	}
+
+	reconcile_by_key_diff(
+		anchor,
+		block,
+		b,
+		render_fn,
+		is_controlled,
+		is_indexed,
+		get_key,
+		render_empty,
+	);
+}
+
+/**
+ * Keyed diff for every run after the first (or a first run with an empty
+ * list). See {@link reconcile_by_key}.
+ * @template V, K
+ * @param {Element | Text} anchor
+ * @param {Block} block
+ * @param {V[]} b
+ * @param {(anchor: Node, value: V | Tracked, index?: any) => Block} render_fn
+ * @param {boolean} is_controlled
+ * @param {boolean} is_indexed
+ * @param {(item: V) => K} get_key
+ * @param {(anchor: Node) => void} [render_empty]
+ * @returns {void}
+ */
+function reconcile_by_key_diff(
 	anchor,
 	block,
 	b,

@@ -22,14 +22,19 @@ interface Item {
 	label: string;
 }
 
-function Tip(props: { item: Item; cls: string }) @{
-	<div class={props.cls}>
-		<span class="tip-label">{props.item.label}</span>
+function Tip({ item: { label }, cls }: { item: Item; cls: string }) @{
+	<div class={cls}>
+		<span class="tip-label">{label}</span>
 		<button class="tip-btn" onClick={hit}>{'hit'}</button>
 	</div>
 }
 
-function Section(props: {
+function Section({
+	secClass,
+	tipClass,
+	prefix,
+	bind,
+}: {
 	secClass: string;
 	tipClass: string;
 	prefix: string;
@@ -38,7 +43,7 @@ function Section(props: {
 	let &[open] = track(false);
 	let &[tick] = track(0);
 	let &[distinct] = track(false);
-	props.bind(
+	bind(
 		(v: boolean) => {
 			open = v;
 		},
@@ -50,15 +55,15 @@ function Section(props: {
 		},
 	);
 
-	<section class={props.secClass}>
-		<h3 class="tick">{props.prefix + tick}</h3>
+	<section class={secClass}>
+		<h3 class="tick">{prefix + tick}</h3>
 		<ul class="list">
-			@for (const item of ITEMS; key item.id) {
+			@for (const item of ITEMS as Item[]; key item.id) {
 				<li class="item">
 					<span class="label">{item.label}</span>
 					@if (open) {
 						<Portal target={distinct ? targetFor(item.id) : sharedTarget()}>
-							<Tip item={item} cls={props.tipClass} />
+							<Tip item={item} cls={tipClass} />
 						</Portal>
 					}
 				</li>

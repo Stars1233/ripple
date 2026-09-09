@@ -1,4 +1,4 @@
-/** @import { Block, TryBoundaryState, BlockWithTryBoundary, BlockWithTryBoundaryAndCatch } from '#client' */
+/** @import { AppendIntoAnchor, Block, TryBoundaryState, BlockWithTryBoundary, BlockWithTryBoundaryAndCatch } from '#client' */
 
 import {
 	boundary_fn_running_block,
@@ -6,6 +6,7 @@ import {
 	destroy_block,
 	is_destroyed,
 	move_block,
+	own_anchor,
 	resume_block,
 } from './blocks.js';
 import { TRY_BLOCK } from './constants.js';
@@ -24,6 +25,7 @@ import {
 	set_hydrating,
 	skip_to_hydration_end,
 } from './hydration.js';
+import { resolve_anchor } from './operations.js';
 import { append } from './template.js';
 import {
 	active_block,
@@ -43,14 +45,17 @@ import {
  */
 
 /**
- * @param {Node} node
+ * @param {Node | AppendIntoAnchor} node
  * @param {(anchor: Node, block?: Block) => void} try_fn
  * @param {CatchFunction | null} catch_fn
  * @param {PendingFunction | null} [pending_fn=null]
+ * @param {boolean} [root_controlled=false] When true the block renders before
+ *   the component's `__anchor`, which may be an append-into sentinel (see
+ *   `resolve_anchor`).
  * @returns {void}
  */
 export function try_block(node, try_fn, catch_fn, pending_fn = null, root_controlled = false) {
-	var anchor = node;
+	var anchor = root_controlled ? resolve_anchor(node) : /** @type {Node} */ (node);
 	/** @type {Node | undefined} */
 	var boundary;
 	var pending_count = 0;
@@ -518,6 +523,8 @@ export function try_block(node, try_fn, catch_fn, pending_fn = null, root_contro
 			registry[unit_id] = { a: activate_streamed_chunk };
 		}
 	}
+
+	own_anchor(node, anchor);
 
 	if (hydrating && root_controlled) {
 		append(/** @type {ChildNode} */ (node), /** @type {Node} */ (boundary));

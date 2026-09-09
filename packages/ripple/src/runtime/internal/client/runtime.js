@@ -168,7 +168,10 @@ export function run_teardown(block) {
 			active_reaction = null;
 			tracking = false;
 			teardown = true;
-			fn.call(null);
+			// Runtime-internal teardowns keyed on block state get it as their
+			// argument, so they need no per-block closure; user effects have
+			// null state.
+			fn.call(null, block.s);
 		} finally {
 			active_block = previous_block;
 			active_reaction = previous_reaction;
@@ -301,6 +304,64 @@ export function handle_error(error, block) {
 }
 
 /**
+ * The error path of {@link run_block}, kept out of that hot function so a
+ * healthy mount never compiles it: routes real errors to the nearest catch
+ * boundary and pauses a block that read a pending async value under its
+ * pending boundary.
+ * @param {unknown} error
+ * @param {Block} block
+ */
+function handle_run_error(error, block) {
+	var is_component_direct = false;
+	var is_try_fn_block = false;
+	finish_dependencies(block, active_dependency);
+	// When a derived read throws ASYNC_DERIVED_READ_THROWN, it means the
+	// derived is still SUSPENSE_PENDING. The dependency was already registered,
+	// so we swallow the throw and let the parent continue processing. When
+	// the derived settles, the block will be dirty and rerun automatically.
+	if (error !== ASYNC_DERIVED_READ_THROWN) {
+		handle_error(error, block);
+	} else if (
+		// pending async tracked was read outside allowed blocks
+		(is_component_direct = active_component?.b === block) ||
+		(is_try_fn_block =
+			block.p !== null && (block.p.f & TRY_BLOCK) !== 0 && (block.f & DIRECT_CHILD_BLOCK) !== 0)
+	) {
+		throw new Error(
+			`Reads on pending tracked values directly inside ${is_component_direct ? 'component' : 'try/pending/catch'} body are prohibited. Use trackPending() test or peek() for safe access or create another derived instead.`,
+		);
+	} else {
+		// pending async tracked was read and threw ASYNC_DERIVED_READ_THROWN
+		var boundary = get_pending_boundary(block);
+		if (boundary !== null) {
+			pause_block(block);
+			register_boundary_paused_block(boundary, block);
+
+			// Register deferred boundary completions for async tracked deps.
+			// This handles the case where a child boundary reads a tracked value
+			// whose resolution is managed by a different (parent) boundary.
+			var dep = block.d;
+			while (dep !== null) {
+				var dep_tracked = /** @type {Tracked} */ (dep.t);
+				if (
+					(dep_tracked.__v === SUSPENSE_PENDING || dep_tracked.__v === SUSPENSE_REJECTED) &&
+					(dep_tracked.f & TRACKED) !== 0
+				) {
+					var deferred_req = begin_boundary_request(boundary);
+					var entry = /** @type {DeferredTrackedEntry} */ ({ b: boundary, r: deferred_req });
+					if (dep_tracked.d === null) {
+						dep_tracked.d = [entry];
+					} else {
+						dep_tracked.d.push(entry);
+					}
+				}
+				dep = dep.n;
+			}
+		}
+	}
+}
+
+/**
  * @param {Block} block
  * @param {boolean} [first_run] true when the block has no children, teardown,
  * or dependencies yet, so that cleanup can be skipped
@@ -342,53 +403,7 @@ export function run_block(block, first_run = false) {
 
 		finish_dependencies(block, active_dependency);
 	} catch (error) {
-		var is_component_direct = false;
-		var is_try_fn_block = false;
-		finish_dependencies(block, active_dependency);
-		// When a derived read throws ASYNC_DERIVED_READ_THROWN, it means the
-		// derived is still SUSPENSE_PENDING. The dependency was already registered,
-		// so we swallow the throw and let the parent continue processing. When
-		// the derived settles, the block will be dirty and rerun automatically.
-		if (error !== ASYNC_DERIVED_READ_THROWN) {
-			handle_error(error, block);
-		} else if (
-			// pending async tracked was read outside allowed blocks
-			(is_component_direct = active_component?.b === block) ||
-			(is_try_fn_block =
-				block.p !== null && (block.p.f & TRY_BLOCK) !== 0 && (block.f & DIRECT_CHILD_BLOCK) !== 0)
-		) {
-			throw new Error(
-				`Reads on pending tracked values directly inside ${is_component_direct ? 'component' : 'try/pending/catch'} body are prohibited. Use trackPending() test or peek() for safe access or create another derived instead.`,
-			);
-		} else {
-			// pending async tracked was read and threw ASYNC_DERIVED_READ_THROWN
-			var boundary = get_pending_boundary(block);
-			if (boundary !== null) {
-				pause_block(block);
-				register_boundary_paused_block(boundary, block);
-
-				// Register deferred boundary completions for async tracked deps.
-				// This handles the case where a child boundary reads a tracked value
-				// whose resolution is managed by a different (parent) boundary.
-				var dep = block.d;
-				while (dep !== null) {
-					var dep_tracked = /** @type {Tracked} */ (dep.t);
-					if (
-						(dep_tracked.__v === SUSPENSE_PENDING || dep_tracked.__v === SUSPENSE_REJECTED) &&
-						(dep_tracked.f & TRACKED) !== 0
-					) {
-						var deferred_req = begin_boundary_request(boundary);
-						var entry = /** @type {DeferredTrackedEntry} */ ({ b: boundary, r: deferred_req });
-						if (dep_tracked.d === null) {
-							dep_tracked.d = [entry];
-						} else {
-							dep_tracked.d.push(entry);
-						}
-					}
-					dep = dep.n;
-				}
-			}
-		}
+		handle_run_error(error, block);
 	} finally {
 		active_block = previous_block;
 		active_reaction = previous_reaction;
@@ -1103,11 +1118,55 @@ function by_block_id(a, b) {
  */
 function flush_queue(pending) {
 	var blocks = pending.blocks;
+	var length = blocks.length;
 
-	if (!pending.sorted) {
-		blocks.sort(by_block_id);
+	if (length > 0) {
+		if (!pending.sorted) {
+			blocks.sort(by_block_id);
+		}
+
+		var has_effects = false;
+
+		for (var i = 0; i < length; i++) {
+			var block = blocks[i];
+			var flags = block.f;
+			block.f = flags & ~SCHEDULED;
+			if ((flags & (PRE_EFFECT_BLOCK | EFFECT_BLOCK)) !== 0) {
+				has_effects = true;
+			}
+		}
+
+		// New schedules land in the queue that replaced `pending`, so the array
+		// can be run in place. Effects need the three-phase ordering; a queue of
+		// only render blocks (the common flush) runs straight through.
+		if (has_effects) {
+			run_phases(blocks, length);
+		} else {
+			run_phase(blocks);
+		}
+
+		blocks.length = 0;
+		pending.sorted = true;
+		pending.last = 0;
 	}
 
+	if (queued_post_block_flush.length > 0) {
+		var callbacks = queued_post_block_flush;
+		queued_post_block_flush = [];
+		for (var j = 0; j < callbacks.length; j++) {
+			callbacks[j]();
+		}
+	}
+}
+
+/**
+ * Runs a queue that contains effects in three phases: pre-effects, render
+ * blocks, then effects. Kept out of {@link flush_queue} so a render-only flush
+ * never compiles it.
+ * @param {Block[]} blocks
+ * @param {number} length
+ */
+function run_phases(blocks, length) {
 	/** @type {Block[]} */
 	var pre_effects = [];
 	/** @type {Block[]} */
@@ -1115,10 +1174,9 @@ function flush_queue(pending) {
 	/** @type {Block[]} */
 	var effects = [];
 
-	for (var i = 0; i < blocks.length; i++) {
+	for (var i = 0; i < length; i++) {
 		var block = blocks[i];
 		var flags = block.f;
-		block.f = flags & ~SCHEDULED;
 
 		// A paused block is re-checked when it resumes; a destroyed one is gone.
 		if ((flags & (PAUSED | DESTROYED)) !== 0) {
@@ -1133,21 +1191,9 @@ function flush_queue(pending) {
 		}
 	}
 
-	blocks.length = 0;
-	pending.sorted = true;
-	pending.last = 0;
-
 	run_phase(pre_effects);
 	run_phase(other_blocks);
 	run_phase(effects);
-
-	if (queued_post_block_flush.length > 0) {
-		var callbacks = queued_post_block_flush;
-		queued_post_block_flush = [];
-		for (var j = 0; j < callbacks.length; j++) {
-			callbacks[j]();
-		}
-	}
 }
 
 /**
@@ -1513,8 +1559,11 @@ export function flush_sync(fn) {
 
 		var result = fn?.();
 
-		if (queue.blocks.length > 0) {
-			flush_sync();
+		// Each pass runs the blocks scheduled by the previous one.
+		while (queue.blocks.length > 0) {
+			var pending = queue;
+			queue = create_queue();
+			flush_queue(pending);
 		}
 
 		flush_count = 0;

@@ -1610,6 +1610,34 @@ export function is_delegated_event(event_name, handler, context) {
 }
 
 /**
+ * True when `id` is the `Portal` component imported from 'ripple' (under any
+ * local name), so the client transform can lower it to the `portal()` runtime
+ * fast path instead of a generic component call.
+ * @param {AST.Expression} id
+ * @param {CommonContext} context
+ * @returns {boolean}
+ */
+export function is_ripple_portal(id, context) {
+	if (id.type !== 'Identifier') return false;
+	const binding = context.state.scope.get(id.name);
+	if (
+		binding?.declaration_kind !== 'import' ||
+		binding.initial === null ||
+		binding.initial.type !== 'ImportDeclaration' ||
+		binding.initial.source.type !== 'Literal' ||
+		binding.initial.source.value !== 'ripple'
+	) {
+		return false;
+	}
+	for (const specifier of binding.initial.specifiers) {
+		if (specifier.type === 'ImportSpecifier' && specifier.local.name === id.name) {
+			return specifier.imported.type === 'Identifier' && specifier.imported.name === 'Portal';
+		}
+	}
+	return false;
+}
+
+/**
  * Returns the matched Ripple tracking call name
  * @param {AST.Expression | AST.Super} callee
  * @param {CommonContext} context
@@ -1635,6 +1663,23 @@ export function is_ripple_track_call(callee, context) {
 	}
 
 	return null;
+}
+
+/**
+ * True for a call to the global `String`, `Number`, or `Boolean` coercion
+ * function (not shadowed by a local binding). Coercions run no user code that
+ * could need the component scope, so they are emitted without a `with_scope`
+ * wrapper; the compiler emits `String(x ?? '')` itself for adjacent text
+ * expressions, so this also keeps generated coercions cheap.
+ * @param {AST.Expression | AST.Super} callee
+ * @param {CommonContext} context
+ * @returns {boolean}
+ */
+export function is_global_coercion_call(callee, context) {
+	if (callee.type !== 'Identifier') return false;
+	const name = callee.name;
+	if (name !== 'String' && name !== 'Number' && name !== 'Boolean') return false;
+	return context.state.scope.get(name) === null;
 }
 
 /**
@@ -1671,6 +1716,11 @@ export function is_inside_call_expression(context) {
 			const callee = context_node.callee;
 			if (is_ripple_track_call(callee, context)) {
 				return false;
+			}
+			// A coercion call gets no wrapper of its own, so a call nested in
+			// its arguments still needs one: keep looking outward.
+			if (is_global_coercion_call(callee, context)) {
+				continue;
 			}
 			return true;
 		}

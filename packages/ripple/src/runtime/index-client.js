@@ -1,7 +1,7 @@
 /** @import { RootBoundaryOptions } from '#client' */
 
 import { destroy_block, root } from './internal/client/blocks.js';
-import { handle_root_events } from './internal/client/events.js';
+import { handle_root_events, release_root_events } from './internal/client/events.js';
 import {
 	get_first_child,
 	get_next_sibling,
@@ -75,8 +75,12 @@ function normalize_props(props) {
 }
 
 /**
+ * `rootBoundary` configures the default `try`/`pending`/`catch` boundary the
+ * app is rendered under; `false` renders without one. Without a root
+ * boundary, `trackAsync()` must sit inside a user `@try` block, and errors
+ * that escape one propagate out of the flush.
  * @param {Function} component
- * @param {{ props?: Record<string, any>, target: HTMLElement, rootBoundary?: RootBoundaryOptions }} options
+ * @param {{ props?: Record<string, any>, target: HTMLElement, rootBoundary?: RootBoundaryOptions | false }} options
  * @returns {() => void}
  */
 export function mount(component, options) {
@@ -94,25 +98,38 @@ export function mount(component, options) {
 
 	target.append(anchor);
 
-	const cleanup_events = handle_root_events(target);
+	/** @type {import('./internal/client/events.js').RootTargetRef | null} */
+	let events_ref = handle_root_events(target);
+
+	const root_boundary = options.rootBoundary;
 
 	const _root = root(() => {
+		if (root_boundary === false) {
+			render_component(component, anchor, props);
+			return;
+		}
 		render_root_boundary(
 			anchor,
 			(component_anchor) => {
 				render_component(component, component_anchor, props);
 			},
-			options.rootBoundary,
+			root_boundary,
 		);
 	});
 
 	return () => {
-		cleanup_events();
+		// The disposer may be called again (a remount, HMR, a stale reference);
+		// only the first call owns the target's delegated-listener ref.
+		if (events_ref === null) return;
+		release_root_events(events_ref);
+		events_ref = null;
 		destroy_block(_root);
 	};
 }
 
 /**
+ * Server output always carries the root boundary markers, so `hydrate()`
+ * always renders under one (`rootBoundary: false` is not accepted here).
  * @param {Function} component
  * @param {{ props?: Record<string, any>, target: HTMLElement, rootBoundary?: RootBoundaryOptions }} options
  * @returns {() => void}
@@ -127,7 +144,8 @@ export function hydrate(component, options) {
 	const previous_hydrate_node = hydrate_node;
 	let anchor = get_first_child(target);
 
-	const cleanup_events = handle_root_events(target);
+	/** @type {import('./internal/client/events.js').RootTargetRef | null} */
+	let events_ref = handle_root_events(target);
 	let _root;
 
 	try {
@@ -165,7 +183,9 @@ export function hydrate(component, options) {
 	}
 
 	return () => {
-		cleanup_events();
+		if (events_ref === null) return;
+		release_root_events(events_ref);
+		events_ref = null;
 		destroy_block(_root);
 	};
 }
