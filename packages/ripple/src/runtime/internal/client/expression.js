@@ -8,7 +8,7 @@ import { assign_nodes } from './template.js';
 import { active_block } from './runtime.js';
 import { hydrate_node, hydrating, set_hydrate_node } from './hydration.js';
 import { COMMENT_NODE, HYDRATION_END, HYDRATION_START, TEXT_NODE } from '../../../constants.js';
-import { is_tsrx_element } from '../../element.js';
+import { is_tsrx_element, TSRX_ELEMENT } from '../../element.js';
 
 /**
  * Finds the nearest enclosing block that owns a DOM range (a branch or an if
@@ -33,13 +33,19 @@ function find_enclosing_branch(block) {
  * @returns {void}
  */
 export function render_value(value, anchor, block) {
-	if (is_tsrx_element(value)) {
-		render_tsrx_element(value, anchor, block);
-	} else if (is_array(value)) {
+	// render_tsrx_element, inline: an element's render may return another
+	// element (a wrapper), an array, or text.
+	var rendered = false;
+	// is_tsrx_element, inline: every component render passes through here.
+	while (value != null && value[TSRX_ELEMENT] === true) {
+		value = value.render(anchor, block);
+		rendered = true;
+	}
+	if (is_array(value)) {
 		render_tsrx_collection(value, anchor, block);
 	} else if (value != null) {
 		var text = value + '';
-		if (text !== '') {
+		if (rendered || text !== '') {
 			render_tsrx_collection_text(text, anchor, true);
 		}
 	}
