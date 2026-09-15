@@ -48,7 +48,6 @@ import {
 	is_binding_function,
 	is_ripple_track_call,
 	is_ripple_import,
-	replace_lazy_pattern,
 	create_native_tsrx_render_function,
 	get_native_tsrx_function_body,
 	is_native_tsrx_function_node,
@@ -64,11 +63,6 @@ import {
 	strip_class_typescript_syntax,
 	strip_typescript_expression_wrappers,
 	adopt_raw_template_jsx,
-	build_index_read,
-	build_index_write,
-	build_index_update,
-	get_indexed_reactive_target,
-	rewrite_lazy_member_base,
 	strip_tsrx_style_elements,
 	unwrap_single_return_iife,
 	wrap_code_block_in_iife,
@@ -998,11 +992,8 @@ function transform_variable_declaration(node, context) {
 
 	for (const declarator of node.declarations) {
 		let declarator_id = declarator.id;
-		if (!context.state.to_ts) {
-			declarator_id = replace_lazy_pattern(declarator_id);
-			if (declarator_id.typeAnnotation) {
-				declarator_id = { ...declarator_id, typeAnnotation: undefined };
-			}
+		if (!context.state.to_ts && declarator_id.typeAnnotation) {
+			declarator_id = { ...declarator_id, typeAnnotation: undefined };
 		}
 		transformed_ids.set(declarator, declarator_id);
 
@@ -1253,13 +1244,9 @@ function transform_native_tsrx_function(node, context) {
 				? { ...props_param, typeAnnotation: undefined }
 				: props_param;
 		} else if (props_param.type === 'ObjectPattern' || props_param.type === 'ArrayPattern') {
-			if (props_param.lazy) {
-				props_param_output = b.id('__props');
-			} else {
-				props_param_output = replace_lazy_pattern(
-					props_param.typeAnnotation ? { ...props_param, typeAnnotation: undefined } : props_param,
-				);
-			}
+			props_param_output = props_param.typeAnnotation
+				? { ...props_param, typeAnnotation: undefined }
+				: props_param;
 		} else {
 			props_param_output = props_param;
 		}
@@ -1325,8 +1312,7 @@ function transform_native_tsrx_function(node, context) {
 }
 
 /**
- * Returns the function's params with TypeScript annotations stripped and lazy
- * destructuring patterns replaced by their generated identifiers, without
+ * Returns the function's params with TypeScript annotations stripped, without
  * mutating the original nodes.
  * @param {AST.Pattern[]} params
  * @returns {AST.Pattern[]}
@@ -1350,14 +1336,6 @@ function strip_function_params(params) {
 					left: { ...stripped.left, typeAnnotation: undefined, optional: false },
 				})
 			);
-		}
-		// Replace lazy destructuring params with generated identifiers
-		const pattern = stripped.type === 'AssignmentPattern' ? stripped.left : stripped;
-		if (pattern.type === 'ObjectPattern' || pattern.type === 'ArrayPattern') {
-			const transformed_pattern = replace_lazy_pattern(pattern);
-			return stripped.type === 'AssignmentPattern'
-				? /** @type {AST.AssignmentPattern} */ ({ ...stripped, left: transformed_pattern })
-				: transformed_pattern;
 		}
 		return stripped;
 	});
@@ -1711,38 +1689,6 @@ const visitors = {
 		} else {
 			return next();
 		}
-	},
-
-	Identifier(node, context) {
-		const parent = /** @type {AST.Node} */ (context.path.at(-1));
-
-		if (is_reference(node, parent)) {
-			// Apply lazy destructuring binding transforms only
-			const binding = context.state.scope?.get(node.name);
-			if (
-				binding?.transform?.read &&
-				binding.node !== node &&
-				(binding.kind === 'lazy' || binding.kind === 'lazy_fallback')
-			) {
-				return binding.transform.read(node);
-			}
-
-			return node;
-		}
-	},
-
-	MemberExpression(node, context) {
-		if (!context.state.to_ts) {
-			const target = get_indexed_reactive_target(node, context);
-			if (target !== null) {
-				const read = build_index_read(target.target, target.index, target.tracked);
-				if (read !== null) {
-					return read;
-				}
-			}
-		}
-
-		return context.next();
 	},
 
 	CallExpression(node, context) {
@@ -2207,21 +2153,6 @@ const visitors = {
 		}
 
 		return statements.length ? b.block(statements) : b.empty;
-	},
-
-	ExpressionStatement(node, context) {
-		// Handle standalone lazy destructuring: &[data] = track(0); → const lazy0 = track(0);
-		if (
-			node.expression.type === 'AssignmentExpression' &&
-			(node.expression.left.type === 'ObjectPattern' ||
-				node.expression.left.type === 'ArrayPattern') &&
-			node.expression.left.lazy &&
-			node.expression.left.metadata?.lazy_id
-		) {
-			const right = /** @type {AST.Expression} */ (context.visit(node.expression.right));
-			return b.const(b.id(node.expression.left.metadata.lazy_id), right);
-		}
-		return context.next();
 	},
 
 	VariableDeclaration(node, context) {
@@ -2696,36 +2627,38 @@ const visitors = {
 				props.push(children_prop);
 			}
 
-			const args = [b.object(props)];
-
-			// Check if this is a locally defined component
-			const component_name =
-				element_id.type === 'Identifier' ? /** @type {AST.Identifier} */ (element_id).name : null;
-			const local_metadata = component_name
-				? state.component_metadata.find((m) => m.id === component_name)
-				: null;
-			const comp_id = b.id('comp');
-			const args_id = b.id('args');
-			const comp_call = b.call('_$_.render_component', comp_id, b.spread(args_id));
-			const comp_call_statement = b.stmt(comp_call);
-
-			const visited_id = /** @type {AST.Expression} */ (visit(element_id, state));
-			/** @type {AST.Statement[]} */
-			const statements = [b.const(comp_id, visited_id), b.const(args_id, b.array(args))];
-
-			if (local_metadata || node.metadata?.dynamicElement === true) {
-				// Locally defined components and the internal `_$_.dynamic_element`
-				// helper are statically known; a dynamic tag's possibly-null value
-				// is handled inside the helper itself.
-				statements.push(comp_call_statement);
-			} else {
-				// Imported components and component-valued props (e.g. `children`,
-				// optional component props) may be undefined at render time —
-				// render nothing instead of crashing.
-				statements.push(b.if(comp_id, b.block([comp_call_statement])));
+			if (node.metadata?.dynamicElement === true) {
+				// A dynamic tag (`<{expr}>`): the runtime helper receives the tag
+				// expression and the element's own props separately, and resolves
+				// a component, a tag name, or nothing itself.
+				const is_index = props.findIndex(
+					(prop) =>
+						prop.type === 'Property' &&
+						((prop.key.type === 'Identifier' && prop.key.name === 'is') ||
+							(prop.key.type === 'Literal' && prop.key.value === 'is')),
+				);
+				const tag = /** @type {AST.Expression} */ (
+					/** @type {AST.Property} */ (props[is_index]).value
+				);
+				props.splice(is_index, 1);
+				state.init?.push(b.stmt(b.call('_$_.dynamic_element', tag, b.object(props))));
+				return;
 			}
 
-			state.init?.push(b.block(statements));
+			const args = [b.object(props)];
+			const comp_id = b.id('comp');
+			const args_id = b.id('args');
+			const visited_id = /** @type {AST.Expression} */ (visit(element_id, state));
+
+			// A nullish component (an optional component prop) renders nothing;
+			// `render_component` skips it.
+			state.init?.push(
+				b.block([
+					b.const(comp_id, visited_id),
+					b.const(args_id, b.array(args)),
+					b.stmt(b.call('_$_.render_component', comp_id, b.spread(args_id))),
+				]),
+			);
 		}
 	},
 
@@ -2788,44 +2721,7 @@ const visitors = {
 
 		const left = node.left;
 
-		if (left.type === 'MemberExpression') {
-			const target = get_indexed_reactive_target(left, context);
-			if (target !== null) {
-				const right = /** @type {AST.Expression} */ (
-					context.visit(/** @type {AST.Node} */ (node.right))
-				);
-				let value = right;
-				if (node.operator !== '=') {
-					const operator = /** @type {AST.BinaryOperator} */ (node.operator.slice(0, -1));
-					const current = build_index_read(target.target, target.index, target.tracked);
-					if (current !== null) {
-						value = b.binary(operator, current, right);
-					}
-				}
-				const assignment = build_index_write(target.target, target.index, value, target.tracked);
-				if (assignment !== null) {
-					return assignment;
-				}
-			}
-
-			const rewritten_left = rewrite_lazy_member_base(left, context);
-			if (rewritten_left !== left) {
-				return {
-					...node,
-					left: /** @type {AST.Pattern} */ (
-						strip_typescript_expression_wrappers(
-							/** @type {AST.Expression} */ (rewritten_left),
-							context,
-						)
-					),
-					right: /** @type {AST.Expression} */ (
-						context.visit(/** @type {AST.Node} */ (node.right))
-					),
-				};
-			}
-		}
-
-		// Handle lazy binding assignments (e.g., a = 5 where a is from let &{a} = obj)
+		// A binding with an assignment transform (a boxed `let`) writes through it
 		if (left.type === 'Identifier') {
 			const binding = context.state.scope?.get(left.name);
 			if (binding?.transform?.assign && binding.node !== left) {
@@ -2858,17 +2754,7 @@ const visitors = {
 
 		const argument = node.argument;
 
-		if (argument.type === 'MemberExpression') {
-			const target = get_indexed_reactive_target(argument, context);
-			if (target !== null) {
-				const update = build_index_update(target.target, target.index, target.tracked, node);
-				if (update !== null) {
-					return update;
-				}
-			}
-		}
-
-		// Handle lazy binding updates (e.g., a++ where a is from let &{a} = obj)
+		// A binding with an update transform (a boxed `let`) updates through it
 		if (argument.type === 'Identifier') {
 			const binding = context.state.scope?.get(argument.name);
 			if (binding?.transform?.update && binding.node !== argument) {
@@ -3570,9 +3456,6 @@ function accumulate_output_pushes(program) {
  * @returns {{ ast: AST.Program; code: string; map: RawSourceMap | null; css: string; cssHash: string | null; }}
  */
 export function transform_server(filename, source, analysis, minify_css, dev = false) {
-	// Use component metadata collected during the analyze phase
-	const component_metadata = analysis.component_metadata || [];
-
 	/** @type {TransformServerState} */
 	const state = {
 		imports: new Set(),
@@ -3581,7 +3464,7 @@ export function transform_server(filename, source, analysis, minify_css, dev = f
 		scopes: analysis.scopes,
 		// Filled by the style pre-pass in CSS emission order.
 		stylesheets: analysis.stylesheets,
-		component_metadata,
+		component_metadata: analysis.component_metadata,
 		ancestor_server_block: undefined,
 		server_block_locals: [],
 		server_exported_names: [],

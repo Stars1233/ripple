@@ -30,11 +30,9 @@ export function SimplePortal() {
 					}
 				];
 
-				if (comp) {
-					_$_.output_push(__out);
-					__out = '';
-					_$_.render_component(comp, ...args);
-				}
+				_$_.output_push(__out);
+				__out = '';
+				_$_.render_component(comp, ...args);
 			}
 
 			__out += '</div>';
@@ -45,14 +43,14 @@ export function SimplePortal() {
 
 export function ConditionalPortal() {
 	return _$_.tsrx_element(() => {
-		let lazy = _$_.track(true, '4f6df174');
+		const show = _$_.track(true, '4f6df174');
 
 		_$_.regular_block(() => {
 			let __out = '';
 
 			__out += '<div class="container"><button class="toggle">Toggle</button><!--[-->';
 
-			if (lazy.value) {
+			if (show.value) {
 				{
 					const comp = Portal;
 
@@ -73,11 +71,9 @@ export function ConditionalPortal() {
 						}
 					];
 
-					if (comp) {
-						_$_.output_push(__out);
-						__out = '';
-						_$_.render_component(comp, ...args);
-					}
+					_$_.output_push(__out);
+					__out = '';
+					_$_.render_component(comp, ...args);
 				}
 			}
 
@@ -114,11 +110,9 @@ export function PortalWithMainContent() {
 					}
 				];
 
-				if (comp) {
-					_$_.output_push(__out);
-					__out = '';
-					_$_.render_component(comp, ...args);
-				}
+				_$_.output_push(__out);
+				__out = '';
+				_$_.render_component(comp, ...args);
 			}
 
 			__out += '<div class="footer">Footer</div></div>';
@@ -154,11 +148,9 @@ export function NestedContentWithPortal() {
 					}
 				];
 
-				if (comp) {
-					_$_.output_push(__out);
-					__out = '';
-					_$_.render_component(comp, ...args);
-				}
+				_$_.output_push(__out);
+				__out = '';
+				_$_.render_component(comp, ...args);
 			}
 
 			__out += '</div>';

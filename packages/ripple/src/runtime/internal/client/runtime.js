@@ -27,7 +27,6 @@ import {
 	TRACKED,
 	UNINITIALIZED,
 	REF_PROP,
-	TRACKED_OBJECT,
 	DEFAULT_NAMESPACE,
 	TRACKED_UPDATED,
 	SUSPENSE_PENDING,
@@ -55,18 +54,12 @@ import { render_value } from './expression.js';
 import { throw_invalid_component_type } from './component.js';
 
 import {
-	iterable_array_from,
 	define_property,
 	get_descriptor,
-	get_own_property_symbols,
 	is_array,
 	object_keys,
 } from '@tsrx/core/runtime/language-helpers';
 import { get_async_track_result } from '../../../utils/async.js';
-import {
-	throw_tracked_index_reference_error,
-	throw_tracked_index_value_error,
-} from '../../../utils/errors.js';
 import { get_track_async_script_id } from '../../../utils/track-async-serialization.js';
 import { revive } from './transport.js';
 import { hydrating, track_hash_reference } from './hydration.js';
@@ -506,18 +499,6 @@ class TrackedValue {
 		this.o = UNINITIALIZED;
 	}
 	/** @returns {any} */
-	get [0]() {
-		return throw_tracked_index_value_error();
-	}
-	/** @param {any} v */
-	set [0](v) {
-		throw_tracked_index_value_error();
-	}
-	/** @returns {Tracked} */
-	get [1]() {
-		return throw_tracked_index_reference_error();
-	}
-	/** @returns {any} */
 	get value() {
 		return get_tracked(this);
 	}
@@ -525,14 +506,16 @@ class TrackedValue {
 	set value(v) {
 		set(this, v);
 	}
-	/** @returns {2} */
-	get length() {
-		return 2;
-	}
-	/** @returns {Iterator<any | Tracked>} */
-	*[Symbol.iterator]() {
-		yield get_tracked(this);
-		yield this;
+	/**
+	 * A read-only view: a derived over this value, for a receiver that should
+	 * read but not write it. Equivalent to `track(() => tracked.value)`. The
+	 * view is owned by the block that creates it, not by this value's block, so
+	 * a view made in a component is released with that component even when the
+	 * value outlives it.
+	 * @returns {Derived}
+	 */
+	readOnly() {
+		return derived(() => get_tracked(this), /** @type {Block} */ (active_block));
 	}
 }
 
@@ -570,18 +553,6 @@ class DerivedValue {
 		this.o = UNINITIALIZED;
 	}
 	/** @returns {any} */
-	get [0]() {
-		return throw_tracked_index_value_error();
-	}
-	/** @param {any} v */
-	set [0](v) {
-		throw_tracked_index_value_error();
-	}
-	/** @returns {Derived} */
-	get [1]() {
-		return throw_tracked_index_reference_error();
-	}
-	/** @returns {any} */
 	get value() {
 		return get_derived(this);
 	}
@@ -589,14 +560,16 @@ class DerivedValue {
 	set value(v) {
 		set(this, v);
 	}
-	/** @returns {2} */
-	get length() {
-		return 2;
-	}
-	/** @returns {Iterator<any | Derived>} */
-	*[Symbol.iterator]() {
-		yield get_derived(this);
-		yield this;
+	/**
+	 * A read-only view (see `TrackedValue#readOnly`). A derived without a
+	 * setter is already read-only and is returned as is; a writable one is
+	 * wrapped in a derived that follows it.
+	 * @returns {Derived}
+	 */
+	readOnly() {
+		return this.a.set === undefined
+			? this
+			: derived(() => get_derived(this), /** @type {Block} */ (active_block));
 	}
 }
 
@@ -1113,13 +1086,14 @@ function mark_subscribers(tracked) {
 		var flags = reaction.f;
 		if ((flags & DERIVED) !== 0) {
 			var derived = /** @type {Derived} */ (reaction);
+			// Marking the derived's own subscribers first prunes its destroyed
+			// readers, so a derived whose owner is gone and that nothing reads any
+			// more is dropped on this write; one still read elsewhere keeps
+			// forwarding notifications.
+			mark_subscribers(derived);
 			var derived_owner = derived.b;
-			// A derived whose owner is gone and that nothing reads any more is
-			// pruned; one still read elsewhere keeps forwarding notifications.
 			if (derived_owner !== null && (derived_owner.f & DESTROYED) !== 0 && derived.sb === null) {
 				unlink_subscriber(dependency);
-			} else {
-				mark_subscribers(derived);
 			}
 		} else if ((flags & DESTROYED) !== 0) {
 			unlink_subscriber(dependency);
@@ -1460,60 +1434,6 @@ export function get(tracked) {
 }
 
 /**
- * @param {any} lazy
- * @param {number} [index]
- * @returns {any}
- */
-export function lazy_array_get(lazy, index = 0) {
-	if (is_array(lazy)) {
-		return lazy[index];
-	}
-	var flags = lazy.f;
-	if (flags === TRACKED) {
-		return index === 0
-			? get_tracked(/** @type {Tracked} */ (lazy))
-			: index === 1
-				? lazy
-				: undefined;
-	}
-	if (flags === DERIVED) {
-		return index === 0
-			? get_derived(/** @type {Derived} */ (lazy))
-			: index === 1
-				? lazy
-				: undefined;
-	}
-	return iterable_array_from(lazy, index)[0];
-}
-
-/**
- * @param {any} lazy
- * @param {number} [index]
- * @returns {any[]}
- */
-export function lazy_array_rest(lazy, index = 0) {
-	if (is_array(lazy)) {
-		return lazy.slice(index);
-	}
-	var flags = lazy.f;
-	if (flags === TRACKED) {
-		return index === 0
-			? [get_tracked(/** @type {Tracked} */ (lazy)), lazy]
-			: index === 1
-				? [lazy]
-				: [];
-	}
-	if (flags === DERIVED) {
-		return index === 0
-			? [get_derived(/** @type {Derived} */ (lazy)), lazy]
-			: index === 1
-				? [lazy]
-				: [];
-	}
-	return iterable_array_from(lazy, index);
-}
-
-/**
  * @param {Tracked} tracked
  */
 export function get_tracked(tracked) {
@@ -1539,57 +1459,6 @@ export function get_tracked(tracked) {
 		value = trigger_track_get(get, value);
 	}
 	return value;
-}
-
-/**
- * @param {any} lazy
- * @param {any} value
- * @param {number} [index]
- * @returns {void}
- */
-export function lazy_array_set(lazy, value, index = 0) {
-	if (is_array(lazy)) {
-		lazy[index] = value;
-		return;
-	}
-	var flags = lazy.f;
-	if (flags === TRACKED || flags === DERIVED) {
-		if (index === 0) {
-			set(/** @type {Derived | Tracked} */ (lazy), value);
-			return;
-		}
-		if (index === 1) {
-			throw_tracked_index_reference_error();
-		}
-		return;
-	}
-	lazy[index] = value;
-}
-
-/**
- * @param {any} lazy
- * @param {number} [index]
- * @param {number} [d]
- * @returns {number}
- */
-export function lazy_array_update(lazy, index = 0, d = 1) {
-	var value = lazy_array_get(lazy, index);
-	var result = d === 1 ? value++ : value--;
-	lazy_array_set(lazy, value, index);
-	return result;
-}
-
-/**
- * @param {any} lazy
- * @param {number} [index]
- * @param {number} [d]
- * @returns {number}
- */
-export function lazy_array_update_pre(lazy, index = 0, d = 1) {
-	var value = lazy_array_get(lazy, index);
-	var new_value = d === 1 ? ++value : --value;
-	lazy_array_set(lazy, new_value, index);
-	return new_value;
 }
 
 /**
@@ -1913,6 +1782,11 @@ export function pop_component() {
  * @returns {void}
  */
 export function render_component(fn, anchor, props, block = active_block) {
+	// An optional component (an undefined prop, an import that resolved to
+	// nothing) renders nothing; any other non-function is a programming error.
+	if (fn == null) {
+		return;
+	}
 	if (typeof fn !== 'function') {
 		throw_invalid_component_type(fn);
 	}
@@ -2083,40 +1957,4 @@ export function ref_prop() {
  */
 export function create_ref_prop(get_ref_value, set_ref_value) {
 	return create_core_ref_prop(() => untrack(get_ref_value), set_ref_value);
-}
-
-/**
- * @template T
- * @param {T | undefined} value
- * @param {T} fallback
- * @returns {T}
- */
-export function fallback(value, fallback) {
-	return value === undefined ? fallback : value;
-}
-
-/**
- * @param {Record<string | symbol, unknown>} obj
- * @param {string[]} exclude_keys
- * @returns {Record<string | symbol, unknown>}
- */
-export function exclude_from_object(obj, exclude_keys) {
-	/** @type {Record<string | symbol, unknown>} */
-	var new_obj = {};
-
-	for (const key in obj) {
-		if (!exclude_keys.includes(key)) {
-			new_obj[key] = obj[key];
-		}
-	}
-
-	for (const symbol of get_own_property_symbols(obj)) {
-		var ref_fn = obj[symbol];
-
-		if (symbol.description === REF_PROP) {
-			new_obj[symbol] = ref_fn;
-		}
-	}
-
-	return new_obj;
 }

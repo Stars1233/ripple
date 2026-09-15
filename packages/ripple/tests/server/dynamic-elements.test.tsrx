@@ -1,4 +1,4 @@
-import type { DynamicProps, PropsWithExtras, TSRXElement } from 'ripple';
+import type { Component, DynamicProps, PropsWithExtras, TSRXElement } from 'ripple';
 import { createRefKey, track } from 'ripple';
 
 describe('server dynamic DOM elements', () => {
@@ -11,6 +11,26 @@ describe('server dynamic DOM elements', () => {
 		const { body } = await render(App);
 
 		expect(body).toBeHtml('<div>Hello World</div>');
+	});
+
+	it('renders a component held in a plain tracked assigned after creation', async () => {
+		function Child() @{
+			<p>{'I am the child'}</p>
+		}
+
+		function App() @{
+			// track(Child) would make a derived that calls the component, so an
+			// empty tracked receives the component through `.value` instead.
+			const Body = track<Component>();
+			Body.value = Child;
+			<div>
+				<{Body.value} />
+			</div>
+		}
+
+		const { body } = await render(App);
+
+		expect(body).toBeHtml('<div><p>I am the child</p></div>');
 	});
 
 	it('renders static dynamic element from a plain object with a tracked property', async () => {
@@ -85,8 +105,8 @@ describe('server dynamic DOM elements', () => {
 	it('handles dynamic element with attributes', async () => {
 		function App() @{
 			let tag = track('div');
-			let &[className] = track('test-class');
-			<{tag} class={className} id="test" data-testid="dynamic-element">{'Content'}</{tag}>
+			const className = track('test-class');
+			<{tag} class={className.value} id="test" data-testid="dynamic-element">{'Content'}</{tag}>
 		}
 		const { body } = await render(App);
 		const { document } = parseHtml(body);
@@ -122,9 +142,9 @@ describe('server dynamic DOM elements', () => {
 	it('handles dynamic element with class object', async () => {
 		function App() @{
 			let tag = track('div');
-			let &[active] = track(true);
+			const active = track(true);
 			<{tag}
-				class={{ active: active, 'dynamic-element': true }}
+				class={{ active: active.value, 'dynamic-element': true }}
 			>{'Element with class object'}</{tag}>
 		}
 
@@ -259,7 +279,7 @@ describe('server dynamic DOM elements', () => {
 	});
 
 	it('handles spread attributes with class and CSS scoping', async () => {
-		function DynamicButton(&{ ...rest }: PropsWithExtras<{
+		function DynamicButton({ ...rest }: PropsWithExtras<{
 			class: string;
 			id: string;
 		}>) @{
@@ -278,8 +298,11 @@ describe('server dynamic DOM elements', () => {
 		}
 
 		function App() @{
-			let &[count] = track(0);
-			<DynamicButton class={count % 2 ? 'even' : 'odd'} id={count % 2 ? 'even' : 'odd'} />
+			const count = track(0);
+			<DynamicButton
+				class={count.value % 2 ? 'even' : 'odd'}
+				id={count.value % 2 ? 'even' : 'odd'}
+			/>
 		}
 
 		const { body } = await render(App);

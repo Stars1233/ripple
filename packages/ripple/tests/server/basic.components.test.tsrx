@@ -1,5 +1,6 @@
 import { track } from 'ripple';
 import type {
+	Derived,
 	Tracked,
 	PropsWithChildren,
 	PropsWithExtras,
@@ -8,6 +9,61 @@ import type {
 } from 'ripple';
 
 describe('basic server > components & composition', () => {
+	it('renders a read-only view passed through readOnly()', async () => {
+		function Child({ count }: { count: Derived<number> }) @{
+			<span>{count.value}</span>
+		}
+
+		function App() @{
+			const count = track(5);
+			<div>
+				<Child count={count.readOnly()} />
+			</div>
+		}
+
+		const { body } = await render(App);
+
+		expect(body).toBeHtml('<div><span>5</span></div>');
+	});
+
+	it('renders rest and default pattern names in a keyed loop', async () => {
+		function App() @{
+			const rows = [
+				{ id: 1, name: 'one', tags: ['a', 'b'] },
+			];
+			<ul>
+				@for (const { id, ...rest } of rows; key id) {
+					<li>{rest.name}</li>
+				}
+				@for (const [head, second = 'none', ...others] of rows.map((row) => row.tags); key head) {
+					<li>{head + ':' + second + ':' + others.length}</li>
+				}
+			</ul>
+		}
+
+		const { body } = await render(App);
+
+		expect(body).toBeHtml('<ul><li>one</li><li>a:b:0</li></ul>');
+	});
+
+	it('renders nothing for a component prop that is undefined', async () => {
+		function Child({ Comp }: { Comp?: Component }) @{
+			<div>
+				{'before'}
+				<Comp />
+				{'after'}
+			</div>
+		}
+
+		function App() @{
+			<Child />
+		}
+
+		const { body } = await render(App);
+
+		expect(body).toBeHtml('<div>beforeafter</div>');
+	});
+
 	async function render_expected_invalid_component(App: Component) {
 		const console_error_spy = vi.spyOn(console, 'error').mockImplementation(() => {});
 		try {
@@ -186,16 +242,16 @@ describe('basic server > components & composition', () => {
 		}
 
 		function Basic() @{
-			let &[clicked] = track(false);
+			const clicked = track(false);
 			<>
 				<Card
 					title="Test Card"
 					content="This is a test card"
 					buttonText="Click me"
-					onAction={() => (clicked = true)}
+					onAction={() => (clicked.value = true)}
 				/>
 				<div class="status">
-					{clicked ? 'Clicked' : 'Not clicked'}
+					{clicked.value ? 'Clicked' : 'Not clicked'}
 				</div>
 			</>
 		}
@@ -228,14 +284,14 @@ describe('basic server > components & composition', () => {
 		}
 
 		function Basic() @{
-			let &[message, messageTracked] = track('Hello');
-			let &[number, numberTracked] = track(1);
+			const message = track('Hello');
+			const number = track(1);
 			<>
-				<ChildComponent text={messageTracked} count={numberTracked} />
+				<ChildComponent text={message} count={number} />
 				<button
 					onClick={() => {
-						message = message === 'Hello' ? 'Goodbye' : 'Hello';
-						number++;
+						message.value = message.value === 'Hello' ? 'Goodbye' : 'Hello';
+						number.value++;
 					}}
 				>{'Update Props'}</button>
 			</>

@@ -166,18 +166,18 @@ describe('for statements', () => {
 
 	it('correctly handles keyed for...of loops', () => {
 		function App() @{
-			let &[items] = track([
+			const items = track([
 				{ id: 1, text: 'Item 1' },
 				{ id: 2, text: 'Item 2' },
 				{ id: 3, text: 'Item 3' },
 			]);
 			<>
-				@for (let item of items; index i; key item.id) {
+				@for (let item of items.value; index i; key item.id) {
 					<div>{i + ':' + item.text}</div>
 				}
 				<button
 					onClick={() => {
-						items = items.toReversed();
+						items.value = items.value.toReversed();
 					}}
 				>{'Reverse'}</button>
 			</>
@@ -200,12 +200,12 @@ describe('for statements', () => {
 		let bump = () => {};
 
 		function App() @{
-			let &[version] = track(0);
+			const version = track(0);
 			bump = () => {
-				version = version + 1;
+				version.value = version.value + 1;
 			};
 			<ul>
-				@for (const item of (version, list); key item) {
+				@for (const item of (version.value, list); key item) {
 					<li>{item.id}</li>
 				}
 			</ul>
@@ -238,20 +238,20 @@ describe('for statements', () => {
 
 	it('keyed for over derived updates sibling text nodes', () => {
 		function App() @{
-			let &[count] = track(0);
-			let &[items] = track(
-				() => Array.from({ length: count }).map((_, id) => ({ id, label: `Item ${id}` })),
+			const count = track(0);
+			const items = track(
+				() => Array.from({ length: count.value }).map((_, id) => ({ id, label: `Item ${id}` })),
 			);
 			<>
 				<button
 					onClick={() => {
-						count++;
+						count.value++;
 					}}
 				>{'Add'}</button>
-				@for (const item of items; key item.id) {
+				@for (const item of items.value; key item.id) {
 					<div class="item">{item.label}</div>
 				}
-				<p class="count">{count}</p>
+				<p class="count">{count.value}</p>
 			</>
 		}
 
@@ -277,18 +277,18 @@ describe('for statements', () => {
 
 	it('keyed for inserts multiple new items in the middle in correct order', () => {
 		function App() @{
-			let &[items] = track([
+			const items = track([
 				{ id: 'a', text: 'A' },
 				{ id: 'c', text: 'C' },
 				{ id: 'd', text: 'D' },
 			]);
 			<>
-				@for (const item of items; key item.id) {
+				@for (const item of items.value; key item.id) {
 					<div class="item">{item.text}</div>
 				}
 				<button
 					onClick={() => {
-						items = [
+						items.value = [
 							{ id: 'a', text: 'A' },
 							{ id: 'b1', text: 'B1' },
 							{ id: 'b2', text: 'B2' },
@@ -320,14 +320,14 @@ describe('for statements', () => {
 		const d = { text: 'D' };
 
 		function App() @{
-			let &[items] = track([a, c, d]);
+			const items = track([a, c, d]);
 			<>
-				@for (const item of items) {
+				@for (const item of items.value) {
 					<div class="item">{item.text}</div>
 				}
 				<button
 					onClick={() => {
-						items = [a, { text: 'B1' }, { text: 'B2' }, c, d];
+						items.value = [a, { text: 'B1' }, { text: 'B2' }, c, d];
 					}}
 				>{'Insert'}</button>
 			</>
@@ -349,16 +349,16 @@ describe('for statements', () => {
 
 	it('keyed for with 32+ items: full reversal updates values via Map path', () => {
 		function App() @{
-			let &[items] = track(Array.from({ length: 40 }, (_, i) => ({ id: i, text: `Item ${i}` })));
+			const items = track(Array.from({ length: 40 }, (_, i) => ({ id: i, text: `Item ${i}` })));
 			<>
 				<div>
-					@for (let item of items; index idx; key item.id) {
+					@for (let item of items.value; index idx; key item.id) {
 						<span class="item">{idx + ':' + item.text}</span>
 					}
 				</div>
 				<button
 					onClick={() => {
-						items = items.toReversed();
+						items.value = items.value.toReversed();
 					}}
 				>{'Reverse'}</button>
 			</>
@@ -380,25 +380,25 @@ describe('for statements', () => {
 
 	it('handles updating with new objects with same key', () => {
 		function App() @{
-			let &[items] = track([
+			const items = track([
 				{ id: 1, text: 'Item 1' },
 				{ id: 2, text: 'Item 2' },
 				{ id: 3, text: 'Item 3' },
 			]);
 			<>
-				@for (let item of items; index i; key item.id) {
+				@for (let item of items.value; index i; key item.id) {
 					<div>{i + ':' + item.text}</div>
 				}
 				<button
 					onClick={() => {
-						items[0].id = 3;
-						items[1].id = 2;
-						items[2].id = 1;
+						items.value[0].id = 3;
+						items.value[1].id = 2;
+						items.value[2].id = 1;
 
-						items = [
-							{ ...items[0], text: 'Item 1!' },
-							{ ...items[1], text: 'Item 2!' },
-							{ ...items[2], text: 'Item 3!' },
+						items.value = [
+							{ ...items.value[0], text: 'Item 1!' },
+							{ ...items.value[1], text: 'Item 2!' },
+							{ ...items.value[2], text: 'Item 3!' },
 						];
 					}}
 				>{'Reverse'}</button>
@@ -419,16 +419,16 @@ describe('for statements', () => {
 		const objects = Array.from({ length: 50 }, (_, i) => ({ id: i, text: `Obj ${i}` }));
 
 		function App() @{
-			let &[items] = track(objects.slice());
+			const items = track(objects.slice());
 			<>
 				<div>
-					@for (const item of items) {
+					@for (const item of items.value) {
 						<span class="item">{item.text}</span>
 					}
 				</div>
 				<button
 					onClick={() => {
-						items = objects.slice(15).reverse();
+						items.value = objects.slice(15).reverse();
 					}}
 				>{'Trim and reverse'}</button>
 			</>
@@ -590,5 +590,121 @@ describe('for statements', () => {
 
 		expect(texts('.returned')).toEqual(['0: a', '1: b']);
 		expect(texts('.held')).toEqual(['0: a', '1: b']);
+	});
+
+	it('reads rest and default pattern names off the per-key item as it changes', () => {
+		type Row = { id: number; name: string; tags?: string[] };
+		let replace: (rows: Row[]) => void = () => {};
+
+		function App() @{
+			const rows = track<Row[]>([
+				{ id: 1, name: 'one', tags: ['a', 'b'] },
+			]);
+			replace = (next) => {
+				rows.value = next;
+			};
+			<ul>
+				@for (const { id, ...rest } of rows.value; key id) {
+					<li>{rest.name}</li>
+				}
+				@for (const [head, second = 'none', ...others] of rows.value.map(
+					(row) => row.tags ?? [],
+				); key head) {
+					<li>{head + ':' + second + ':' + others.length}</li>
+				}
+			</ul>
+		}
+
+		render(App);
+		const items = () => [...container.querySelectorAll('li')].map((li) => li.textContent);
+		expect(items()).toEqual(['one', 'a:b:0']);
+
+		// A new object under the same key updates the existing block in place.
+		replace([
+			{ id: 1, name: 'uno', tags: ['a'] },
+		]);
+		flushSync();
+		expect(items()).toEqual(['uno', 'a:none:0']);
+	});
+
+	it('destructures a keyed item once per change, so defaults run once', () => {
+		type Row = { id: number; label?: string };
+		let replace: (rows: Row[]) => void = () => {};
+		let defaults = 0;
+		const next = () => `default ${++defaults}`;
+
+		function App() @{
+			const rows = track<Row[]>([{ id: 1 }]);
+			replace = (next) => {
+				rows.value = next;
+			};
+			<ul>
+				@for (const { id, label = next() } of rows.value; key id) {
+					<li>{label + '/' + label + '/' + id}</li>
+				}
+			</ul>
+		}
+
+		render(App);
+		const items = () => [...container.querySelectorAll('li')].map((li) => li.textContent);
+		// Two reads of `label`, one evaluation of its default.
+		expect(items()).toEqual(['default 1/default 1/1']);
+		expect(defaults).toBe(1);
+
+		replace([{ id: 1 }]);
+		flushSync();
+		expect(items()).toEqual(['default 2/default 2/1']);
+		expect(defaults).toBe(2);
+
+		replace([
+			{ id: 1, label: 'given' },
+		]);
+		flushSync();
+		expect(items()).toEqual(['given/given/1']);
+		expect(defaults).toBe(2);
+	});
+
+	it('reads rest pattern names inside a hoisted branch of a keyed loop', () => {
+		type Row = { id: number; name: string };
+		let replace: (rows: Row[]) => void = () => {};
+		let toggle: () => void = () => {};
+
+		function App() @{
+			const rows = track<Row[]>([
+				{ id: 1, name: 'one' },
+			]);
+			const show = track(true);
+			replace = (next) => {
+				rows.value = next;
+			};
+			toggle = () => {
+				show.value = !show.value;
+			};
+			<ul>
+				@for (const { id, ...rest } of rows.value; key id) {
+					@if (show.value) {
+						<li>{rest.name}</li>
+					}
+				}
+			</ul>
+		}
+
+		render(App);
+		const items = () => [...container.querySelectorAll('li')].map((li) => li.textContent);
+		expect(items()).toEqual(['one']);
+
+		replace([
+			{ id: 1, name: 'uno' },
+		]);
+		flushSync();
+		expect(items()).toEqual(['uno']);
+
+		toggle();
+		flushSync();
+		expect(items()).toEqual([]);
+
+		toggle();
+		flushSync();
+		expect(items()).toEqual(['uno']);
 	});
 });

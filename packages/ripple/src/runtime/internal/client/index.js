@@ -52,11 +52,6 @@ export {
 	get,
 	get_tracked,
 	get_derived,
-	lazy_array_get,
-	lazy_array_rest,
-	lazy_array_set,
-	lazy_array_update,
-	lazy_array_update_pre,
 	set,
 	tracked,
 	computed_property,
@@ -76,8 +71,6 @@ export {
 	untrack,
 	ref_prop,
 	create_ref_prop,
-	fallback,
-	exclude_from_object,
 	derived,
 	tick,
 	with_block,
@@ -102,8 +95,6 @@ export { try_block as try, get_pending_boundary } from './try.js';
 export { if_block as switch } from './if.js';
 
 export { template, append, text } from './template.js';
-
-export { array_slice } from '@tsrx/core/runtime/language-helpers';
 
 export { ripple_array } from '../../array.js';
 
