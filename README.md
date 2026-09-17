@@ -258,7 +258,7 @@ function CounterValue({ count }: { count: Tracked<number> }) {
 ```
 
 `Tracked<T>` objects can be passed through data structures and props: pass the
-tracked object itself when the child may write it, or `count.readOnly()` (a
+tracked object itself when the child may write it, or `trackReadOnly(count)` (a
 `Derived<T>` that follows the value but rejects writes, the same as
 `track(() => count.value)`) when it should only read it.
 
