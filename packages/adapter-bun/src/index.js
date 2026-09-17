@@ -169,7 +169,7 @@ export function serveStatic(dir, options = {}) {
 			pathname = '/' + pathname;
 		}
 
-		const file_path = resolve(base_dir, `.${pathname}`);
+		let file_path = resolve(base_dir, `.${pathname}`);
 		const is_within_base_dir = file_path === base_dir || file_path.startsWith(base_dir + sep);
 		if (!is_within_base_dir) {
 			return await next();
@@ -177,14 +177,11 @@ export function serveStatic(dir, options = {}) {
 
 		let bun_file = globalThis.Bun.file(file_path);
 		if (!(await bun_file.exists())) {
-			return await next();
-		}
-
-		// Bun.file().size is 0 for directories: a prerendered page lives at
-		// `<path>/index.html`, written at build time.
-		if (bun_file.size === 0) {
-			bun_file = globalThis.Bun.file(resolve(file_path, 'index.html'));
-			if (!(await bun_file.exists()) || bun_file.size === 0) {
+			// Bun.file().exists() is false for directories: a prerendered page
+			// lives at `<path>/index.html`, written at build time.
+			file_path = resolve(file_path, 'index.html');
+			bun_file = globalThis.Bun.file(file_path);
+			if (!(await bun_file.exists())) {
 				return await next();
 			}
 		}
