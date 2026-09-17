@@ -1,5 +1,5 @@
 ---
-'ripple': minor
+'ripple': patch
 '@tsrx/ripple': patch
 ---
 
