@@ -80,45 +80,53 @@ export function patch_global_fetch(async_context) {
 	 * @returns {ReturnType<typeof globalThis.fetch>}
 	 */
 	const patched_fetch = function (input, init) {
-		const context = async_context.getStore();
+		try {
+			const context = async_context.getStore();
 
-		if (context?.origin) {
-			if (typeof input === 'string' && !has_scheme(input)) {
-				input = new URL(input, context.origin).href;
-			} else if (input instanceof Request) {
-				const url = input.url;
-				if (!has_scheme(url)) {
-					input = new Request(new URL(url, context.origin).href, input);
+			if (context?.origin) {
+				if (typeof input === 'string' && !has_scheme(input)) {
+					input = new URL(input, context.origin).href;
+				} else if (input instanceof Request) {
+					const url = input.url;
+					if (!has_scheme(url)) {
+						input = new Request(new URL(url, context.origin).href, input);
+					}
+				} else if (input instanceof URL) {
+					if (!input.protocol || input.protocol === '' || input.origin === 'null') {
+						const relative = input.pathname + (input.search || '') + (input.hash || '');
+						input = new URL(relative, context.origin);
+					}
 				}
-			} else if (input instanceof URL) {
-				if (!input.protocol || input.protocol === '' || input.origin === 'null') {
-					const relative = input.pathname + (input.search || '') + (input.hash || '');
-					input = new URL(relative, context.origin);
-				}
-			}
 
-			// Short-circuit same-origin requests: route them directly through
-			// the handler in-process instead of making a real network request.
-			// This avoids issues on serverless platforms (e.g. Vercel Deployment
-			// Protection blocking server-to-server calls) and eliminates the
-			// latency of a redundant network round-trip + cold start.
-			if (internal_handler !== null) {
-				const resolved_url =
-					typeof input === 'string' ? input : input instanceof Request ? input.url : input.href;
+				// Short-circuit same-origin requests: route them directly through
+				// the handler in-process instead of making a real network request.
+				// This avoids issues on serverless platforms (e.g. Vercel Deployment
+				// Protection blocking server-to-server calls) and eliminates the
+				// latency of a redundant network round-trip + cold start.
+				if (internal_handler !== null) {
+					const resolved_url =
+						typeof input === 'string' ? input : input instanceof Request ? input.url : input.href;
 
-				try {
-					const resolved_origin = new URL(resolved_url).origin;
+					let resolved_origin;
+					try {
+						resolved_origin = new URL(resolved_url).origin;
+					} catch {
+						// Not a valid URL — fall through to real fetch
+					}
+
 					if (resolved_origin === context.origin) {
-						const request = input instanceof Request ? input : new Request(input, init);
+						const request = new Request(input, init);
 						return internal_handler(request);
 					}
-				} catch {
-					// Not a valid URL — fall through to real fetch
 				}
 			}
-		}
 
-		return original_fetch(input, init);
+			return original_fetch(input, init);
+		} catch (error) {
+			// Reject synchronous URL, Request and handler errors like native fetch,
+			// while returning existing promises directly on successful calls.
+			return Promise.reject(error);
+		}
 	};
 
 	// Copy static properties (e.g. fetch.preconnect) so the patched
