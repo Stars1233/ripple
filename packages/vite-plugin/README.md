@@ -8,6 +8,58 @@ export default {
 };
 ```
 
+## Static generation
+
+Mark a render route with `prerender: true` to render it at build time:
+
+```ts
+new RenderRoute({ path: '/', entry: './src/Home.tsrx', prerender: true });
+```
+
+After the server build the plugin renders each marked route through the built
+server entry, buffered with every boundary settled, and writes
+`<outDir>/client<path>/index.html`. The node and bun adapters serve that file for
+the route before the server renders anything, and the page hydrates like a
+server-rendered one. Only a static path can be prerendered; a `:param` or `*`
+segment is a config error. `prerender()` from `ripple/server` does the same for a
+component outside the plugin.
+
+## Client-only builds
+
+An app that never hydrates server-rendered HTML can say so:
+
+```js
+ripple({ ssr: false });
+```
+
+Components then compile to bare DOM reads instead of the hydration cursor,
+`track()` calls carry no serialization hashes, and the runtime's hydration paths
+are left out of the bundle. `hydrate()` throws in such a build, and the option is
+rejected when `ripple.config.ts` declares render routes, which are server rendered
+and hydrated. `ssr: true` is the opposite override: every module compiles for the
+server, for an adapter that drives the build itself.
+
+## Root boundary
+
+`mount()` and `hydrate()` render the app under a default try/pending/catch
+boundary. An app that renders without one, passing `rootBoundary: false` to
+`mount()`, can leave the boundary runtime out of its bundle:
+
+```js
+ripple({ rootBoundary: false });
+```
+
+A `rootBoundary` option on `mount()` or `hydrate()` then throws, the option is
+rejected when `ripple.config.ts` configures a root boundary, and `trackAsync()`
+must sit inside a user `@try` block.
+
+## Module preload polyfill
+
+Production builds leave Vite's `modulepreload` polyfill out: every current browser
+supports `<link rel="modulepreload">`, and the polyfill only matters for dynamic
+imports with preloadable dependencies. Set `build.modulePreload` in your Vite
+config to keep it.
+
 ## Optional TypeScript text inference
 
 To use the TypeScript checker to recognize primitive DOM children from imported

@@ -2074,728 +2074,728 @@
     "op": "js_raw",
     "target": "ripple",
     "reference": "octane-tsrx",
-    "maxRatio": 0.4038567810269399,
+    "maxRatio": 0.29051339285714284,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "js_gzip",
     "target": "ripple",
     "reference": "octane-tsrx",
-    "maxRatio": 0.4585209441942966,
+    "maxRatio": 0.33149776082269033,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "js_brotli",
     "target": "ripple",
     "reference": "octane-tsrx",
-    "maxRatio": 0.46020337946326173,
+    "maxRatio": 0.3346717228046695,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "app_raw",
     "target": "ripple",
     "reference": "octane-tsrx",
-    "maxRatio": 1.0178521225752037,
+    "maxRatio": 1.061849873488895,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes. The app-chunk limits are above the initial recording: hoisted render blocks with per-instance state objects (the recursive-context and uibench timing work) grew the compiled app output before this recording, and the client-only compile recovered part of it."
   },
   {
     "suite": "bundle-size",
     "op": "app_gzip",
     "target": "ripple",
     "reference": "octane-tsrx",
-    "maxRatio": 0.972210700953961,
+    "maxRatio": 0.9651452282157676,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes. The app-chunk limits are above the initial recording: hoisted render blocks with per-instance state objects (the recursive-context and uibench timing work) grew the compiled app output before this recording, and the client-only compile recovered part of it."
   },
   {
     "suite": "bundle-size",
     "op": "app_brotli",
     "target": "ripple",
     "reference": "octane-tsrx",
-    "maxRatio": 0.956501182033097,
+    "maxRatio": 0.9717114568599717,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes. The app-chunk limits are above the initial recording: hoisted render blocks with per-instance state objects (the recursive-context and uibench timing work) grew the compiled app output before this recording, and the client-only compile recovered part of it."
   },
   {
     "suite": "bundle-size",
     "op": "fw_raw",
     "target": "ripple",
     "reference": "octane-tsrx",
-    "maxRatio": 0.34948461364833344,
+    "maxRatio": 0.22437747011614093,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "fw_gzip",
     "target": "ripple",
     "reference": "octane-tsrx",
-    "maxRatio": 0.41367775506411447,
+    "maxRatio": 0.2775914908959798,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "fw_brotli",
     "target": "ripple",
     "reference": "octane-tsrx",
-    "maxRatio": 0.41787630495362477,
+    "maxRatio": 0.2814303588005005,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "todo_js_raw",
     "target": "ripple",
     "reference": "octane-tsrx",
-    "maxRatio": 0.3676259536218748,
+    "maxRatio": 0.26054374711776296,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "todo_js_gzip",
     "target": "ripple",
     "reference": "octane-tsrx",
-    "maxRatio": 0.43583642650931126,
+    "maxRatio": 0.31672477092524604,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "todo_js_brotli",
     "target": "ripple",
     "reference": "octane-tsrx",
-    "maxRatio": 0.43835079466894733,
+    "maxRatio": 0.32006529818346013,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "todo_app_raw",
     "target": "ripple",
     "reference": "octane-tsrx",
-    "maxRatio": 0.8030432918988427,
+    "maxRatio": 0.9269181311615945,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes. The app-chunk limits are above the initial recording: hoisted render blocks with per-instance state objects (the recursive-context and uibench timing work) grew the compiled app output before this recording, and the client-only compile recovered part of it."
   },
   {
     "suite": "bundle-size",
     "op": "todo_app_gzip",
     "target": "ripple",
     "reference": "octane-tsrx",
-    "maxRatio": 0.7442273534635879,
+    "maxRatio": 0.8302976454908929,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes. The app-chunk limits are above the initial recording: hoisted render blocks with per-instance state objects (the recursive-context and uibench timing work) grew the compiled app output before this recording, and the client-only compile recovered part of it."
   },
   {
     "suite": "bundle-size",
     "op": "todo_app_brotli",
     "target": "ripple",
     "reference": "octane-tsrx",
-    "maxRatio": 0.7457713992824193,
+    "maxRatio": 0.8236196319018405,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes. The app-chunk limits are above the initial recording: hoisted render blocks with per-instance state objects (the recursive-context and uibench timing work) grew the compiled app output before this recording, and the client-only compile recovered part of it."
   },
   {
     "suite": "bundle-size",
     "op": "todo_fw_raw",
     "target": "ripple",
     "reference": "octane-tsrx",
-    "maxRatio": 0.3449043826059291,
+    "maxRatio": 0.22663257884645052,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "todo_fw_gzip",
     "target": "ripple",
     "reference": "octane-tsrx",
-    "maxRatio": 0.4132016809593768,
+    "maxRatio": 0.2794575956501558,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "todo_fw_brotli",
     "target": "ripple",
     "reference": "octane-tsrx",
-    "maxRatio": 0.4166060281107579,
+    "maxRatio": 0.284553754425191,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "chat_js_raw",
     "target": "ripple",
     "reference": "octane-tsrx",
-    "maxRatio": 0.3660600516221779,
+    "maxRatio": 0.2787195566882753,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "chat_js_gzip",
     "target": "ripple",
     "reference": "octane-tsrx",
-    "maxRatio": 0.4401365754036633,
+    "maxRatio": 0.34525805850568286,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "chat_js_brotli",
     "target": "ripple",
     "reference": "octane-tsrx",
-    "maxRatio": 0.44306240617628134,
+    "maxRatio": 0.3496564472812249,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "chat_app_raw",
     "target": "ripple",
     "reference": "octane-tsrx",
-    "maxRatio": 0.825184192900201,
+    "maxRatio": 0.894675150703282,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes. The app-chunk limits are above the initial recording: hoisted render blocks with per-instance state objects (the recursive-context and uibench timing work) grew the compiled app output before this recording, and the client-only compile recovered part of it."
   },
   {
     "suite": "bundle-size",
     "op": "chat_app_gzip",
     "target": "ripple",
     "reference": "octane-tsrx",
-    "maxRatio": 0.854978354978355,
+    "maxRatio": 0.888728323699422,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes. The app-chunk limits are above the initial recording: hoisted render blocks with per-instance state objects (the recursive-context and uibench timing work) grew the compiled app output before this recording, and the client-only compile recovered part of it."
   },
   {
     "suite": "bundle-size",
     "op": "chat_app_brotli",
     "target": "ripple",
     "reference": "octane-tsrx",
-    "maxRatio": 0.870756646216769,
+    "maxRatio": 0.898034398034398,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes. The app-chunk limits are above the initial recording: hoisted render blocks with per-instance state objects (the recursive-context and uibench timing work) grew the compiled app output before this recording, and the client-only compile recovered part of it."
   },
   {
     "suite": "bundle-size",
     "op": "chat_fw_raw",
     "target": "ripple",
     "reference": "octane-tsrx",
-    "maxRatio": 0.3344942864797493,
+    "maxRatio": 0.23755771032520967,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "chat_fw_gzip",
     "target": "ripple",
     "reference": "octane-tsrx",
-    "maxRatio": 0.40100119022614295,
+    "maxRatio": 0.2952368009784603,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "chat_fw_brotli",
     "target": "ripple",
     "reference": "octane-tsrx",
-    "maxRatio": 0.40336035718481966,
+    "maxRatio": 0.29982080902817493,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "js_raw",
     "target": "ripple",
     "reference": "solid",
-    "maxRatio": 0.8657206317867719,
+    "maxRatio": 0.6244302643573382,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "js_gzip",
     "target": "ripple",
     "reference": "solid",
-    "maxRatio": 0.884807793575566,
+    "maxRatio": 0.6371867627367213,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "js_brotli",
     "target": "ripple",
     "reference": "solid",
-    "maxRatio": 0.8760643330179754,
+    "maxRatio": 0.6346587704455725,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "app_raw",
     "target": "ripple",
     "reference": "solid",
-    "maxRatio": 1.135843137254902,
+    "maxRatio": 1.1849411764705882,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes. The app-chunk limits are above the initial recording: hoisted render blocks with per-instance state objects (the recursive-context and uibench timing work) grew the compiled app output before this recording, and the client-only compile recovered part of it."
   },
   {
     "suite": "bundle-size",
     "op": "app_gzip",
     "target": "ripple",
     "reference": "solid",
-    "maxRatio": 1.176706827309237,
+    "maxRatio": 1.1688442211055277,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes. The app-chunk limits are above the initial recording: hoisted render blocks with per-instance state objects (the recursive-context and uibench timing work) grew the compiled app output before this recording, and the client-only compile recovered part of it."
   },
   {
     "suite": "bundle-size",
     "op": "app_brotli",
     "target": "ripple",
     "reference": "solid",
-    "maxRatio": 1.1487791027825098,
+    "maxRatio": 1.1690300623936472,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes. The app-chunk limits are above the initial recording: hoisted render blocks with per-instance state objects (the recursive-context and uibench timing work) grew the compiled app output before this recording, and the client-only compile recovered part of it."
   },
   {
     "suite": "bundle-size",
     "op": "fw_raw",
     "target": "ripple",
     "reference": "solid",
-    "maxRatio": 0.8162249231219798,
+    "maxRatio": 0.5241426184475093,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "fw_gzip",
     "target": "ripple",
     "reference": "solid",
-    "maxRatio": 0.8431818181818181,
+    "maxRatio": 0.5622580880741985,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "fw_brotli",
     "target": "ripple",
     "reference": "solid",
-    "maxRatio": 0.8386477462437396,
+    "maxRatio": 0.5613879719829321,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "todo_js_raw",
     "target": "ripple",
     "reference": "solid",
-    "maxRatio": 0.9087247606092129,
+    "maxRatio": 0.6430825745033113,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "todo_js_gzip",
     "target": "ripple",
     "reference": "solid",
-    "maxRatio": 0.9380035504574628,
+    "maxRatio": 0.6780265504259957,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "todo_js_brotli",
     "target": "ripple",
     "reference": "solid",
-    "maxRatio": 0.9297808012093727,
+    "maxRatio": 0.6742025168276266,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "todo_app_raw",
     "target": "ripple",
     "reference": "solid",
-    "maxRatio": 1.262041091276524,
+    "maxRatio": 1.4567194341529135,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes. The app-chunk limits are above the initial recording: hoisted render blocks with per-instance state objects (the recursive-context and uibench timing work) grew the compiled app output before this recording, and the client-only compile recovered part of it."
   },
   {
     "suite": "bundle-size",
     "op": "todo_app_gzip",
     "target": "ripple",
     "reference": "solid",
-    "maxRatio": 1.2972136222910218,
+    "maxRatio": 1.4432432432432432,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes. The app-chunk limits are above the initial recording: hoisted render blocks with per-instance state objects (the recursive-context and uibench timing work) grew the compiled app output before this recording, and the client-only compile recovered part of it."
   },
   {
     "suite": "bundle-size",
     "op": "todo_app_brotli",
     "target": "ripple",
     "reference": "solid",
-    "maxRatio": 1.3002680965147453,
+    "maxRatio": 1.442256042972247,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes. The app-chunk limits are above the initial recording: hoisted render blocks with per-instance state objects (the recursive-context and uibench timing work) grew the compiled app output before this recording, and the client-only compile recovered part of it."
   },
   {
     "suite": "bundle-size",
     "op": "todo_fw_raw",
     "target": "ripple",
     "reference": "solid",
-    "maxRatio": 0.8792653959793755,
+    "maxRatio": 0.5762882842491663,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "todo_fw_gzip",
     "target": "ripple",
     "reference": "solid",
-    "maxRatio": 0.9056462483151115,
+    "maxRatio": 0.6087678751986133,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "todo_fw_brotli",
     "target": "ripple",
     "reference": "solid",
-    "maxRatio": 0.8981917265296012,
+    "maxRatio": 0.608397737232093,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "chat_js_raw",
     "target": "ripple",
     "reference": "solid",
-    "maxRatio": 0.858960926119956,
+    "maxRatio": 0.6509904658400435,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "chat_js_gzip",
     "target": "ripple",
     "reference": "solid",
-    "maxRatio": 0.8877518182403296,
+    "maxRatio": 0.6906448005963474,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "chat_js_brotli",
     "target": "ripple",
     "reference": "solid",
-    "maxRatio": 0.8824031890660592,
+    "maxRatio": 0.6875857338820301,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "chat_app_raw",
     "target": "ripple",
     "reference": "solid",
-    "maxRatio": 1.1264,
+    "maxRatio": 1.2212571428571428,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes. The app-chunk limits are above the initial recording: hoisted render blocks with per-instance state objects (the recursive-context and uibench timing work) grew the compiled app output before this recording, and the client-only compile recovered part of it."
   },
   {
     "suite": "bundle-size",
     "op": "chat_app_gzip",
     "target": "ripple",
     "reference": "solid",
-    "maxRatio": 1.1274976213130352,
+    "maxRatio": 1.170313986679353,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes. The app-chunk limits are above the initial recording: hoisted render blocks with per-instance state objects (the recursive-context and uibench timing work) grew the compiled app output before this recording, and the client-only compile recovered part of it."
   },
   {
     "suite": "bundle-size",
     "op": "chat_app_brotli",
     "target": "ripple",
     "reference": "solid",
-    "maxRatio": 1.1403320835565078,
+    "maxRatio": 1.170848905499199,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes. The app-chunk limits are above the initial recording: hoisted render blocks with per-instance state objects (the recursive-context and uibench timing work) grew the compiled app output before this recording, and the client-only compile recovered part of it."
   },
   {
     "suite": "bundle-size",
     "op": "chat_fw_raw",
     "target": "ripple",
     "reference": "solid",
-    "maxRatio": 0.8262170560478767,
+    "maxRatio": 0.5827864085735649,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "chat_fw_gzip",
     "target": "ripple",
     "reference": "solid",
-    "maxRatio": 0.8526237439523632,
+    "maxRatio": 0.6208916833380966,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "chat_fw_brotli",
     "target": "ripple",
     "reference": "solid",
-    "maxRatio": 0.8454970856251539,
+    "maxRatio": 0.6188714881561345,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "js_raw",
     "target": "ripple",
     "reference": "vue-vapor",
-    "maxRatio": 0.5461891786687427,
+    "maxRatio": 0.40529388867263527,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "js_gzip",
     "target": "ripple",
     "reference": "vue-vapor",
-    "maxRatio": 0.5587098383141444,
+    "maxRatio": 0.41535392160937695,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "js_brotli",
     "target": "ripple",
     "reference": "vue-vapor",
-    "maxRatio": 0.5515693012600229,
+    "maxRatio": 0.41246277205040094,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "app_raw",
     "target": "ripple",
     "reference": "vue-vapor",
-    "maxRatio": 1.1016278715959227,
+    "maxRatio": 1.1492469192149704,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes. The app-chunk limits are above the initial recording: hoisted render blocks with per-instance state objects (the recursive-context and uibench timing work) grew the compiled app output before this recording, and the client-only compile recovered part of it."
   },
   {
     "suite": "bundle-size",
     "op": "app_gzip",
     "target": "ripple",
     "reference": "vue-vapor",
-    "maxRatio": 1.1226053639846743,
+    "maxRatio": 1.1139846743295019,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes. The app-chunk limits are above the initial recording: hoisted render blocks with per-instance state objects (the recursive-context and uibench timing work) grew the compiled app output before this recording, and the client-only compile recovered part of it."
   },
   {
     "suite": "bundle-size",
     "op": "app_brotli",
     "target": "ripple",
     "reference": "vue-vapor",
-    "maxRatio": 1.078358208955224,
+    "maxRatio": 1.0986140724946696,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes. The app-chunk limits are above the initial recording: hoisted render blocks with per-instance state objects (the recursive-context and uibench timing work) grew the compiled app output before this recording, and the client-only compile recovered part of it."
   },
   {
     "suite": "bundle-size",
     "op": "fw_raw",
     "target": "ripple",
     "reference": "vue-vapor",
-    "maxRatio": 0.48341774786650943,
+    "maxRatio": 0.32102962603205437,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "fw_gzip",
     "target": "ripple",
     "reference": "vue-vapor",
-    "maxRatio": 0.5065768513039917,
+    "maxRatio": 0.35041645805834964,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "fw_brotli",
     "target": "ripple",
     "reference": "vue-vapor",
-    "maxRatio": 0.5036342673818236,
+    "maxRatio": 0.3495413303925009,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "todo_js_raw",
     "target": "ripple",
     "reference": "vue-vapor",
-    "maxRatio": 0.5337375256536793,
+    "maxRatio": 0.38945026711159153,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "todo_js_gzip",
     "target": "ripple",
     "reference": "vue-vapor",
-    "maxRatio": 0.5628482464765651,
+    "maxRatio": 0.42059980334316616,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "todo_js_brotli",
     "target": "ripple",
     "reference": "vue-vapor",
-    "maxRatio": 0.5568835166825117,
+    "maxRatio": 0.41717596993978906,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "todo_app_raw",
     "target": "ripple",
     "reference": "vue-vapor",
-    "maxRatio": 1.2134067357512954,
+    "maxRatio": 1.4005829015544042,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes. The app-chunk limits are above the initial recording: hoisted render blocks with per-instance state objects (the recursive-context and uibench timing work) grew the compiled app output before this recording, and the client-only compile recovered part of it."
   },
   {
     "suite": "bundle-size",
     "op": "todo_app_gzip",
     "target": "ripple",
     "reference": "vue-vapor",
-    "maxRatio": 1.23690036900369,
+    "maxRatio": 1.3793357933579335,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes. The app-chunk limits are above the initial recording: hoisted render blocks with per-instance state objects (the recursive-context and uibench timing work) grew the compiled app output before this recording, and the client-only compile recovered part of it."
   },
   {
     "suite": "bundle-size",
     "op": "todo_app_brotli",
     "target": "ripple",
     "reference": "vue-vapor",
-    "maxRatio": 1.2155388471177946,
+    "maxRatio": 1.3458646616541354,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes. The app-chunk limits are above the initial recording: hoisted render blocks with per-instance state objects (the recursive-context and uibench timing work) grew the compiled app output before this recording, and the client-only compile recovered part of it."
   },
   {
     "suite": "bundle-size",
     "op": "todo_fw_raw",
     "target": "ripple",
     "reference": "vue-vapor",
-    "maxRatio": 0.49971190095978135,
+    "maxRatio": 0.3385739920649293,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "todo_fw_gzip",
     "target": "ripple",
     "reference": "vue-vapor",
-    "maxRatio": 0.524617186483321,
+    "maxRatio": 0.365635709018349,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "todo_fw_brotli",
     "target": "ripple",
     "reference": "vue-vapor",
-    "maxRatio": 0.5206777713957496,
+    "maxRatio": 0.36549875550449934,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "chat_js_raw",
     "target": "ripple",
     "reference": "vue-vapor",
-    "maxRatio": 0.4992869875222816,
+    "maxRatio": 0.3915032679738562,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "chat_js_gzip",
     "target": "ripple",
     "reference": "vue-vapor",
-    "maxRatio": 0.530744959211944,
+    "maxRatio": 0.4278128366938587,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "chat_js_brotli",
     "target": "ripple",
     "reference": "vue-vapor",
-    "maxRatio": 0.5260343730108211,
+    "maxRatio": 0.425419053681307,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "chat_app_raw",
     "target": "ripple",
     "reference": "vue-vapor",
-    "maxRatio": 1.0776295648370873,
+    "maxRatio": 1.168379619505795,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes. The app-chunk limits are above the initial recording: hoisted render blocks with per-instance state objects (the recursive-context and uibench timing work) grew the compiled app output before this recording, and the client-only compile recovered part of it."
   },
   {
     "suite": "bundle-size",
     "op": "chat_app_gzip",
     "target": "ripple",
     "reference": "vue-vapor",
-    "maxRatio": 1.0992578849721706,
+    "maxRatio": 1.1410018552875696,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes. The app-chunk limits are above the initial recording: hoisted render blocks with per-instance state objects (the recursive-context and uibench timing work) grew the compiled app output before this recording, and the client-only compile recovered part of it."
   },
   {
     "suite": "bundle-size",
     "op": "chat_app_brotli",
     "target": "ripple",
     "reference": "vue-vapor",
-    "maxRatio": 1.094039054470709,
+    "maxRatio": 1.1269270298047276,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes. The app-chunk limits are above the initial recording: hoisted render blocks with per-instance state objects (the recursive-context and uibench timing work) grew the compiled app output before this recording, and the client-only compile recovered part of it."
   },
   {
     "suite": "bundle-size",
     "op": "chat_fw_raw",
     "target": "ripple",
     "reference": "vue-vapor",
-    "maxRatio": 0.4576473775638676,
+    "maxRatio": 0.3353945208535866,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "chat_fw_gzip",
     "target": "ripple",
     "reference": "vue-vapor",
-    "maxRatio": 0.48065626049009735,
+    "maxRatio": 0.36463578382007383,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   },
   {
     "suite": "bundle-size",
     "op": "chat_fw_brotli",
     "target": "ripple",
     "reference": "vue-vapor",
-    "maxRatio": 0.4763865118645636,
+    "maxRatio": 0.3637541051852537,
     "unit": "bytes",
-    "note": "Maximum paired ratio in three normal runs, allowing 32 target bytes."
+    "note": "Paired ratio from the client-only, no-root-boundary fixture recording of 2026-09-16, allowing 32 target bytes."
   }
 ]

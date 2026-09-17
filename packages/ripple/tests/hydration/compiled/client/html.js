@@ -1,7 +1,7 @@
 // @ts-nocheck
 import * as _$_ from 'ripple/internal/client';
 
-var root = _$_.template(`<div></div>`, 0);
+var root = _$_.template(`<div>`);
 
 function StaticHtml_render(__anchor, __block) {
 	const html = '<p><strong>Bold</strong> text</p>';
@@ -13,7 +13,7 @@ function StaticHtml_render(__anchor, __block) {
 
 StaticHtml[_$_.$r] = StaticHtml_render;
 
-var root_1 = _$_.template(`<div></div>`, 0);
+var root_1 = _$_.template(`<div>`);
 
 function DynamicHtml_render(__anchor, __block) {
 	const content = '<p>Dynamic <span>HTML</span> content</p>';
@@ -25,7 +25,7 @@ function DynamicHtml_render(__anchor, __block) {
 
 DynamicHtml[_$_.$r] = DynamicHtml_render;
 
-var root_2 = _$_.template(`<div></div>`, 0);
+var root_2 = _$_.template(`<div>`);
 
 function EmptyHtml_render(__anchor, __block) {
 	const html = '';
@@ -37,7 +37,7 @@ function EmptyHtml_render(__anchor, __block) {
 
 EmptyHtml[_$_.$r] = EmptyHtml_render;
 
-var root_3 = _$_.template(`<section></section>`, 0);
+var root_3 = _$_.template(`<section>`);
 
 function ComplexHtml_render(__anchor, __block) {
 	const html = '<div class="nested"><span>Nested <em>content</em></span></div>';
@@ -49,11 +49,11 @@ function ComplexHtml_render(__anchor, __block) {
 
 ComplexHtml[_$_.$r] = ComplexHtml_render;
 
-var root_4 = _$_.template(`<div><!><!></div>`, 0);
+var root_4 = _$_.template(`<div><!><!>`);
 
 function render(__prev) {
-	_$_.html(__prev._node, () => __prev._html1);
-	_$_.html(__prev._node_1, () => __prev._html2);
+	_$_.html(__prev._a, () => __prev._b);
+	_$_.html(__prev._c, () => __prev._d);
 }
 
 function MultipleHtml_render(__anchor, __block) {
@@ -68,16 +68,16 @@ function MultipleHtml_render(__anchor, __block) {
 		_$_.hydrating && _$_.pop(div_3);
 	}
 
-	_$_.render(render, { _node: node, _html1: html1, _node_1: node_1, _html2: html2 });
+	_$_.render(render, { _a: node, _b: html1, _c: node_1, _d: html2 });
 	_$_.append(__anchor, div_3);
 }
 
 MultipleHtml[_$_.$r] = MultipleHtml_render;
 
-var root_5 = _$_.template(`<div><!><button>Increment</button></div>`, 0);
+var root_5 = _$_.template(`<div><!><button>Increment`);
 
 function render_1(__prev) {
-	_$_.html(__prev._node_2, () => "<p>Count: 0</p>");
+	_$_.html(__prev._a, () => "<p>Count: 0</p>");
 }
 
 function HtmlWithReactivity_render(__anchor, __block) {
@@ -89,13 +89,13 @@ function HtmlWithReactivity_render(__anchor, __block) {
 		_$_.hydrating && _$_.pop(div_4);
 	}
 
-	_$_.render(render_1, { _node_2: node_2 });
+	_$_.render(render_1, { _a: node_2 });
 	_$_.append(__anchor, div_4);
 }
 
 HtmlWithReactivity[_$_.$r] = HtmlWithReactivity_render;
 
-var root_6 = _$_.template(`<div class="wrapper"><div class="inner"><!></div></div>`, 0);
+var root_6 = _$_.template(`<div class=wrapper><div class=inner><!>`);
 
 function HtmlWrapper_render(__anchor, __block, { children }) {
 	var div_5 = root_6();
@@ -116,7 +116,7 @@ function HtmlWrapper_render(__anchor, __block, { children }) {
 
 HtmlWrapper[_$_.$r] = HtmlWrapper_render;
 
-var root_7 = _$_.template(`<div class="vp-doc"></div>`, 0);
+var root_7 = _$_.template(`<div class=vp-doc>`);
 
 function HtmlInChildren_render(__anchor, __block) {
 	const content = '<p><strong>Bold</strong> text</p>';
@@ -133,7 +133,7 @@ function HtmlInChildren_render(__anchor, __block) {
 
 HtmlInChildren[_$_.$r] = HtmlInChildren_render;
 
-var root_8 = _$_.template(`<h1>Title</h1><div class="content"></div>`, 1, 2);
+var root_8 = _$_.template(`<h1>Title</h1><div class=content>`, 1, 2);
 
 function HtmlInChildrenWithSiblings_render(__anchor, __block) {
 	const content = '<p>Dynamic content</p>';
@@ -152,11 +152,11 @@ function HtmlInChildrenWithSiblings_render(__anchor, __block) {
 
 HtmlInChildrenWithSiblings[_$_.$r] = HtmlInChildrenWithSiblings_render;
 
-var root_9 = _$_.template(`<div class="doc"><!><!></div>`, 0);
+var root_9 = _$_.template(`<div class=doc><!><!>`);
 
 function render_2(__prev) {
-	_$_.html(__prev._node_3, () => __prev._html1);
-	_$_.html(__prev._node_4, () => __prev._html2);
+	_$_.html(__prev._a, () => __prev._b);
+	_$_.html(__prev._c, () => __prev._d);
 }
 
 function MultipleHtmlInChildren_render(__anchor, __block) {
@@ -174,13 +174,7 @@ function MultipleHtmlInChildren_render(__anchor, __block) {
 				_$_.hydrating && _$_.pop(div_9);
 			}
 
-			_$_.render(render_2, {
-				_node_3: node_3,
-				_html1: html1,
-				_node_4: node_4,
-				_html2: html2
-			});
-
+			_$_.render(render_2, { _a: node_3, _b: html1, _c: node_4, _d: html2 });
 			_$_.append(__anchor, div_9);
 		})
 	});
@@ -188,7 +182,7 @@ function MultipleHtmlInChildren_render(__anchor, __block) {
 
 MultipleHtmlInChildren[_$_.$r] = MultipleHtmlInChildren_render;
 
-var root_10 = _$_.template(`<div></div>`, 0);
+var root_10 = _$_.template(`<div>`);
 
 function HtmlWithComments_render(__anchor, __block) {
 	const content = '<p>Before comment</p><!-- TODO: Elaborate --><p>After comment</p>';
@@ -200,7 +194,7 @@ function HtmlWithComments_render(__anchor, __block) {
 
 HtmlWithComments[_$_.$r] = HtmlWithComments_render;
 
-var root_11 = _$_.template(`<div></div>`, 0);
+var root_11 = _$_.template(`<div>`);
 
 function HtmlWithEmptyComment_render(__anchor, __block) {
 	const content = '<p>Before</p><!----><p>After</p>';
@@ -212,7 +206,7 @@ function HtmlWithEmptyComment_render(__anchor, __block) {
 
 HtmlWithEmptyComment[_$_.$r] = HtmlWithEmptyComment_render;
 
-var root_12 = _$_.template(`<div class="vp-doc"></div>`, 0);
+var root_12 = _$_.template(`<div class=vp-doc>`);
 
 function HtmlWithCommentsInChildren_render(__anchor, __block) {
 	const content = '<h2 id="intro">Introduction</h2><p>Some text</p><!-- TODO --><p>More text</p>';
@@ -229,7 +223,7 @@ function HtmlWithCommentsInChildren_render(__anchor, __block) {
 
 HtmlWithCommentsInChildren[_$_.$r] = HtmlWithCommentsInChildren_render;
 
-var root_13 = _$_.template(`<footer class="doc-footer">Footer content</footer>`, 0);
+var root_13 = _$_.template(`<footer class=doc-footer>Footer content`);
 
 function DocFooter_render(__anchor, __block) {
 	var footer = root_13();
@@ -239,7 +233,7 @@ function DocFooter_render(__anchor, __block) {
 
 DocFooter[_$_.$r] = DocFooter_render;
 
-var root_15 = _$_.template(`<div class="edit-link"><a>Edit</a></div>`, 0);
+var root_15 = _$_.template(`<div class=edit-link><a>Edit`);
 
 function consequent(__anchor, editPath) {
 	var div_16 = root_15();
@@ -257,13 +251,13 @@ function if_1(editPath) {
 	if (editPath) return consequent;
 }
 
-var root_16 = _$_.template(`<nav class="prev-next"><a> </a></nav>`, 0);
+var root_16 = _$_.template(`<nav class=prev-next><a> `);
 
 function render_3(__prev) {
-	var __a = __prev._nextLink.href;
+	var __a = __prev._a.href;
 
 	if (__prev.a !== __a) {
-		_$_.set_attribute(__prev._a_1, 'href', __prev.a = __a);
+		_$_.set_attribute(__prev._b, 'href', __prev.a = __a);
 	}
 }
 
@@ -281,7 +275,7 @@ function consequent_1(__anchor, nextLink) {
 		}
 	}
 
-	_$_.render(render_3, { a: void 0, _nextLink: nextLink, _a_1: a_1 });
+	_$_.render(render_3, { a: void 0, _a: nextLink, _b: a_1 });
 	_$_.append(__anchor, nav);
 }
 
@@ -289,24 +283,24 @@ function if_2(nextLink) {
 	if (nextLink) return consequent_1;
 }
 
-var root_18 = _$_.template(`<li><a></a></li>`, 0);
+var root_18 = _$_.template(`<li><a>`);
 
 function render_4(__prev) {
-	var __a = __prev._item.text;
+	var __a = __prev._a.text;
 
 	if (__prev.a !== __a) {
-		_$_.set_text_content(__prev._a_2, __a, __prev.a);
+		_$_.set_text_content(__prev._b, __a, __prev.a);
 		__prev.a = __a;
 	}
 
-	var __b = __prev._item.href;
+	var __b = __prev._a.href;
 
 	if (__prev.b !== __b) {
-		_$_.set_attribute(__prev._a_2, 'href', __prev.b = __b);
+		_$_.set_attribute(__prev._b, 'href', __prev.b = __b);
 	}
 }
 
-var root_17 = _$_.template(`<div class="toc"><ul></ul></div>`, 0);
+var root_17 = _$_.template(`<div class=toc><ul>`);
 
 function consequent_2(__anchor, toc) {
 	var div_17 = root_17();
@@ -325,7 +319,7 @@ function consequent_2(__anchor, toc) {
 						var a_2 = _$_.hydrating ? _$_.hydrate_child() : li.firstChild;
 					}
 
-					_$_.item({ a: '', b: void 0, _item: item, _a_2: a_2 });
+					_$_.item({ a: '', b: void 0, _a: item, _b: a_2 });
 					_$_.append(__anchor, li);
 				},
 				4,
@@ -344,7 +338,7 @@ function if_3(toc) {
 	if (toc.length > 0) return consequent_2;
 }
 
-var root_14 = _$_.template(`<div class="layout"><div class="content-container"><article><div><!></div></article></div><aside><!></aside></div>`, 0);
+var root_14 = _$_.template(`<div class=layout><div class=content-container><article><div><!></div></article></div><aside><!>`);
 
 function DocLayout_render(
 	__anchor,
@@ -401,7 +395,7 @@ function DocLayout_render(
 
 DocLayout[_$_.$r] = DocLayout_render;
 
-var root_19 = _$_.template(`<div class="vp-doc"></div>`, 0);
+var root_19 = _$_.template(`<div class=vp-doc>`);
 
 function HtmlWithServerData_render(__anchor, __block) {
 	const content = '<h1 id="intro" class="doc-h1">Introduction</h1><p>Ripple is a framework.</p>';
@@ -425,7 +419,7 @@ function HtmlWithServerData_render(__anchor, __block) {
 
 HtmlWithServerData[_$_.$r] = HtmlWithServerData_render;
 
-var root_20 = _$_.template(`<div class="vp-doc"></div>`, 0);
+var root_20 = _$_.template(`<div class=vp-doc>`);
 
 function HtmlWithClientDefaults_render(__anchor, __block) {
 	const content = '<h1 id="intro" class="doc-h1">Introduction</h1><p>Ripple is a framework.</p>';
@@ -442,7 +436,7 @@ function HtmlWithClientDefaults_render(__anchor, __block) {
 
 HtmlWithClientDefaults[_$_.$r] = HtmlWithClientDefaults_render;
 
-var root_21 = _$_.template(`<div class="vp-doc"></div>`, 0);
+var root_21 = _$_.template(`<div class=vp-doc>`);
 
 function HtmlWithUndefinedContent_render(__anchor, __block) {
 	const content = undefined;
@@ -459,10 +453,10 @@ function HtmlWithUndefinedContent_render(__anchor, __block) {
 
 HtmlWithUndefinedContent[_$_.$r] = HtmlWithUndefinedContent_render;
 
-var root_22 = _$_.template(`<h1 class="heading"><!></h1>`, 0);
-var root_23 = _$_.template(`<h2 class="heading"><!></h2>`, 0);
+var root_22 = _$_.template(`<h1 class=heading><!>`);
+var root_23 = _$_.template(`<h2 class=heading><!>`);
 
-function switch_case_0(__anchor, { level, children }) {
+function switch_case_0(__anchor, { a: level, b: children }) {
 	var h1_1 = root_22();
 
 	{
@@ -475,7 +469,7 @@ function switch_case_0(__anchor, { level, children }) {
 	_$_.append(__anchor, h1_1);
 }
 
-function switch_case_1(__anchor, { level, children }) {
+function switch_case_1(__anchor, { a: level, b: children }) {
 	var h2 = root_23();
 
 	{
@@ -488,7 +482,7 @@ function switch_case_1(__anchor, { level, children }) {
 	_$_.append(__anchor, h2);
 }
 
-function switch_1({ level, children }) {
+function switch_1({ a: level, b: children }) {
 	switch (level) {
 		case 1:
 			return switch_case_0;
@@ -499,12 +493,12 @@ function switch_1({ level, children }) {
 }
 
 function DynamicHeading_render(__anchor, __block, { level, children }) {
-	_$_.switch(__anchor, switch_1, true, { level, children });
+	_$_.switch(__anchor, switch_1, true, { a: level, b: children });
 }
 
 DynamicHeading[_$_.$r] = DynamicHeading_render;
 
-var root_24 = _$_.template(`<div class="code-block"><div class="header"><button>Copy</button><span class="lang">js</span></div><div class="content"></div></div>`, 0);
+var root_24 = _$_.template(`<div class=code-block><div class=header><button>Copy</button><span class=lang>js</span></div><div class=content>`);
 
 function CodeBlock_render(__anchor, __block, { code }) {
 	const highlighted = `<pre class="shiki"><code>${code}</code></pre>`;
@@ -522,7 +516,7 @@ function CodeBlock_render(__anchor, __block, { code }) {
 
 CodeBlock[_$_.$r] = CodeBlock_render;
 
-var root_25 = _$_.template(`<div class="wrapper"><div class="inner"><!></div></div>`, 0);
+var root_25 = _$_.template(`<div class=wrapper><div class=inner><!>`);
 
 function ContentWrapper_render(__anchor, __block, { children }) {
 	var div_24 = root_25();
@@ -543,7 +537,7 @@ function ContentWrapper_render(__anchor, __block, { children }) {
 
 ContentWrapper[_$_.$r] = ContentWrapper_render;
 
-var root_26 = _$_.template(`<!><p>First paragraph</p><p>Second paragraph</p><!><p>After code</p>`, 1, 5);
+var root_26 = _$_.template(`<!><p>First paragraph</p><p>Second paragraph</p><!><p>After code`, 1, 5);
 
 function HtmlAfterSwitchInChildren_render(__anchor, __block) {
 	_$_.render_component(ContentWrapper, __anchor, {
@@ -573,10 +567,10 @@ function HtmlAfterSwitchInChildren_render(__anchor, __block) {
 
 HtmlAfterSwitchInChildren[_$_.$r] = HtmlAfterSwitchInChildren_render;
 
-var root_27 = _$_.template(`<h1 class="heading"><!></h1>`, 0);
-var root_28 = _$_.template(`<h2 class="heading"><!></h2>`, 0);
+var root_27 = _$_.template(`<h1 class=heading><!>`);
+var root_28 = _$_.template(`<h2 class=heading><!>`);
 
-function consequent_3(__anchor, { primary, children }) {
+function consequent_3(__anchor, { a: primary, b: children }) {
 	var h1_2 = root_27();
 
 	{
@@ -589,7 +583,7 @@ function consequent_3(__anchor, { primary, children }) {
 	_$_.append(__anchor, h1_2);
 }
 
-function alternate(__anchor, { primary, children }) {
+function alternate(__anchor, { a: primary, b: children }) {
 	var h2_1 = root_28();
 
 	{
@@ -602,17 +596,17 @@ function alternate(__anchor, { primary, children }) {
 	_$_.append(__anchor, h2_1);
 }
 
-function if_4({ primary, children }) {
+function if_4({ a: primary, b: children }) {
 	if (primary) return consequent_3; else return alternate;
 }
 
 function IfHeading_render(__anchor, __block, { primary, children }) {
-	_$_.if(__anchor, if_4, true, { primary, children });
+	_$_.if(__anchor, if_4, true, { a: primary, b: children });
 }
 
 IfHeading[_$_.$r] = IfHeading_render;
 
-var root_29 = _$_.template(`<!><p>First paragraph</p><p>Second paragraph</p><!><p>After code</p>`, 1, 5);
+var root_29 = _$_.template(`<!><p>First paragraph</p><p>Second paragraph</p><!><p>After code`, 1, 5);
 
 function HtmlAfterIfInChildren_render(__anchor, __block) {
 	_$_.render_component(ContentWrapper, __anchor, {
@@ -642,7 +636,7 @@ function HtmlAfterIfInChildren_render(__anchor, __block) {
 
 HtmlAfterIfInChildren[_$_.$r] = HtmlAfterIfInChildren_render;
 
-var root_30 = _$_.template(`<span class="for-item"></span>`, 0);
+var root_30 = _$_.template(`<span class=for-item>`);
 
 function ForList_render(__anchor, __block, { items }) {
 	_$_.for(
@@ -663,7 +657,7 @@ function ForList_render(__anchor, __block, { items }) {
 
 ForList[_$_.$r] = ForList_render;
 
-var root_31 = _$_.template(`<!><p>First paragraph</p><!><p>After code</p>`, 1, 4);
+var root_31 = _$_.template(`<!><p>First paragraph</p><!><p>After code`, 1, 4);
 
 function HtmlAfterForInChildren_render(__anchor, __block) {
 	_$_.render_component(ContentWrapper, __anchor, {
@@ -685,8 +679,8 @@ function HtmlAfterForInChildren_render(__anchor, __block) {
 
 HtmlAfterForInChildren[_$_.$r] = HtmlAfterForInChildren_render;
 
-var root_32 = _$_.template(`<div class="try-box"></div>`, 0);
-var root_33 = _$_.template(`<span>error</span>`, 0);
+var root_32 = _$_.template(`<div class=try-box>`);
+var root_33 = _$_.template(`<span>error`);
 
 function TryBox_render(__anchor, __block, { value }) {
 	_$_.try(
@@ -712,7 +706,7 @@ function TryBox_render(__anchor, __block, { value }) {
 
 TryBox[_$_.$r] = TryBox_render;
 
-var root_34 = _$_.template(`<!><p>First paragraph</p><!><p>After code</p>`, 1, 4);
+var root_34 = _$_.template(`<!><p>First paragraph</p><!><p>After code`, 1, 4);
 
 function HtmlAfterTryInChildren_render(__anchor, __block) {
 	_$_.render_component(ContentWrapper, __anchor, {
@@ -734,7 +728,7 @@ function HtmlAfterTryInChildren_render(__anchor, __block) {
 
 HtmlAfterTryInChildren[_$_.$r] = HtmlAfterTryInChildren_render;
 
-var root_35 = _$_.template(`<span class="boxed"><!></span>`, 0);
+var root_35 = _$_.template(`<span class=boxed><!>`);
 
 function Boxed_render(__anchor, __block, { children }) {
 	var span_2 = root_35();
@@ -767,7 +761,7 @@ function IndirectHeading_render(__anchor, __block, { text }) {
 
 IndirectHeading[_$_.$r] = IndirectHeading_render;
 
-var root_37 = _$_.template(`<!><p>First paragraph</p><!><p>After code</p>`, 1, 4);
+var root_37 = _$_.template(`<!><p>First paragraph</p><!><p>After code`, 1, 4);
 
 function HtmlAfterComponentInChildren_render(__anchor, __block) {
 	_$_.render_component(ContentWrapper, __anchor, {
@@ -789,7 +783,7 @@ function HtmlAfterComponentInChildren_render(__anchor, __block) {
 
 HtmlAfterComponentInChildren[_$_.$r] = HtmlAfterComponentInChildren_render;
 
-var root_39 = _$_.template(`<div class="indicator"></div>`, 0);
+var root_39 = _$_.template(`<div class=indicator>`);
 
 function consequent_4(__anchor, active) {
 	var div_28 = root_39();
@@ -801,12 +795,12 @@ function if_5(active) {
 	if (active) return consequent_4;
 }
 
-var root_38 = _$_.template(`<div><a><span></span></a></div>`, 0);
+var root_38 = _$_.template(`<div><a><span>`);
 
 function NavItem_render(__anchor, __block, { href, text: label, active = false }) {
 	var div_27 = root_38();
 
-	_$_.set_class(div_27, `nav-item${active ? ' active' : ''}`, void 0, true);
+	_$_.set_class(div_27, `nav-item${active ? ' active' : ''}`);
 
 	{
 		var node_19 = _$_.hydrating ? _$_.hydrate_child() : div_27.firstChild;
@@ -833,9 +827,9 @@ function NavItem_render(__anchor, __block, { href, text: label, active = false }
 
 NavItem[_$_.$r] = NavItem_render;
 
-var root_41 = _$_.template(`<div class="section-items"><!></div>`, 0);
+var root_41 = _$_.template(`<div class=section-items><!>`);
 
-function consequent_5(__anchor, { expanded, children }) {
+function consequent_5(__anchor, { a: expanded, b: children }) {
 	var div_30 = root_41();
 
 	{
@@ -848,14 +842,14 @@ function consequent_5(__anchor, { expanded, children }) {
 	_$_.append(__anchor, div_30);
 }
 
-function if_6({ expanded, children }) {
+function if_6({ a: expanded, b: children }) {
 	if (expanded.value) return consequent_5;
 }
 
-var root_40 = _$_.template(`<section class="sidebar-section"><div class="section-header"><h2></h2><button>Toggle</button></div></section>`, 0);
+var root_40 = _$_.template(`<section class=sidebar-section><div class=section-header><h2></h2><button>Toggle`);
 
 function SidebarSection_render(__anchor, __block, { title, children }) {
-	const expanded = _$_.track(true, __block, '6ac6906f');
+	const expanded = _$_.track(true, __block, 'tmjvjj');
 	var section_1 = root_40();
 
 	{
@@ -879,7 +873,7 @@ function SidebarSection_render(__anchor, __block, { title, children }) {
 			? _$_.hydrate_sibling()
 			: _$_.append_into(section_1, true);
 
-		_$_.if(node_20, if_6, false, { expanded, children });
+		_$_.if(node_20, if_6, false, { a: expanded, b: children });
 		_$_.hydrating && _$_.pop(section_1);
 	}
 
@@ -890,7 +884,7 @@ SidebarSection[_$_.$r] = SidebarSection_render;
 
 var root_43 = _$_.template(`<!><!>`, 1, 2);
 var root_44 = _$_.template(`<!><!>`, 1, 2);
-var root_42 = _$_.template(`<aside class="sidebar"><nav><div class="group"></div><div class="group"></div></nav></aside>`, 0);
+var root_42 = _$_.template(`<aside class=sidebar><nav><div class=group></div><div class=group>`);
 
 function SideNav_render(__anchor, __block, { currentPath }) {
 	var aside_1 = root_42();
@@ -970,7 +964,7 @@ function SideNav_render(__anchor, __block, { currentPath }) {
 
 SideNav[_$_.$r] = SideNav_render;
 
-var root_45 = _$_.template(`<header class="page-header"><div class="logo">MyApp</div></header>`, 0);
+var root_45 = _$_.template(`<header class=page-header><div class=logo>MyApp`);
 
 function PageHeader_render(__anchor, __block) {
 	var header = root_45();
@@ -980,7 +974,7 @@ function PageHeader_render(__anchor, __block) {
 
 PageHeader[_$_.$r] = PageHeader_render;
 
-var root_47 = _$_.template(`<div class="edit-link"><a href="/edit">Edit</a></div>`, 0);
+var root_47 = _$_.template(`<div class=edit-link><a href=/edit>Edit`);
 
 function consequent_6(__anchor) {
 	var div_36 = root_47();
@@ -992,7 +986,7 @@ function if_7() {
 	if (true) return consequent_6;
 }
 
-var root_46 = _$_.template(`<div class="layout"><div class="content-wrapper"><main class="main-content"><div class="article"><div><h1>Introduction</h1><p>Welcome to the docs.</p></div></div></main></div></div>`, 0);
+var root_46 = _$_.template(`<div class=layout><div class=content-wrapper><main class=main-content><div class=article><div><h1>Introduction</h1><p>Welcome to the docs.`);
 
 function LayoutWithSidebarAndMain_render(__anchor, __block) {
 	var div_33 = root_46();
@@ -1034,7 +1028,7 @@ function LayoutWithSidebarAndMain_render(__anchor, __block) {
 
 LayoutWithSidebarAndMain[_$_.$r] = LayoutWithSidebarAndMain_render;
 
-var root_48 = _$_.template(`<article class="doc-content"><div><!></div></article>`, 0);
+var root_48 = _$_.template(`<article class=doc-content><div><!>`);
 
 function ArticleWrapper_render(__anchor, __block, { children }) {
 	var article_1 = root_48();
@@ -1055,7 +1049,7 @@ function ArticleWrapper_render(__anchor, __block, { children }) {
 
 ArticleWrapper[_$_.$r] = ArticleWrapper_render;
 
-var root_49 = _$_.template(`<footer class="doc-footer">Footer</footer>`, 0);
+var root_49 = _$_.template(`<footer class=doc-footer>Footer`);
 
 function SimpleFooter_render(__anchor, __block) {
 	var footer_1 = root_49();
@@ -1065,8 +1059,8 @@ function SimpleFooter_render(__anchor, __block) {
 
 SimpleFooter[_$_.$r] = SimpleFooter_render;
 
-var root_51 = _$_.template(`<h1>Title</h1><p>Content goes here.</p>`, 1, 2);
-var root_52 = _$_.template(`<div class="edit-link"><a href="/edit">Edit</a></div>`, 0);
+var root_51 = _$_.template(`<h1>Title</h1><p>Content goes here.`, 1, 2);
+var root_52 = _$_.template(`<div class=edit-link><a href=/edit>Edit`);
 
 function consequent_7(__anchor) {
 	var div_39 = root_52();
@@ -1078,7 +1072,7 @@ function if_8() {
 	if (true) return consequent_7;
 }
 
-var root_53 = _$_.template(`<nav class="prev-next"><a href="/prev">Previous</a></nav>`, 0);
+var root_53 = _$_.template(`<nav class=prev-next><a href=/prev>Previous`);
 
 function consequent_8(__anchor) {
 	var nav_2 = root_53();
@@ -1090,7 +1084,7 @@ function if_9() {
 	if (true) return consequent_8;
 }
 
-var root_50 = _$_.template(`<div class="content-container"><!><!><!><!></div>`, 0);
+var root_50 = _$_.template(`<div class=content-container><!><!><!><!>`);
 
 function ArticleWithChildrenThenSibling_render(__anchor, __block) {
 	var div_38 = root_50();
@@ -1126,8 +1120,8 @@ function ArticleWithChildrenThenSibling_render(__anchor, __block) {
 
 ArticleWithChildrenThenSibling[_$_.$r] = ArticleWithChildrenThenSibling_render;
 
-var root_55 = _$_.template(`<div class="doc-content"></div>`, 0);
-var root_56 = _$_.template(`<div class="edit-link"><a href="/edit">Edit</a></div>`, 0);
+var root_55 = _$_.template(`<div class=doc-content>`);
+var root_56 = _$_.template(`<div class=edit-link><a href=/edit>Edit`);
 
 function consequent_9(__anchor) {
 	var div_42 = root_56();
@@ -1139,7 +1133,7 @@ function if_10() {
 	if (true) return consequent_9;
 }
 
-var root_54 = _$_.template(`<div class="content-container"><!><!><!></div>`, 0);
+var root_54 = _$_.template(`<div class=content-container><!><!><!>`);
 
 function ArticleWithHtmlChildThenSibling_render(__anchor, __block) {
 	const htmlContent = '<pre><code>const x = 1;</code></pre>';
@@ -1172,7 +1166,7 @@ function ArticleWithHtmlChildThenSibling_render(__anchor, __block) {
 
 ArticleWithHtmlChildThenSibling[_$_.$r] = ArticleWithHtmlChildThenSibling_render;
 
-var root_58 = _$_.template(`<div class="edit-link"><a href="/edit">Edit</a></div>`, 0);
+var root_58 = _$_.template(`<div class=edit-link><a href=/edit>Edit`);
 
 function consequent_10(__anchor) {
 	var div_45 = root_58();
@@ -1184,7 +1178,7 @@ function if_11() {
 	if (true) return consequent_10;
 }
 
-var root_57 = _$_.template(`<div class="content-container"><article class="doc-content"><div><!></div></article></div>`, 0);
+var root_57 = _$_.template(`<div class=content-container><article class=doc-content><div><!>`);
 
 function InlineArticleLayout_render(__anchor, __block, { children }) {
 	var div_43 = root_57();
@@ -1220,7 +1214,7 @@ function InlineArticleLayout_render(__anchor, __block, { children }) {
 
 InlineArticleLayout[_$_.$r] = InlineArticleLayout_render;
 
-var root_59 = _$_.template(`<div class="doc-content"></div>`, 0);
+var root_59 = _$_.template(`<div class=doc-content>`);
 
 function InlineArticleWithHtmlChild_render(__anchor, __block) {
 	const htmlContent = '<pre><code>const x = 1;</code></pre>';
@@ -1237,7 +1231,7 @@ function InlineArticleWithHtmlChild_render(__anchor, __block) {
 
 InlineArticleWithHtmlChild[_$_.$r] = InlineArticleWithHtmlChild_render;
 
-var root_60 = _$_.template(`<header class="header">Header</header>`, 0);
+var root_60 = _$_.template(`<header class=header>Header`);
 
 function HeaderStub_render(__anchor, __block) {
 	var header_1 = root_60();
@@ -1247,7 +1241,7 @@ function HeaderStub_render(__anchor, __block) {
 
 HeaderStub[_$_.$r] = HeaderStub_render;
 
-var root_61 = _$_.template(`<aside class="sidebar">Sidebar</aside>`, 0);
+var root_61 = _$_.template(`<aside class=sidebar>Sidebar`);
 
 function SidebarStub_render(__anchor, __block) {
 	var aside_2 = root_61();
@@ -1257,7 +1251,7 @@ function SidebarStub_render(__anchor, __block) {
 
 SidebarStub[_$_.$r] = SidebarStub_render;
 
-var root_62 = _$_.template(`<footer class="footer">Footer</footer>`, 0);
+var root_62 = _$_.template(`<footer class=footer>Footer`);
 
 function FooterStub_render(__anchor, __block) {
 	var footer_2 = root_62();
@@ -1267,7 +1261,7 @@ function FooterStub_render(__anchor, __block) {
 
 FooterStub[_$_.$r] = FooterStub_render;
 
-var root_64 = _$_.template(`<div class="edit-link"><a href="/edit">Edit on GitHub</a></div>`, 0);
+var root_64 = _$_.template(`<div class=edit-link><a href=/edit>Edit on GitHub`);
 
 function consequent_11(__anchor, editPath) {
 	var div_53 = root_64();
@@ -1279,13 +1273,13 @@ function if_12(editPath) {
 	if (editPath) return consequent_11;
 }
 
-var root_65 = _$_.template(`<nav class="prev-next"><a> </a></nav>`, 0);
+var root_65 = _$_.template(`<nav class=prev-next><a> `);
 
 function render_5(__prev) {
-	var __a = __prev._nextLink.href;
+	var __a = __prev._a.href;
 
 	if (__prev.a !== __a) {
-		_$_.set_attribute(__prev._a_4, 'href', __prev.a = __a);
+		_$_.set_attribute(__prev._b, 'href', __prev.a = __a);
 	}
 }
 
@@ -1303,7 +1297,7 @@ function consequent_12(__anchor, nextLink) {
 		}
 	}
 
-	_$_.render(render_5, { a: void 0, _nextLink: nextLink, _a_4: a_4 });
+	_$_.render(render_5, { a: void 0, _a: nextLink, _b: a_4 });
 	_$_.append(__anchor, nav_3);
 }
 
@@ -1311,7 +1305,7 @@ function if_13(nextLink) {
 	if (nextLink) return consequent_12;
 }
 
-var root_63 = _$_.template(`<div class="layout"><div class="docs-wrapper"><main class="docs-main"><div class="docs-container"><div class="content"><div class="content-container"><article class="doc-content"><div><!></div></article></div></div></div></main></div></div>`, 0);
+var root_63 = _$_.template(`<div class=layout><div class=docs-wrapper><main class=docs-main><div class=docs-container><div class=content><div class=content-container><article class=doc-content><div><!>`);
 
 function DocsLayoutInner_render(
 	__anchor,
@@ -1387,7 +1381,7 @@ function DocsLayoutInner_render(
 
 DocsLayoutInner[_$_.$r] = DocsLayoutInner_render;
 
-var root_66 = _$_.template(`<div class="doc-content"></div>`, 0);
+var root_66 = _$_.template(`<div class=doc-content>`);
 
 function DocsLayoutWithData_render(__anchor, __block) {
 	const htmlContent = '<h1>Title</h1><p>Content</p>';
@@ -1406,7 +1400,7 @@ function DocsLayoutWithData_render(__anchor, __block) {
 
 DocsLayoutWithData[_$_.$r] = DocsLayoutWithData_render;
 
-var root_67 = _$_.template(`<div class="doc-content"></div>`, 0);
+var root_67 = _$_.template(`<div class=doc-content>`);
 
 function DocsLayoutWithoutData_render(__anchor, __block) {
 	const htmlContent = undefined;
@@ -1423,7 +1417,7 @@ function DocsLayoutWithoutData_render(__anchor, __block) {
 
 DocsLayoutWithoutData[_$_.$r] = DocsLayoutWithoutData_render;
 
-var root_69 = _$_.template(`<div class="edit-link"><a>Edit on GitHub</a></div>`, 0);
+var root_69 = _$_.template(`<div class=edit-link><a>Edit on GitHub`);
 
 function consequent_13(__anchor, editPath) {
 	var div_62 = root_69();
@@ -1441,17 +1435,17 @@ function if_14(editPath) {
 	if (editPath) return consequent_13;
 }
 
-var root_71 = _$_.template(`<a class="pager prev"><span class="title"> </span></a>`, 0);
+var root_71 = _$_.template(`<a class="pager prev"><span class=title> `);
 
 function render_6(__prev) {
-	var __a = __prev._prevLink.href;
+	var __a = __prev._a.href;
 
 	if (__prev.a !== __a) {
-		_$_.set_attribute(__prev._a_6, 'href', __prev.a = __a);
+		_$_.set_attribute(__prev._b, 'href', __prev.a = __a);
 	}
 }
 
-var root_72 = _$_.template(`<span></span>`, 0);
+var root_72 = _$_.template(`<span>`);
 
 function consequent_14(__anchor, prevLink) {
 	var a_6 = root_71();
@@ -1467,7 +1461,7 @@ function consequent_14(__anchor, prevLink) {
 		}
 	}
 
-	_$_.render(render_6, { a: void 0, _prevLink: prevLink, _a_6: a_6 });
+	_$_.render(render_6, { a: void 0, _a: prevLink, _b: a_6 });
 	_$_.append(__anchor, a_6);
 }
 
@@ -1481,13 +1475,13 @@ function if_15(prevLink) {
 	if (prevLink) return consequent_14; else return alternate_1;
 }
 
-var root_73 = _$_.template(`<a class="pager next"><span class="title"> </span></a>`, 0);
+var root_73 = _$_.template(`<a class="pager next"><span class=title> `);
 
 function render_7(__prev) {
-	var __a = __prev._nextLink.href;
+	var __a = __prev._a.href;
 
 	if (__prev.a !== __a) {
-		_$_.set_attribute(__prev._a_7, 'href', __prev.a = __a);
+		_$_.set_attribute(__prev._b, 'href', __prev.a = __a);
 	}
 }
 
@@ -1505,7 +1499,7 @@ function consequent_15(__anchor, nextLink) {
 		}
 	}
 
-	_$_.render(render_7, { a: void 0, _nextLink: nextLink, _a_7: a_7 });
+	_$_.render(render_7, { a: void 0, _a: nextLink, _b: a_7 });
 	_$_.append(__anchor, a_7);
 }
 
@@ -1513,9 +1507,9 @@ function if_16(nextLink) {
 	if (nextLink) return consequent_15;
 }
 
-var root_70 = _$_.template(`<nav class="prev-next"><!><!></nav>`, 0);
+var root_70 = _$_.template(`<nav class=prev-next><!><!>`);
 
-function consequent_16(__anchor, { prevLink, nextLink }) {
+function consequent_16(__anchor, { a: prevLink, b: nextLink }) {
 	var nav_4 = root_70();
 
 	{
@@ -1532,28 +1526,28 @@ function consequent_16(__anchor, { prevLink, nextLink }) {
 	_$_.append(__anchor, nav_4);
 }
 
-function if_17({ prevLink, nextLink }) {
+function if_17({ a: prevLink, b: nextLink }) {
 	if (prevLink || nextLink) return consequent_16;
 }
 
-var root_75 = _$_.template(`<a></a>`, 0);
+var root_75 = _$_.template(`<a>`);
 
 function render_8(__prev) {
-	var __a = __prev._item.text;
+	var __a = __prev._a.text;
 
 	if (__prev.a !== __a) {
-		_$_.set_text_content(__prev._a_8, __a, __prev.a);
+		_$_.set_text_content(__prev._b, __a, __prev.a);
 		__prev.a = __a;
 	}
 
-	var __b = __prev._item.href;
+	var __b = __prev._a.href;
 
 	if (__prev.b !== __b) {
-		_$_.set_attribute(__prev._a_8, 'href', __prev.b = __b);
+		_$_.set_attribute(__prev._b, 'href', __prev.b = __b);
 	}
 }
 
-var root_74 = _$_.template(`<div class="aside-content"><nav class="outline"></nav></div>`, 0);
+var root_74 = _$_.template(`<div class=aside-content><nav class=outline>`);
 
 function consequent_17(__anchor, toc) {
 	var div_63 = root_74();
@@ -1568,7 +1562,7 @@ function consequent_17(__anchor, toc) {
 				(__anchor, item) => {
 					var a_8 = root_75();
 
-					_$_.item({ a: '', b: void 0, _item: item, _a_8: a_8 });
+					_$_.item({ a: '', b: void 0, _a: item, _b: a_8 });
 					_$_.append(__anchor, a_8);
 				},
 				4,
@@ -1587,7 +1581,7 @@ function if_18(toc) {
 	if (toc.length > 0) return consequent_17;
 }
 
-var root_68 = _$_.template(`<div class="layout"><div class="docs-wrapper"><main class="docs-main"><div class="docs-container"><div class="content"><div class="content-container"><article class="doc-content"><div><!></div></article></div></div><aside class="aside"><!></aside></div></main></div></div>`, 0);
+var root_68 = _$_.template(`<div class=layout><div class=docs-wrapper><main class=docs-main><div class=docs-container><div class=content><div class=content-container><article class=doc-content><div><!></div></article></div></div><aside class=aside><!>`);
 
 function DocsLayoutExact_render(
 	__anchor,
@@ -1647,7 +1641,7 @@ function DocsLayoutExact_render(
 
 							var node_46 = _$_.hydrating ? _$_.hydrate_sibling() : _$_.append_into(div_58);
 
-							_$_.if(node_46, if_17, false, { prevLink, nextLink });
+							_$_.if(node_46, if_17, false, { a: prevLink, b: nextLink });
 
 							var node_49 = _$_.hydrating ? _$_.hydrate_sibling() : _$_.append_into(div_58);
 
@@ -1680,7 +1674,7 @@ function DocsLayoutExact_render(
 
 DocsLayoutExact[_$_.$r] = DocsLayoutExact_render;
 
-var root_76 = _$_.template(`<div class="doc-content"></div>`, 0);
+var root_76 = _$_.template(`<div class=doc-content>`);
 
 function DocsLayoutExactWithData_render(__anchor, __block) {
 	const htmlContent = '<h1>Styling Guide</h1><p>Content</p>';
@@ -1705,7 +1699,7 @@ function DocsLayoutExactWithData_render(__anchor, __block) {
 
 DocsLayoutExactWithData[_$_.$r] = DocsLayoutExactWithData_render;
 
-var root_77 = _$_.template(`<div class="doc-content"></div>`, 0);
+var root_77 = _$_.template(`<div class=doc-content>`);
 
 function DocsLayoutExactWithoutData_render(__anchor, __block) {
 	const htmlContent = undefined;
@@ -1730,13 +1724,13 @@ function DocsLayoutExactWithoutData_render(__anchor, __block) {
 
 DocsLayoutExactWithoutData[_$_.$r] = DocsLayoutExactWithoutData_render;
 
-var root_78 = _$_.template(`<div><template id="t1"></template><p class="content">Main content</p></div>`, 0);
+var root_78 = _$_.template(`<div><template id=t1></template><p class=content>Main content`);
 
 function render_9(__prev) {
-	var __a = _$_.with_scope(__prev.___block, () => JSON.stringify(__prev._data));
+	var __a = _$_.with_scope(__prev._a, () => JSON.stringify(__prev._b));
 
 	if (__prev.a !== __a) {
-		__prev._template.innerHTML = (__prev.a = __a) ?? __prev._template.innerHTML;
+		__prev._c.innerHTML = (__prev.a = __a) ?? __prev._c.innerHTML;
 	}
 }
 
@@ -1748,25 +1742,19 @@ function TemplateWithHtmlContent_render(__anchor, __block) {
 		var template = _$_.hydrating ? _$_.hydrate_child() : div_66.firstChild;
 	}
 
-	_$_.render(render_9, {
-		a: template.innerHTML,
-		___block: __block,
-		_data: data,
-		_template: template
-	});
-
+	_$_.render(render_9, { a: template.innerHTML, _a: __block, _b: data, _c: template });
 	_$_.append(__anchor, div_66);
 }
 
 TemplateWithHtmlContent[_$_.$r] = TemplateWithHtmlContent_render;
 
-var root_79 = _$_.template(`<div class="wrapper"><h1>Title</h1><template id="data-template"></template><p class="after-template">Content after template</p></div>`, 0);
+var root_79 = _$_.template(`<div class=wrapper><h1>Title</h1><template id=data-template></template><p class=after-template>Content after template`);
 
 function render_10(__prev) {
-	var __a = _$_.with_scope(__prev.___block, () => JSON.stringify(__prev._data));
+	var __a = _$_.with_scope(__prev._a, () => JSON.stringify(__prev._b));
 
 	if (__prev.a !== __a) {
-		__prev._template_1.innerHTML = (__prev.a = __a) ?? __prev._template_1.innerHTML;
+		__prev._c.innerHTML = (__prev.a = __a) ?? __prev._c.innerHTML;
 	}
 }
 
@@ -1781,9 +1769,9 @@ function TemplateWithHtmlAndSiblings_render(__anchor, __block) {
 
 	_$_.render(render_10, {
 		a: template_1.innerHTML,
-		___block: __block,
-		_data: data,
-		_template_1: template_1
+		_a: __block,
+		_b: data,
+		_c: template_1
 	});
 
 	_$_.append(__anchor, div_67);
@@ -1791,13 +1779,13 @@ function TemplateWithHtmlAndSiblings_render(__anchor, __block) {
 
 TemplateWithHtmlAndSiblings[_$_.$r] = TemplateWithHtmlAndSiblings_render;
 
-var root_80 = _$_.template(`<div class="layout"><template id="page-data"></template><main><!></main></div>`, 0);
+var root_80 = _$_.template(`<div class=layout><template id=page-data></template><main><!>`);
 
 function render_11(__prev) {
-	var __a = _$_.with_scope(__prev.___block, () => JSON.stringify(__prev._data));
+	var __a = _$_.with_scope(__prev._a, () => JSON.stringify(__prev._b));
 
 	if (__prev.a !== __a) {
-		__prev._template_2.innerHTML = (__prev.a = __a) ?? __prev._template_2.innerHTML;
+		__prev._c.innerHTML = (__prev.a = __a) ?? __prev._c.innerHTML;
 	}
 }
 
@@ -1818,9 +1806,9 @@ function LayoutWithTemplate_render(__anchor, __block, { children, data }) {
 
 	_$_.render(render_11, {
 		a: template_2.innerHTML,
-		___block: __block,
-		_data: data,
-		_template_2: template_2
+		_a: __block,
+		_b: data,
+		_c: template_2
 	});
 
 	_$_.append(__anchor, div_68);
@@ -1828,13 +1816,13 @@ function LayoutWithTemplate_render(__anchor, __block, { children, data }) {
 
 LayoutWithTemplate[_$_.$r] = LayoutWithTemplate_render;
 
-var root_81 = _$_.template(`<div class="doc-content"></div>`, 0);
+var root_81 = _$_.template(`<div class=doc-content>`);
 
 function render_12(__prev) {
-	var __a = __prev._doc.html;
+	var __a = __prev._a.html;
 
 	if (__prev.a !== __a) {
-		__prev._div_69.innerHTML = (__prev.a = __a) ?? __prev._div_69.innerHTML;
+		__prev._b.innerHTML = (__prev.a = __a) ?? __prev._b.innerHTML;
 	}
 }
 
@@ -1846,7 +1834,7 @@ function NestedTemplateInLayout_render(__anchor, __block) {
 		children: _$_.tsrx_element((__anchor, __block) => {
 			var div_69 = root_81();
 
-			_$_.render(render_12, { a: div_69.innerHTML, _doc: doc, _div_69: div_69 });
+			_$_.render(render_12, { a: div_69.innerHTML, _a: doc, _b: div_69 });
 			_$_.append(__anchor, div_69);
 		})
 	});
@@ -1854,7 +1842,7 @@ function NestedTemplateInLayout_render(__anchor, __block) {
 
 NestedTemplateInLayout[_$_.$r] = NestedTemplateInLayout_render;
 
-var root_82 = _$_.template(`<section class="readable-section"><p>Ergonomics</p><h2>Sibling traversal pattern</h2><p>Before first block</p><p>Before second block</p><pre class="code-block"><code></code></pre><p>Between one and two</p><pre class="code-block"><code></code></pre><p>Between two and three</p><pre class="code-block"><code></code></pre></section>`, 0);
+var root_82 = _$_.template(`<section class=readable-section><p>Ergonomics</p><h2>Sibling traversal pattern</h2><p>Before first block</p><p>Before second block</p><pre class=code-block><code></code></pre><p>Between one and two</p><pre class=code-block><code></code></pre><p>Between two and three</p><pre class=code-block><code>`);
 
 function HtmlCodeBlocksWithSiblingChain_render(__anchor, __block) {
 	const html1 = '<span class="kw">const</span> <span class="id">a</span> = 1;';

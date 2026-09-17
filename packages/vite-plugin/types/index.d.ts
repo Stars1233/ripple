@@ -39,6 +39,7 @@ export class RenderRoute {
 	entry: RenderRouteEntry;
 	layout?: string;
 	before: Middleware[];
+	prerender: boolean;
 	constructor(options: RenderRouteOptions);
 }
 
@@ -67,6 +68,15 @@ export interface RenderRouteOptions {
 	layout?: string;
 	/** Middleware to run before rendering */
 	before?: Middleware[];
+	/**
+	 * Render the page to static HTML at build time and serve that file. The
+	 * path must be static (no `:param` or `*` segments); the build renders it
+	 * buffered with every boundary settled and writes `<outDir>/client<path>/index.html`,
+	 * which the adapter's static file handler serves before the server renders
+	 * anything. The page still hydrates like a server-rendered one.
+	 * @default false
+	 */
+	prerender?: boolean;
 }
 
 export interface ServerRouteOptions {
@@ -106,6 +116,25 @@ export type RouteHandler = (context: Context) => Response | Promise<Response>;
 // ============================================================================
 
 export interface RipplePluginOptions {
+	/**
+	 * Override the build's rendering side. `false` builds a client-only app:
+	 * components compile without the hydration cursor or serialization hashes,
+	 * the runtime's hydration paths are compiled out, and `hydrate()` throws.
+	 * `true` compiles every module for the server, for an adapter that drives
+	 * the build itself. Leave unset to let Vite's environment decide, which is
+	 * what a `ripple.config.ts` app with render routes needs.
+	 */
+	ssr?: boolean;
+
+	/**
+	 * Whether the app renders under the default root try/pending/catch
+	 * boundary. `false` leaves the boundary runtime out of the build: `mount()`
+	 * and `hydrate()` render without one, a `rootBoundary` option on either
+	 * throws, and `trackAsync()` must sit inside a user `@try` block.
+	 * @default true
+	 */
+	rootBoundary?: boolean;
+
 	/**
 	 * Opt-in primitive DOM text proofs from TypeScript. Requires TypeScript and
 	 * strictNullChecks. Active only in one-shot production builds; development,

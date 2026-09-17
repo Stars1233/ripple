@@ -14,8 +14,7 @@ export {
 	set_text,
 	set_text_content,
 	set_class,
-	set_style,
-	set_attribute,
+	set_class_value,
 	set_value,
 	set_checked,
 	set_selected,
@@ -23,7 +22,6 @@ export {
 
 export {
 	render,
-	render_spread,
 	ref,
 	branch,
 	destroy_block,
@@ -41,7 +39,8 @@ export {
 	SUSPENSE_REJECTED,
 	RENDER_ENTRY as $r,
 } from './constants.js';
-export { event, render_event, delegate } from './events.js';
+export { event, render_event, delegate, listen } from './events.js';
+export { set_style, set_attribute, render_spread } from './attributes.js';
 export { portal } from './portal.js';
 
 export {
@@ -63,7 +62,7 @@ export {
 	update_property,
 	update_pre_property,
 	track,
-	track_async,
+	track_read_only,
 	is_tracked_pending,
 	peek_tracked,
 	push_component,
@@ -80,6 +79,8 @@ export {
 	schedule_update,
 } from './runtime.js';
 
+export { track_async } from './track-async.js';
+
 export { composite } from './composite.js';
 
 export { render_component } from './component.js';
@@ -95,6 +96,8 @@ export { try_block as try, get_pending_boundary } from './try.js';
 export { if_block as switch } from './if.js';
 
 export { template, append, text } from './template.js';
+
+export { template_ns } from './template-ns.js';
 
 export {
 	ripple_array,

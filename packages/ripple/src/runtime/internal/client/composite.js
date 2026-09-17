@@ -1,13 +1,17 @@
 /** @import { Block } from '#client' */
+import { component_invalid } from './errors.js';
 
-import { branch, destroy_block, render, render_spread } from './blocks.js';
+import { branch, destroy_block, render } from './blocks.js';
+import { render_spread } from './attributes.js';
 import { COMPOSITE_BLOCK, DEFAULT_NAMESPACE, NAMESPACE_URI } from './constants.js';
 import { hydrate_node, hydrate_next, hydrating, set_hydrate_node } from './hydration.js';
 import { first_child } from './operations.js';
 import { active_block, active_namespace, get, untrack, with_ns } from './runtime.js';
 import { top_element_to_ns } from './utils.js';
+import { install_ns_templates } from './template-ns.js';
 import { is_tsrx_element } from '../../element.js';
 import { render_component } from './component.js';
+import { HYDRATION } from 'ripple/internal/client/hydration-enabled';
 
 /**
  * @typedef {Function | string | null | undefined | false} CompositeTarget
@@ -19,7 +23,7 @@ import { render_component } from './component.js';
  * @returns {void}
  */
 export function composite(get_component, node, get_props) {
-	if (hydrating) {
+	if (HYDRATION && hydrating) {
 		// During hydration, `node` may already point at the first real SSR node
 		// (e.g. layout children). Only skip forward when we are on an empty
 		// comment anchor from a client template placeholder.
@@ -49,16 +53,20 @@ export function composite(get_component, node, get_props) {
 					render_component(component, anchor, props);
 				});
 			} else if (is_tsrx_element(component)) {
-				throw new TypeError('Invalid component type: received a TSRXElement value.');
+				component_invalid(true);
 			} else if (component != null) {
 				// Custom element - only create if component is not null/undefined
 				const ns = top_element_to_ns(component, active_namespace);
+				if (ns !== DEFAULT_NAMESPACE) {
+					// Templates cloned inside the element parse in its namespace.
+					install_ns_templates();
+				}
 				var run = () => {
 					var block = /** @type {Block} */ (active_block);
 
 					/** @type {Element} */
 					var element;
-					if (hydrating) {
+					if (HYDRATION && hydrating) {
 						// Claim the SSR-rendered element instead of creating a new one.
 						element = /** @type {Element} */ (hydrate_node);
 					} else {
@@ -86,7 +94,7 @@ export function composite(get_component, node, get_props) {
 					if (is_tsrx_element(props.children)) {
 						/** @type {Node} */
 						var child_anchor;
-						if (hydrating) {
+						if (HYDRATION && hydrating) {
 							// The server renders children directly inside the element with no
 							// extra markers; descend the cursor so they claim those nodes.
 							child_anchor = /** @type {Node} */ (first_child(element));
@@ -101,7 +109,7 @@ export function composite(get_component, node, get_props) {
 							props.children.render(child_anchor, block, props.children.p);
 						}
 
-						if (hydrating) {
+						if (HYDRATION && hydrating) {
 							// Reset the cursor to the claimed element so sibling traversal
 							// continues after it.
 							set_hydrate_node(element);

@@ -32,6 +32,7 @@ import { walk } from 'zimmerframe';
  */
 const LOCAL_ITEMS = 1 << 7;
 import { captured_locals, register_hoisted, rewrite } from './hoist.js';
+import { has_text_type_fact } from '../../text-type-facts.js';
 import path from 'node:path';
 import { print } from 'esrap';
 import tsx from 'esrap/languages/tsx';
@@ -56,7 +57,9 @@ import {
 	getStyleElementStylesheet,
 	getOriginalEventName,
 	has_location,
+	isCaptureEvent,
 	isEventAttribute,
+	isNonDelegated,
 	isEmptyJsxFragment as is_empty_jsx_fragment,
 	isInsideComponent as is_inside_component,
 	normalizeEventName,
@@ -558,7 +561,8 @@ function visit_function(node, context) {
 	if (
 		metadata?.tracked === true &&
 		!is_inside_component(context, true) &&
-		body.type === 'BlockStatement'
+		body.type === 'BlockStatement' &&
+		references_block(body)
 	) {
 		body = { ...body, body: [b.var('__block', b.call('_$_.scope')), ...body.body] };
 	}
@@ -578,6 +582,59 @@ function visit_function(node, context) {
 		returnType: undefined,
 		typeParameters: undefined,
 	};
+}
+
+/** AST keys that hold no child values, or hold references back up the tree. */
+const NON_CHILD_KEYS = new Set([
+	'metadata',
+	'loc',
+	'start',
+	'end',
+	'range',
+	'leadingComments',
+	'trailingComments',
+	'typeAnnotation',
+	'typeParameters',
+	'typeArguments',
+	'returnType',
+]);
+
+/**
+ * Whether a compiled function body reads the `__block` binding a scope
+ * declaration would introduce. A body that never does (it creates no tracked
+ * value and wraps no call in `with_scope`) gets no `_$_.scope()` call: a
+ * bundler drops the unused binding but has to keep the call.
+ * @param {AST.Node} node
+ * @returns {boolean}
+ */
+function references_block(node) {
+	if (node.type === 'Identifier') {
+		return node.name === '__block';
+	}
+	for (const key in node) {
+		if (NON_CHILD_KEYS.has(key)) continue;
+		const value = /** @type {any} */ (node)[key];
+		if (Array.isArray(value)) {
+			for (const item of value) {
+				if (is_ast_node(item) && references_block(item)) return true;
+			}
+		} else if (is_ast_node(value) && references_block(value)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/**
+ * @param {unknown} value
+ * @returns {value is AST.Node}
+ */
+function is_ast_node(value) {
+	return (
+		value !== null &&
+		typeof value === 'object' &&
+		typeof (/** @type {any} */ (value).type) === 'string'
+	);
 }
 
 /**
@@ -1023,10 +1080,16 @@ function emit_render_block(init, body, initial, state) {
 
 	const hoisted = state.hoisted;
 	const id = b.id(state.scope.generate('render'));
-	const captured = new Set(captures);
+	// Captured locals ride on the state under positional keys (`_a`, `_b`,
+	// …): the `_` keeps them apart from the value keys, and the key of each
+	// name is remembered on its property for the item-slot rename.
+	const captured = new Map(captures.map((name, index) => [name, '_' + capture_key(index)]));
 	const hoisted_fn = rewrite(
 		fn,
-		(name) => (captured.has(name) ? b.member(b.id('__prev'), b.id('_' + name)) : null),
+		(name) => {
+			const key = captured.get(name);
+			return key === undefined ? null : b.member(b.id('__prev'), b.id(key));
+		},
 		new Set(),
 	);
 	hoisted.push(
@@ -1039,7 +1102,11 @@ function emit_render_block(init, body, initial, state) {
 	register_hoisted(hoisted, id.name);
 	const properties = [
 		...initial,
-		...captures.map((name) => b.prop('init', b.id('_' + name), b.id(name))),
+		...captures.map((name) => {
+			const property = b.prop('init', b.id(/** @type {string} */ (captured.get(name))), b.id(name));
+			/** @type {any} */ (property).metadata = { capture: name };
+			return property;
+		}),
 	];
 	init.push(
 		b.stmt(b.call('_$_.render', id, ...(properties.length === 0 ? [] : [b.object(properties)]))),
@@ -1662,22 +1729,41 @@ function capture_context(captures) {
 	if (captures.length <= 1) {
 		return { params: captures.map((name) => b.id(name)), args: captures.map((name) => b.id(name)) };
 	}
+	// The keys are positional (`a`, `b`, …): the object is built at the call
+	// and taken apart in the signature, so the names it carries are never
+	// read, and short keys keep both sites small.
 	const pattern = captures.map(
-		(name) =>
+		(name, index) =>
 			/** @type {AST.AssignmentProperty} */ ({
 				type: 'Property',
 				kind: 'init',
-				key: b.id(name),
+				key: b.id(capture_key(index)),
 				value: b.id(name),
 				computed: false,
-				shorthand: true,
+				shorthand: false,
 				method: false,
 			}),
 	);
 	return {
 		params: [b.object_pattern(pattern)],
-		args: [b.object(captures.map((name) => b.prop('init', b.id(name), b.id(name), false, true)))],
+		args: [
+			b.object(captures.map((name, index) => b.prop('init', b.id(capture_key(index)), b.id(name)))),
+		],
 	};
+}
+
+/**
+ * The key of the `index`th captured local: `a`…`z`, then `aa`, `ab`, ….
+ * @param {number} index
+ * @returns {string}
+ */
+function capture_key(index) {
+	let key = '';
+	do {
+		key = String.fromCharCode(97 + (index % 26)) + key;
+		index = Math.floor(index / 26) - 1;
+	} while (index >= 0);
+	return key;
 }
 
 /**
@@ -2253,8 +2339,10 @@ const visit_for_of_statement = (node, context) => {
 			(statement) => statement.type === 'FunctionDeclaration' && statement.id?.name === local.name,
 		);
 		if (declaration !== undefined) {
-			read_item_from_state(/** @type {AST.FunctionDeclaration} */ (declaration), pattern.name);
-			rename_item_slot(find_render_calls(body)[0], pattern.name);
+			const slot = rename_item_slot(find_render_calls(body)[0], pattern.name);
+			if (slot !== null) {
+				read_item_from_state(/** @type {AST.FunctionDeclaration} */ (declaration), slot);
+			}
 		}
 	}
 
@@ -2427,28 +2515,28 @@ function reads_outside_item_state(body, name) {
 const ITEM_SLOT = '$item';
 
 /**
- * Whether a node is the member expression `__prev._<name>`.
+ * Whether a node is the member expression `__prev.<key>`.
  * @param {AST.Node} node
- * @param {string} name
+ * @param {string} key
  */
-function is_item_read(node, name) {
+function is_item_read(node, key) {
 	return (
 		node.type === 'MemberExpression' &&
 		node.object.type === 'Identifier' &&
 		node.object.name === '__prev' &&
 		node.property.type === 'Identifier' &&
-		node.property.name === '_' + name
+		node.property.name === key
 	);
 }
 
 /**
  * Rewrites an update function's reads of a local item (see `LOCAL_ITEMS`),
- * `_$_.get(__prev._item)` or `__prev._item`, to `__prev.$item`: the state
+ * `_$_.get(__prev.<key>)` or `__prev.<key>`, to `__prev.$item`: the state
  * holds the item itself, in the slot the runtime refreshes.
  * @param {AST.FunctionDeclaration} declaration
- * @param {string} name
+ * @param {string} key the state key the item was captured under
  */
-function read_item_from_state(declaration, name) {
+function read_item_from_state(declaration, key) {
 	const slot = () => b.member(b.id('__prev'), b.id(ITEM_SLOT));
 	declaration.body = /** @type {AST.BlockStatement} */ (
 		walk(/** @type {AST.Node} */ (declaration.body), null, {
@@ -2457,14 +2545,14 @@ function read_item_from_state(declaration, name) {
 					node.callee.type === 'Identifier' &&
 					node.callee.name === '_$_.get' &&
 					node.arguments.length === 1 &&
-					is_item_read(node.arguments[0], name)
+					is_item_read(node.arguments[0], key)
 				) {
 					return slot();
 				}
 				next();
 			},
 			MemberExpression(node, { next }) {
-				if (is_item_read(node, name)) {
+				if (is_item_read(node, key)) {
 					return slot();
 				}
 				next();
@@ -2474,10 +2562,11 @@ function read_item_from_state(declaration, name) {
 }
 
 /**
- * Renames the `_item` property of an item body's `_$_.item({ … })` state to
- * the local item slot (see `read_item_from_state`).
+ * Renames the property holding the captured item of an item body's
+ * `_$_.item({ … })` state to the local item slot (see `read_item_from_state`).
  * @param {{ statements: AST.Statement[]; index: number }} call
- * @param {string} name
+ * @param {string} name the item's name
+ * @returns {string | null} the key the item was captured under, if any
  */
 function rename_item_slot(call, name) {
 	const state = /** @type {AST.ObjectExpression} */ (
@@ -2489,12 +2578,15 @@ function rename_item_slot(call, name) {
 		if (
 			property.type === 'Property' &&
 			property.key.type === 'Identifier' &&
-			property.key.name === '_' + name
+			/** @type {any} */ (property).metadata?.capture === name
 		) {
+			const key = property.key.name;
 			property.key = b.id(ITEM_SLOT);
 			property.shorthand = false;
+			return key;
 		}
 	}
+	return null;
 }
 
 /**
@@ -2882,17 +2974,23 @@ function visit_selector_comparison(node, context) {
  * A DOM traversal read, inline so each template position has its own
  * property-read site (one inline cache per site instead of one shared,
  * megamorphic site inside a helper). While hydrating the read is replaced by
- * the hydration cursor, exactly as the `child` / `sibling` helpers do.
+ * the hydration cursor, exactly as the `child` / `sibling` helpers do; a
+ * client-only build (`hydration: false`) emits the bare read.
  * @param {'child' | 'sibling'} operation
  * @param {AST.Expression} node
  * @param {boolean | undefined} is_text
+ * @param {boolean} hydration
  * @returns {AST.Expression}
  */
-function inline_traversal(operation, node, is_text) {
+function inline_traversal(operation, node, is_text, hydration) {
+	const read = b.member(node, b.id(operation === 'child' ? 'firstChild' : 'nextSibling'));
+	if (!hydration) {
+		return read;
+	}
 	return b.conditional(
 		b.member(b.id('_$_'), b.id('hydrating')),
 		b.call(operation === 'child' ? '_$_.hydrate_child' : '_$_.hydrate_sibling', is_text && b.true),
-		b.member(node, b.id(operation === 'child' ? 'firstChild' : 'nextSibling')),
+		read,
 	);
 }
 
@@ -3040,7 +3138,12 @@ const visitors = {
 
 		const matched_track_call = !context.state.to_ts ? is_ripple_track_call(callee, context) : null;
 		if (matched_track_call) {
-			const track_method_name = matched_track_call === 'trackAsync' ? 'track_async' : 'track';
+			const track_method_name =
+				matched_track_call === 'trackAsync'
+					? 'track_async'
+					: matched_track_call === 'trackReadOnly'
+						? 'track_read_only'
+						: 'track';
 			/** @type {(AST.Expression | AST.SpreadElement)[]} */
 			const call_args = [];
 			const source_args = node.arguments.length === 0 ? [b.void0] : node.arguments;
@@ -3050,7 +3153,15 @@ const visitors = {
 				call_args.push(/** @type {(AST.Expression | AST.SpreadElement)} */ (context.visit(arg)));
 				if (i === 0) {
 					call_args.push(b.id('__block'));
-					call_args.push(b.literal(node.metadata.hash));
+					// A read-only view is not a serialized value: no hash.
+					if (matched_track_call === 'trackReadOnly') {
+						continue;
+					}
+					// The hash pairs a client tracked with its serialized server
+					// dependency during hydration; a client-only build has no use for it.
+					if (context.state.hydration) {
+						call_args.push(b.literal(node.metadata.hash));
+					}
 				}
 			}
 
@@ -3654,13 +3765,7 @@ const visitors = {
 		 *  @param {string | number | bigint | boolean | RegExp | null | undefined} value
 		 */
 		const handle_static_attr = (name, value) => {
-			const attr_value = b.literal(
-				` ${name}${
-					is_boolean_attribute(name) && value === true
-						? ''
-						: `="${value === true ? '' : escape_html(/** @type {string} */ (value), true)}"`
-				}`,
-			);
+			const attr_value = b.literal(` ${name}${static_attribute_value(name, value)}`);
 
 			if (is_spreading) {
 				// For spread attributes, store just the actual value, not the full attribute string
@@ -3882,6 +3987,27 @@ const visitors = {
 									state.init?.push(
 										b.stmt(b.call('_$_.render_event', b.literal(event_name), id, b.thunk(handler))),
 									);
+								} else if (
+									(isCaptureEvent(event_name) || isNonDelegated(normalizeEventName(name))) &&
+									(handler.type === 'ArrowFunctionExpression' ||
+										handler.type === 'FunctionExpression' ||
+										(attr_value.type === 'Identifier' &&
+											is_declared_function_within_component(attr_value, context)))
+								) {
+									// A plain function for an event its name keeps off delegation:
+									// the DOM name and phase are resolved here, so the runtime
+									// attaches the listener without its name tables or options.
+									state.init?.push(
+										b.stmt(
+											b.call(
+												'_$_.listen',
+												b.literal(normalizeEventName(name)),
+												id,
+												handler,
+												isCaptureEvent(event_name) ? b.true : undefined,
+											),
+										),
+									);
 								} else {
 									state.init?.push(b.stmt(b.call('_$_.event', b.literal(event_name), id, handler)));
 								}
@@ -3979,8 +4105,7 @@ const visitors = {
 									'_$_.set_class',
 									id,
 									b.literal(attr_value.value),
-									scope_class,
-									b.literal(is_html_class),
+									...set_class_args(scope_class, is_html_class),
 								),
 							),
 						);
@@ -3991,20 +4116,28 @@ const visitors = {
 					const expression = /** @type {AST.Expression} */ (
 						visit(attr_value, { ...state, metadata, selector_root: attr_value })
 					);
-
-					const hash_arg = scope_class ?? undefined;
+					// A class the compiler can prove to be a string writes through the
+					// string-only helper; any other shape needs the clsx-style joiner,
+					// which then ships only with a bundle that has such a class.
+					const set_class_fn = is_string_expression(attr_value, state)
+						? '_$_.set_class'
+						: '_$_.set_class_value';
 
 					if (metadata.tracking) {
 						local_updates.push({
 							operation: (key) =>
-								b.stmt(b.call('_$_.set_class', id, key, hash_arg, b.literal(is_html_class))),
+								b.stmt(
+									b.call(set_class_fn, id, key, ...set_class_args(scope_class, is_html_class)),
+								),
 							expression,
 							identity: attr_value,
 							initial: b.member(b.id('_$_'), b.id('UNINITIALIZED')),
 						});
 					} else {
 						state.init?.push(
-							b.stmt(b.call('_$_.set_class', id, expression, hash_arg, b.literal(is_html_class))),
+							b.stmt(
+								b.call(set_class_fn, id, expression, ...set_class_args(scope_class, is_html_class)),
+							),
 						);
 					}
 				}
@@ -4020,7 +4153,12 @@ const visitors = {
 					const id = state.flush_node?.();
 					state.init?.push(
 						b.stmt(
-							b.call('_$_.set_class', id, b.literal(null), scope_class, b.literal(is_html_class)),
+							b.call(
+								'_$_.set_class',
+								id,
+								b.literal(null),
+								...set_class_args(scope_class, is_html_class),
+							),
 						),
 					);
 				}
@@ -4130,7 +4268,9 @@ const visitors = {
 					const id = state.flush_node?.();
 
 					// The cursor restore only matters while hydrating.
-					init.push(b.stmt(b.logical('&&', b.id('_$_.hydrating'), b.call('_$_.pop', id))));
+					if (state.hydration) {
+						init.push(b.stmt(b.logical('&&', b.id('_$_.hydrating'), b.call('_$_.pop', id))));
+					}
 				}
 			}
 
@@ -4694,6 +4834,124 @@ const visitors = {
 		return { ...node, body: statements };
 	},
 };
+
+/**
+ * The `=value` part of a static attribute in a template string, in its
+ * shortest form the HTML parser reads back the same way: nothing for an empty
+ * value (`hidden`, `class`), the bare value when it holds none of the
+ * characters an unquoted value cannot (`type=text`), quotes otherwise.
+ * @param {string} name
+ * @param {string | number | bigint | boolean | RegExp | null | undefined} value
+ * @returns {string}
+ */
+function static_attribute_value(name, value) {
+	if (value === true && is_boolean_attribute(name)) {
+		return '';
+	}
+	const text = value === true ? '' : escape_html(String(value), true);
+	if (text === '') {
+		return '';
+	}
+	return /[\s"'=<>`]/.test(text) ? `="${text}"` : `=${text}`;
+}
+
+/**
+ * Elements whose end tag the parser needs even at the end of the input: their
+ * content is raw text or escapable raw text, and an implied end is a parse
+ * error the browsers recover from differently.
+ */
+const REQUIRED_END_TAGS = new Set([
+	'script',
+	'style',
+	'textarea',
+	'title',
+	'xmp',
+	'iframe',
+	'noembed',
+	'noframes',
+	'noscript',
+	'plaintext',
+]);
+
+/**
+ * Drops the end tags that close a template: the parser implies them when the
+ * input ends, so `<tr><td></td></tr>` and `<tr><td>` build the same tree. Only
+ * the run of end tags at the very end goes, and it stops at an element whose
+ * end tag matters (see `REQUIRED_END_TAGS`).
+ * @param {Array<string | AST.Expression>} items
+ * @returns {Array<string | AST.Expression>}
+ */
+function strip_trailing_end_tags(items) {
+	const stripped = items.slice();
+	while (stripped.length > 0) {
+		const last = stripped[stripped.length - 1];
+		if (typeof last !== 'string') break;
+		const match = /<\/([a-zA-Z][\w-]*)>$/.exec(last);
+		if (match === null || REQUIRED_END_TAGS.has(match[1].toLowerCase())) break;
+		const rest = last.slice(0, -match[0].length);
+		if (rest === '') {
+			stripped.pop();
+		} else {
+			stripped[stripped.length - 1] = rest;
+		}
+	}
+	return stripped;
+}
+
+/**
+ * Whether an expression always evaluates to a string: a string literal or
+ * template, a `+` with a string operand, a conditional with string branches,
+ * a `String()` coercion, or a text-typed expression the checker proved.
+ * @param {AST.Node} node
+ * @param {TransformClientState} state
+ * @returns {boolean}
+ */
+function is_string_expression(node, state) {
+	switch (node.type) {
+		case 'JSXExpressionContainer':
+			return is_string_expression(/** @type {any} */ (node).expression, state);
+		case 'Literal':
+			return typeof node.value === 'string';
+		case 'TemplateLiteral':
+			return true;
+		case 'BinaryExpression':
+			return (
+				node.operator === '+' &&
+				(is_string_expression(node.left, state) || is_string_expression(node.right, state))
+			);
+		case 'ConditionalExpression':
+			return (
+				is_string_expression(node.consequent, state) && is_string_expression(node.alternate, state)
+			);
+		case 'TSAsExpression':
+		case 'TSNonNullExpression':
+		case 'TSSatisfiesExpression':
+		case 'TSTypeAssertion':
+			return is_string_expression(/** @type {any} */ (node).expression, state);
+		case 'CallExpression':
+			return (
+				node.callee.type === 'Identifier' &&
+				node.callee.name === 'String' &&
+				state.scope.get('String') === null
+			);
+		default:
+			return has_text_type_fact(/** @type {AST.Expression} */ (node), state.scope, true);
+	}
+}
+
+/**
+ * The trailing arguments of a `set_class` call, without the runtime's
+ * defaults: no scope hash and an HTML element pass nothing.
+ * @param {AST.Expression | null} scope_class
+ * @param {boolean} is_html_class
+ * @returns {AST.Expression[]}
+ */
+function set_class_args(scope_class, is_html_class) {
+	if (is_html_class) {
+		return scope_class === null ? [] : [scope_class];
+	}
+	return [scope_class ?? b.void0, b.literal(false)];
+}
 
 /**
  * @param {Array<string | AST.Expression>} items
@@ -6768,11 +7026,13 @@ function transform_children(children, context) {
 						state.init?.push(
 							b.var(
 								id,
-								b.conditional(
-									b.member(b.id('_$_'), b.id('hydrating')),
-									b.call('_$_.hydrate_sibling', is_text && b.true),
-									current_prev(),
-								),
+								state.hydration
+									? b.conditional(
+											b.member(b.id('_$_'), b.id('hydrating')),
+											b.call('_$_.hydrate_sibling', is_text && b.true),
+											current_prev(),
+										)
+									: current_prev(),
 							),
 						);
 					} else if (append_after !== undefined) {
@@ -6780,20 +7040,26 @@ function transform_children(children, context) {
 						// the client appends into the parent instead of inserting
 						// before a placeholder.
 						current_prev();
+						const append_into =
+							node.metadata?.append_tail === true
+								? b.call('_$_.append_into', append_after, b.true)
+								: b.call('_$_.append_into', append_after);
 						state.init?.push(
 							b.var(
 								id,
-								b.conditional(
-									b.member(b.id('_$_'), b.id('hydrating')),
-									b.call('_$_.hydrate_sibling'),
-									node.metadata?.append_tail === true
-										? b.call('_$_.append_into', append_after, b.true)
-										: b.call('_$_.append_into', append_after),
-								),
+								state.hydration
+									? b.conditional(
+											b.member(b.id('_$_'), b.id('hydrating')),
+											b.call('_$_.hydrate_sibling'),
+											append_into,
+										)
+									: append_into,
 							),
 						);
 					} else {
-						state.init?.push(b.var(id, inline_traversal('sibling', current_prev(), is_text)));
+						state.init?.push(
+							b.var(id, inline_traversal('sibling', current_prev(), is_text, state.hydration)),
+						);
 					}
 					cached = id;
 					return id;
@@ -6822,7 +7088,7 @@ function transform_children(children, context) {
 						cached = /** @type {AST.Identifier} */ (parent);
 						return cached;
 					}
-					state.init?.push(b.var(id, inline_traversal('child', parent, is_text)));
+					state.init?.push(b.var(id, inline_traversal('child', parent, is_text, state.hydration)));
 					cached = id;
 					return id;
 				} else {
@@ -6976,7 +7242,9 @@ function transform_children(children, context) {
 						(has_following_renderable_sibling || is_fragment_root)
 					) {
 						state.init?.push(
-							b.stmt(b.logical('&&', b.id('_$_.hydrating'), b.call('_$_.pop', cached))),
+							...(state.hydration
+								? [b.stmt(b.logical('&&', b.id('_$_.hydrating'), b.call('_$_.pop', cached)))]
+								: []),
 						);
 					}
 				}
@@ -7130,7 +7398,7 @@ function transform_children(children, context) {
 		}
 	}
 
-	if (is_fragment_root && skipped > 1) {
+	if (is_fragment_root && skipped > 1 && state.hydration) {
 		skipped--;
 		state.init?.push(b.stmt(b.call('_$_.next', skipped !== 1 && b.literal(skipped))));
 	}
@@ -7148,7 +7416,16 @@ function transform_children(children, context) {
 		const template_array = /** @type {NonNullable<TransformClientState['template']>} */ (
 			state.template
 		);
-		const template_args = [join_template(template_array), b.literal(flags)];
+		/** @type {AST.Expression[]} */
+		const template_args = [
+			join_template(
+				template_namespace === 'html' ? strip_trailing_end_tags(template_array) : template_array,
+			),
+		];
+		// The runtime defaults the flags to 0.
+		if (flags !== 0) {
+			template_args.push(b.literal(flags));
+		}
 
 		// For fragments, add the pre-calculated hop count as a third argument.
 		// This count reflects emitted top-level positions.
@@ -7157,7 +7434,17 @@ function transform_children(children, context) {
 			template_args.push(b.literal(node_count));
 		}
 
-		state.hoisted.push(b.var(template_id, b.call('_$_.template', ...template_args)));
+		// A template in the SVG or MathML namespace parses through the
+		// namespace-aware entry, which an HTML-only bundle never loads.
+		state.hoisted.push(
+			b.var(
+				template_id,
+				b.call(
+					template_namespace === 'html' ? '_$_.template' : '_$_.template_ns',
+					...template_args,
+				),
+			),
+		);
 		register_hoisted(state.hoisted, template_id);
 	}
 }
@@ -7186,9 +7473,7 @@ function create_continue_skip_statements(state, source_node) {
 		/** @type {AST.NodeWithLocation} */ (source_node),
 	);
 
-	state.hoisted.push(
-		b.var(template_id, b.call('_$_.template', join_template(['<!>']), b.literal(0))),
-	);
+	state.hoisted.push(b.var(template_id, b.call('_$_.template', join_template(['<!>']))));
 	register_hoisted(state.hoisted, template_id);
 
 	return [
@@ -8229,9 +8514,18 @@ function create_tsx_with_typescript_support(comments) {
  * @param {boolean} hmr - Whether to emit HMR wrapper code
  * @returns {{ ast: AST.Program, code: string, map: RawSourceMap, post_processing_changes?: PostProcessingChanges, line_offsets?: LineOffsets, css: string, cssHash: string | null, errors: CompileError[] }}
  */
-export function transform_client(filename, source, analysis, to_ts, minify_css, hmr = false) {
+export function transform_client(
+	filename,
+	source,
+	analysis,
+	to_ts,
+	minify_css,
+	hmr = false,
+	hydration = true,
+) {
 	/** @type {TransformClientState} */
 	const state = {
+		hydration,
 		imports: new Set(),
 		events: new Set(),
 		template: null,

@@ -18,7 +18,6 @@ import {
 } from './constants.js';
 import { hydrating } from './hydration.js';
 import { next_sibling } from './operations.js';
-import { apply_element_spread } from './render.js';
 import { is_array } from '@tsrx/core/runtime/language-helpers';
 import {
 	active_block,
@@ -34,15 +33,15 @@ import {
 	untrack,
 } from './runtime.js';
 import { is_ripple_object } from './utils.js';
+import { effect_orphan } from './errors.js';
+import { HYDRATION } from 'ripple/internal/client/hydration-enabled';
 
 /**
  * @param {Function} fn
  */
 export function user_effect(fn) {
 	if (active_block === null) {
-		throw new Error(
-			'effect() must be called within an active context, such as a component or effect',
-		);
+		effect_orphan();
 	}
 
 	var component = active_component;
@@ -86,15 +85,6 @@ export function render(fn, state, flags = 0) {
 }
 
 /**
- * @param {any} element
- * @param {any} fn
- * @param {number} [flags]
- */
-export function render_spread(element, fn, flags = 0) {
-	return block(RENDER_BLOCK | flags, apply_element_spread(element, fn));
-}
-
-/**
  * @param {Function} fn
  * @param {number} [flags]
  * @param {any} [state]
@@ -117,7 +107,7 @@ function noop() {}
  * @param {Node} anchor
  */
 export function own_anchor(node, anchor) {
-	if (anchor === node || hydrating) return;
+	if (anchor === node || (HYDRATION && hydrating)) return;
 	branch(noop, 0, { start: anchor, end: anchor });
 }
 

@@ -5,6 +5,7 @@
 /// <reference types="@tsrx/ripple/types/rpc" />
 
 import { compile } from '@tsrx/ripple';
+import { pathToFileURL } from 'node:url';
 import { create_text_types } from './text-types.js';
 import { createDepScanTransformPlugin } from '@tsrx/core/vite/dep-scan';
 import fs from 'node:fs';
@@ -49,6 +50,28 @@ const VITE_FS_PREFIX = '/@fs/';
 const IS_WINDOWS = process.platform === 'win32';
 const VIRTUAL_HYDRATE_ID = 'virtual:ripple-hydrate';
 const RESOLVED_VIRTUAL_HYDRATE_ID = '\0virtual:ripple-hydrate';
+/**
+ * The runtime's build constants. A runtime module reads each through one
+ * import statement; `ssr: false` and `rootBoundary: false` drop that statement
+ * and write the literal `false` at every use, which the bundler folds while
+ * tree-shaking, so the code the constant guards drops out before it is
+ * emitted. An aliased module (or a local `const`) folds only in a minifier's
+ * own dead-code pass, which Vite's esbuild minifier does not run.
+ */
+const BUILD_CONSTANTS = [
+	{
+		option: 'ssr',
+		statement: "import { HYDRATION } from 'ripple/internal/client/hydration-enabled';",
+		identifier: /\bHYDRATION\b/g,
+	},
+	{
+		option: 'rootBoundary',
+		statement: "import { ROOT_BOUNDARY } from 'ripple/internal/client/root-boundary-enabled';",
+		identifier: /\bROOT_BOUNDARY\b/g,
+	},
+];
+/** A module of the client runtime, from the workspace or an installed copy. */
+const RUNTIME_MODULE_PATTERN = /[\\/]ripple[\\/](?:src|dist)[\\/]runtime[\\/][^?]*\.js(?:\?|$)/;
 const RIPPLE_EXTENSIONS = ['.tsrx'];
 const RIPPLE_EXTENSION_PATTERN = /\.tsrx$/;
 
@@ -338,7 +361,24 @@ function scanForRipplePackages(rootDir) {
  * @returns {Plugin[]}
  */
 export function ripple(inlineOptions = {}) {
-	const { excludeRippleExternalModules = false } = inlineOptions;
+	const { excludeRippleExternalModules = false, ssr: ssrOption, rootBoundary } = inlineOptions;
+	if (ssrOption !== undefined && typeof ssrOption !== 'boolean') {
+		throw new Error('[@ripple-ts/vite-plugin] the `ssr` option must be a boolean when provided.');
+	}
+	if (rootBoundary !== undefined && typeof rootBoundary !== 'boolean') {
+		throw new Error(
+			'[@ripple-ts/vite-plugin] the `rootBoundary` option must be a boolean when provided.',
+		);
+	}
+	// `rootBoundary: false` builds an app that renders without the default
+	// try/pending/catch boundary: the runtime's boundary constant is aliased
+	// to false and the boundary runtime is compiled out.
+	const noRootBoundary = rootBoundary === false;
+	// `ssr: false` is a client-only build: components compile without the
+	// hydration cursor, and the runtime's hydration paths are compiled out by
+	// aliasing its build constant. `ssr: true` compiles every module for the
+	// server, for an adapter that drives the build itself.
+	const clientOnly = ssrOption === false;
 	const text_types = create_text_types(inlineOptions.textTypes);
 	const api = { textTypes: text_types };
 	/** @type {ResolvedConfig['root']} */
@@ -403,6 +443,35 @@ export function ripple(inlineOptions = {}) {
 		},
 	};
 
+	/** The build constants this build turns off (see `BUILD_CONSTANTS`). */
+	const disabled_constants = BUILD_CONSTANTS.filter(
+		(constant) =>
+			(constant.option === 'ssr' && clientOnly) ||
+			(constant.option === 'rootBoundary' && noRootBoundary),
+	);
+	/** @type {Plugin[]} */
+	const constant_plugins =
+		disabled_constants.length === 0
+			? []
+			: [
+					{
+						name: 'vite-plugin-ripple:build-constants',
+						transform: {
+							filter: { id: RUNTIME_MODULE_PATTERN },
+							handler(code) {
+								let output = code;
+								for (const constant of disabled_constants) {
+									if (!output.includes(constant.statement)) continue;
+									output = output
+										.replace(constant.statement, '')
+										.replace(constant.identifier, 'false');
+								}
+								return output === code ? null : { code: output, map: null };
+							},
+						},
+					},
+				];
+
 	/** @type {[RipplePlugin, ...Plugin[]]} */
 	const plugins = [
 		{
@@ -415,6 +484,16 @@ export function ripple(inlineOptions = {}) {
 				isBuild = command === 'build';
 				isSSRBuild = !!userConfig.build?.ssr;
 
+				// Vite's modulepreload polyfill only serves browsers without
+				// `<link rel="modulepreload">` support when a dynamic import has
+				// preloadable dependencies; every current browser has it, so the
+				// polyfill is left out of the entry chunk unless the user asks.
+				/** @type {import('vite').UserConfig['build']} */
+				const build_defaults =
+					userConfig.build?.modulePreload === undefined
+						? { modulePreload: { polyfill: false } }
+						: {};
+
 				// In build mode (client build, not the SSR sub-build), configure for production
 				if (isBuild && !isSSRBuild) {
 					const projectRoot = userConfig.root || process.cwd();
@@ -423,7 +502,17 @@ export function ripple(inlineOptions = {}) {
 						loadedRippleConfig = await loadRippleConfig(projectRoot);
 
 						if (!has_route_config(loadedRippleConfig)) {
-							return null;
+							return { build: build_defaults };
+						}
+						if (clientOnly) {
+							throw new Error(
+								'[@ripple-ts/vite-plugin] `ssr: false` builds a client-only app, but ripple.config.ts declares render routes, which are server rendered and hydrated.',
+							);
+						}
+						if (noRootBoundary && Object.keys(loadedRippleConfig.rootBoundary).length > 0) {
+							throw new Error(
+								'[@ripple-ts/vite-plugin] `rootBoundary: false` leaves the root boundary out of the build, but ripple.config.ts configures one.',
+							);
 						}
 
 						const htmlInput = path.join(projectRoot, 'index.html');
@@ -471,6 +560,7 @@ export function ripple(inlineOptions = {}) {
 
 						/** @type {import('vite').UserConfig['build']} */
 						const buildConfig = {
+							...build_defaults,
 							outDir: `${outDir}/client`,
 							emptyOutDir: true,
 							manifest: true,
@@ -496,6 +586,7 @@ export function ripple(inlineOptions = {}) {
 					/** @type {string[]} */
 					const excluded = userConfig.optimizeDeps?.exclude || [];
 					return {
+						build: build_defaults,
 						optimizeDeps: {
 							...dep_scan_config,
 							exclude: excluded,
@@ -530,6 +621,7 @@ export function ripple(inlineOptions = {}) {
 
 				// Return a config hook that will merge with user's config
 				return {
+					build: build_defaults,
 					optimizeDeps: {
 						...dep_scan_config,
 						exclude: allExclude,
@@ -1124,7 +1216,32 @@ export function ripple(inlineOptions = {}) {
 						const serverHtml = path.join(serverOutDir, 'index.html');
 						if (fs.existsSync(clientHtml)) {
 							fs.copyFileSync(clientHtml, serverHtml);
-							console.log('[@ripple-ts/vite-plugin] Copied HTML template to server output');
+							// The template must not be served as a page: a static file
+							// handler that maps `/` to `index.html` would return its
+							// unresolved placeholders instead of rendering.
+							fs.rmSync(clientHtml);
+							console.log('[@ripple-ts/vite-plugin] Moved HTML template to server output');
+						}
+
+						// Static generation: every render route marked `prerender` is
+						// rendered through the built server entry and written where the
+						// adapter's static handler serves it ahead of the server.
+						const prerenderRoutes = renderRoutes.filter(
+							(/** @type {RenderRoute} */ r) => r.prerender === true,
+						);
+						if (prerenderRoutes.length > 0) {
+							const entryUrl = pathToFileURL(path.join(serverOutDir, ENTRY_FILENAME)).href;
+							/** @type {{ prerender: (origin?: string) => Promise<Map<string, string>> }} */
+							const serverEntry = await import(/* @vite-ignore */ `${entryUrl}?t=${Date.now()}`);
+							const pages = await serverEntry.prerender();
+							for (const [routePath, html] of pages) {
+								const file = path.join(clientOutDir, routePath, 'index.html');
+								fs.mkdirSync(path.dirname(file), { recursive: true });
+								fs.writeFileSync(file, html);
+							}
+							console.log(
+								`[@ripple-ts/vite-plugin] Prerendered ${pages.size} page${pages.size === 1 ? '' : 's'}`,
+							);
 						}
 
 						console.log('[@ripple-ts/vite-plugin] Server build complete.');
@@ -1224,13 +1341,15 @@ export function ripple(inlineOptions = {}) {
 
 				async handler(source_code, id, opts) {
 					const filename = id.replace(root, '');
-					const ssr = opts?.ssr === true || this.environment.config.consumer === 'server';
+					const ssr =
+						ssrOption ?? (opts?.ssr === true || this.environment.config.consumer === 'server');
 
 					const is_dev = config?.command === 'serve';
 					let { code, css, map } = await compile(source_code, filename, {
 						mode: ssr ? 'server' : 'client',
 						dev: is_dev,
 						hmr: is_dev && !ssr,
+						hydration: !clientOnly,
 						textTypeFacts: await text_types.getFacts(id, source_code, filename),
 					});
 
@@ -1249,6 +1368,7 @@ export function ripple(inlineOptions = {}) {
 				},
 			},
 		},
+		...constant_plugins,
 	];
 
 	return plugins;

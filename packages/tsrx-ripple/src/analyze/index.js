@@ -1410,9 +1410,7 @@ const visitors = {
 
 			if (is_known_tracked_binding(binding, context)) {
 				const is_allowed_tracked_access =
-					!node.computed &&
-					node.property.type === 'Identifier' &&
-					(node.property.name === 'value' || node.property.name === 'readOnly');
+					!node.computed && node.property.type === 'Identifier' && node.property.name === 'value';
 
 				if (is_allowed_tracked_access) {
 					// pass through
@@ -1461,9 +1459,14 @@ const visitors = {
 		if (track_call_name !== null) {
 			const id = ++context.state.module.track_id;
 			const padded_id = String(id).padStart(6, '0');
+			// The hash's 32 bits in base 36: the same collision space as the hex
+			// form in up to seven characters instead of eight.
 			node.metadata = {
 				...node.metadata,
-				hash: strong_hash(context.state.analysis.module.filename + '__' + padded_id),
+				hash: parseInt(
+					strong_hash(context.state.analysis.module.filename + '__' + padded_id),
+					16,
+				).toString(36),
 			};
 		}
 
