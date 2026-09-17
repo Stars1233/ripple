@@ -27,6 +27,7 @@ import {
 	SCHEDULED,
 	SELECTOR,
 	IF_BLOCK,
+	COMPOSITE_BLOCK,
 	ITEM_BLOCK,
 	RELEASED,
 	RENDER_ENTRY,
@@ -369,9 +370,10 @@ function handle_run_error(error, block) {
  * @returns {Derived[] | null}
  */
 function prepare_rerun(block) {
-	// A list, an if, and a list item re-run only their own logic; their child
-	// blocks (items, the branch's blocks, an item body's nested blocks) stay.
-	if ((block.f & (FOR_BLOCK | IF_BLOCK | ITEM_BLOCK)) === 0) {
+	// A list, an if, a composite and a list item re-run only their own logic;
+	// their child blocks (items, the branch's blocks, a dynamic element's
+	// children, an item body's nested blocks) stay.
+	if ((block.f & (FOR_BLOCK | IF_BLOCK | ITEM_BLOCK | COMPOSITE_BLOCK)) === 0) {
 		destroy_non_branch_children(block);
 	}
 	run_teardown(block);
@@ -395,17 +397,18 @@ function register_teardown(block, teardown) {
 
 /**
  * Runs the body of a branch block that was just created, in place of a first
- * `run_block`: a branch renders untracked and never re-runs, so the only
- * bookkeeping its first run needs is the globals the body reads and the
- * dependencies a nested `item` records on it. Errors are handled as
- * `run_block` handles them.
+ * `run_block`: a branch renders untracked, so the only bookkeeping its first
+ * run needs is the globals the body reads and the dependencies a nested
+ * `item` records on it (a list item re-runs through `run_block`, see
+ * `run_item`). Errors are handled as `run_block` handles them.
  * @param {Block} block
  * @param {(anchor: any, value: any, index?: any, key?: any) => void} fn
  * @param {any} anchor
- * @param {any} value
- * @param {any} [key] a keyed list item's key (see `create_item`)
+ * @param {any} value a list item's value, or its tracked
+ * @param {any} [index] a list item's tracked index (see `create_item`)
+ * @param {any} [key] a keyed list item's key
  */
-export function run_branch(block, fn, anchor, value, key) {
+export function run_branch(block, fn, anchor, value, index, key) {
 	var previous_block = active_block;
 	var previous_reaction = active_reaction;
 	var previous_tracking = tracking;
@@ -418,7 +421,7 @@ export function run_branch(block, fn, anchor, value, key) {
 		active_component = block.co;
 		tracking = false;
 		active_dependency = null;
-		fn(anchor, value, undefined, key);
+		fn(anchor, value, index, key);
 		if (active_dependency !== null) {
 			block.d = active_dependency;
 		}
@@ -430,6 +433,43 @@ export function run_branch(block, fn, anchor, value, key) {
 		tracking = previous_tracking;
 		active_dependency = previous_dependency;
 		active_component = previous_component;
+	}
+}
+
+/**
+ * Runs `fn(block.s, arg)` as a rerun of `block` driven from outside it: an if
+ * whose condition the enclosing render function evaluates renders its branch
+ * this way. The function runs under the block, in the block's namespace, and
+ * the deriveds the block's previous run created are released afterwards
+ * unless still read, as `run_block` does for a rerun. An error propagates to
+ * the caller's block.
+ * @template S, A
+ * @param {Block} block
+ * @param {(state: S, arg: A) => void} fn
+ * @param {A} arg
+ */
+export function run_in_block(block, fn, arg) {
+	var previous_block = active_block;
+	var previous_reaction = active_reaction;
+	var previous_component = active_component;
+	var previous_namespace = active_namespace;
+	var previous_deriveds = (block.f & CREATES_DERIVEDS) !== 0 ? take_created_deriveds(block) : null;
+
+	try {
+		active_block = block;
+		active_reaction = block;
+		active_component = block.co;
+		var ns = block.f & NAMESPACE_BLOCK;
+		active_namespace = ns === 0 ? DEFAULT_NAMESPACE : ns === SVG_BLOCK ? 'svg' : 'mathml';
+		fn(/** @type {S} */ (block.s), arg);
+	} finally {
+		active_block = previous_block;
+		active_reaction = previous_reaction;
+		active_component = previous_component;
+		active_namespace = previous_namespace;
+		if (previous_deriveds !== null) {
+			keep_deriveds(block, release_deriveds(previous_deriveds));
+		}
 	}
 }
 

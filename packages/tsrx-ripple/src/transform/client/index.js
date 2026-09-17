@@ -21,6 +21,10 @@
 /**
 @typedef {Map<number, {offset: number, delta: number}>} PostProcessingChanges;
 @typedef {number[]} LineOffsets;
+@typedef {NonNullable<TransformClientState['update']>[number] & {
+	unguarded?: boolean;
+}} UpdateEntry an update whose operation is emitted without the `__prev`
+	compare, and updates its own slot (an element spread)
 */
 
 import { walk } from 'zimmerframe';
@@ -31,6 +35,9 @@ import { walk } from 'zimmerframe';
  * only by the render block its item block carries.
  */
 const LOCAL_ITEMS = 1 << 7;
+/** `if_static` flags (`packages/ripple/src/constants.js`). */
+const IF_ROOT_CONTROLLED = 1;
+const IF_TRACKED = 1 << 1;
 import { captured_locals, register_hoisted, rewrite } from './hoist.js';
 import { has_text_type_fact } from '../../text-type-facts.js';
 import path from 'node:path';
@@ -1171,6 +1178,12 @@ function apply_updates(init, update, state) {
 				const u = updates[0];
 				const key = index_to_key(index);
 				initial.push(b.prop('init', b.id(key), u.initial));
+				if ('unguarded' in u && u.unguarded === true) {
+					// The operation compares for itself and keeps the slot.
+					render_statements.push(u.operation(u.expression, b.member(b.id('__prev'), b.id(key))));
+					index++;
+					continue;
+				}
 				render_statements.push(
 					b.var('__' + key, u.expression),
 					b.if(
@@ -1232,6 +1245,25 @@ function apply_updates(init, update, state) {
 }
 
 /**
+ * Whether a compiled condition reads a tracked value through `_$_.get`.
+ * @param {AST.Node} node
+ * @returns {boolean}
+ */
+function reads_tracked_item(node) {
+	let found = false;
+	walk(node, null, {
+		CallExpression(call, { next }) {
+			if (get_tracked_read_name(call) !== null) {
+				found = true;
+				return;
+			}
+			next();
+		},
+	});
+	return found;
+}
+
+/**
  * @param {AST.Node} node
  * @returns {string | null} the identifier read by a `_$_.get(identifier)` call
  */
@@ -1267,10 +1299,41 @@ function hoist_repeated_tracked_reads(statements, state) {
 	/** @type {Map<string, { unconditional: number; total: number }>} */
 	const counts = new Map();
 
+	/**
+	 * The key of a read the render body may hoist: a `_$_.get(x)` call, or the
+	 * `.value` of a parameter (a tracked or derived prop) or of a const made
+	 * by a call (`track(…)`), unwrapped as often as the template reads it.
+	 * The key of a `.value` read carries a suffix no identifier has.
+	 * @param {AST.Node} node
+	 * @returns {string | null}
+	 */
+	const read_key = (node) => {
+		const name = get_tracked_read_name(node);
+		if (name !== null) return name;
+		if (
+			node.type === 'MemberExpression' &&
+			!node.computed &&
+			!node.optional &&
+			node.object.type === 'Identifier' &&
+			node.property.type === 'Identifier' &&
+			node.property.name === 'value'
+		) {
+			const binding = state.scope.get(node.object.name);
+			if (
+				binding !== null &&
+				(binding.declaration_kind === 'param' ||
+					(binding.declaration_kind === 'const' && binding.initial?.type === 'CallExpression'))
+			) {
+				return node.object.name + '.value';
+			}
+		}
+		return null;
+	};
+
 	/** @type {Visitors<AST.Node, { conditional: boolean }>} */
 	const counting_visitors = {
 		_(node, { state, next }) {
-			const name = get_tracked_read_name(node);
+			const name = read_key(node);
 			if (name !== null) {
 				let count = counts.get(name);
 				if (count === undefined) {
@@ -1297,6 +1360,12 @@ function hoist_repeated_tracked_reads(statements, state) {
 			visit(node.consequent, { conditional: true });
 			if (node.alternate) visit(node.alternate, { conditional: true });
 		},
+		// A written `.value` is not a read; the render body never writes one,
+		// but the rule is kept explicit.
+		AssignmentExpression(node, { state, visit }) {
+			visit(node.right, state);
+		},
+		UpdateExpression() {},
 		ArrowFunctionExpression() {},
 		FunctionExpression() {},
 		FunctionDeclaration() {},
@@ -1310,7 +1379,7 @@ function hoist_repeated_tracked_reads(statements, state) {
 	const hoisted = new Map();
 	for (const [name, count] of counts) {
 		if (count.total > 1 && count.unconditional > 0) {
-			hoisted.set(name, b.id(state.scope.generate('__' + name)));
+			hoisted.set(name, b.id(state.scope.generate('__' + name.replace('.', '_'))));
 		}
 	}
 	if (hoisted.size === 0) {
@@ -1320,12 +1389,22 @@ function hoist_repeated_tracked_reads(statements, state) {
 	/** @type {Visitors<AST.Node, null>} */
 	const replacing_visitors = {
 		_(node, { next }) {
-			const name = get_tracked_read_name(node);
+			const name = read_key(node);
 			if (name !== null) {
 				const id = hoisted.get(name);
 				return id === undefined ? node : id;
 			}
 			return next();
+		},
+		AssignmentExpression(node, { next }) {
+			// The left side stays as written.
+			const right = /** @type {AST.Expression} */ (
+				walk(/** @type {AST.Node} */ (node.right), null, replacing_visitors)
+			);
+			return right === node.right ? node : { ...node, right };
+		},
+		UpdateExpression(node) {
+			return node;
 		},
 		ArrowFunctionExpression(node) {
 			return node;
@@ -1344,7 +1423,14 @@ function hoist_repeated_tracked_reads(statements, state) {
 
 	const declarations = [];
 	for (const [name, id] of hoisted) {
-		declarations.push(b.var(id, b.call('_$_.get', b.id(name))));
+		declarations.push(
+			b.var(
+				id,
+				name.endsWith('.value')
+					? b.member(b.id(name.slice(0, -'.value'.length)), 'value')
+					: b.call('_$_.get', b.id(name)),
+			),
+		);
 	}
 	statements.unshift(...declarations);
 }
@@ -1989,6 +2075,9 @@ const visit_if_statement = (node, context) => {
 		return b.return(b.id(branch_id));
 	};
 
+	// Set by a condition of the chain that reads tracked state.
+	const chain_metadata = { ...context.state.metadata, tracking: false };
+
 	/**
 	 * Lowers a template `@if` into the JS `if` the condition callback runs. An
 	 * `@else if`, and a branch whose only statement is another `@if`, fold into
@@ -2027,7 +2116,7 @@ const visit_if_statement = (node, context) => {
 				context.visit(if_node.test, {
 					...context.state,
 					scope,
-					metadata: { ...context.state.metadata },
+					metadata: chain_metadata,
 					selector_root: if_node.test,
 				})
 			),
@@ -2062,20 +2151,53 @@ const visit_if_statement = (node, context) => {
 		}
 		hoisted.push(b.function_declaration(if_id, context_params, callback));
 		register_hoisted(hoisted, if_id.name);
-		context.state.init?.push(
-			b.stmt(
-				b.call(
-					'_$_.if',
-					id,
-					if_id,
-					...(context_args.length > 0
-						? [b.literal(root_controlled), ...context_args]
-						: root_controlled
-							? [b.true]
-							: []),
+		const context_arguments =
+			context_args.length > 0
+				? [b.literal(root_controlled), ...context_args]
+				: root_controlled
+					? [b.true]
+					: [];
+
+		// A condition that reads tracked state is evaluated by the render
+		// function of the enclosing content (a list item's, an element's): the
+		// if keeps a block for its branch, but not one that runs the condition,
+		// so an item with an `@if` on its fields costs one block, one
+		// dependency and one flush entry less. A static condition keeps the
+		// probe: it renders without any block.
+		if (
+			chain_metadata.tracking === true &&
+			context.state.update !== null &&
+			!context.state.inside_head
+		) {
+			const state_id = b.id(context.state.scope.generate('ifs'));
+			// A read of a `@for` item is a tracked read for certain; a prop may
+			// hold a plain value, so the runtime probes such a condition once.
+			const if_flags =
+				(root_controlled ? IF_ROOT_CONTROLLED : 0) |
+				(reads_tracked_item(callback) ? IF_TRACKED : 0);
+			context.state.init?.push(
+				b.var(
+					state_id,
+					b.call(
+						'_$_.if_static',
+						id,
+						if_id,
+						...(context_args.length > 0 || if_flags !== 0 ? [b.literal(if_flags)] : []),
+						...context_args,
+					),
 				),
-			),
-		);
+			);
+			context.state.update.push({
+				operation: (key) =>
+					b.stmt(b.call('_$_.if_update', state_id, /** @type {AST.Expression} */ (key))),
+				expression: b.call(if_id, ...context_args),
+				identity: node.test,
+				initial: b.member(b.id('_$_'), b.id('UNINITIALIZED')),
+			});
+			return;
+		}
+
+		context.state.init?.push(b.stmt(b.call('_$_.if', id, if_id, ...context_arguments)));
 		return;
 	}
 
@@ -4041,9 +4163,20 @@ const visitors = {
 										),
 								});
 							} else {
+								// A value proved to be a string is never removed and never
+								// a property: the DOM call goes straight to the element.
+								const direct = is_string_expression(attr_value, state);
 								local_updates.push({
 									operation: (key) =>
-										b.stmt(b.call('_$_.set_attribute', id, b.literal(attribute), key)),
+										b.stmt(
+											direct
+												? b.call(
+														b.member(/** @type {AST.Identifier} */ (id), 'setAttribute'),
+														b.literal(attribute),
+														/** @type {AST.Expression} */ (key),
+													)
+												: b.call('_$_.set_attribute', id, b.literal(attribute), key),
+										),
 									expression,
 									identity: attr_value,
 									initial: b.void0,
@@ -4058,6 +4191,16 @@ const visitors = {
 										b.assignment(
 											'=',
 											b.member(/** @type {AST.Identifier} */ (id), name),
+											expression,
+										),
+									),
+								);
+							} else if (is_string_expression(attr_value, state)) {
+								state.init?.push(
+									b.stmt(
+										b.call(
+											b.member(/** @type {AST.Identifier} */ (id), 'setAttribute'),
+											b.literal(name),
 											expression,
 										),
 									),
@@ -4209,10 +4352,33 @@ const visitors = {
 			state.template?.push('>');
 
 			if (spread_attributes !== null && spread_attributes.length > 0) {
+				// The spread is applied from the element's render function, with
+				// the state `_$_.spread` returns kept in a slot of the render
+				// state: the runtime compares the object with the one it applied
+				// last, so a sole spread passes its expression as it is (an
+				// unchanged row object is skipped without a copy or a diff).
 				const id = state.flush_node?.();
-				state.init?.push(
-					b.stmt(b.call('_$_.render_spread', id, b.thunk(b.object(spread_attributes)))),
-				);
+				const sole =
+					spread_attributes.length === 1 && spread_attributes[0].type === 'SpreadElement'
+						? spread_attributes[0].argument
+						: null;
+				/** @type {UpdateEntry} */
+				const spread_update = {
+					operation: (next, prev) =>
+						b.stmt(
+							b.assignment(
+								'=',
+								/** @type {AST.MemberExpression} */ (prev),
+								b.call('_$_.spread', id, /** @type {AST.Expression} */ (next), prev),
+							),
+						),
+					expression: sole ?? b.object(spread_attributes),
+					// Unique to this element: never grouped with another update.
+					identity: node,
+					initial: b.void0,
+					unguarded: true,
+				};
+				local_updates.push(spread_update);
 			}
 
 			/** @type {TransformClientState['init']} */
@@ -4502,30 +4668,91 @@ const visitors = {
 			const object_props = b.object(props);
 			// Dynamic tags (`<{expr}>`) always render through composite: the runtime
 			// resolves the expression value (component function, tag string, or
-			// null) and re-renders when a tracked expression changes.
+			// null) and re-renders when a tracked expression changes. Inside an
+			// `<svg>` or `<math>` template the namespace travels as an argument.
 			if (metadata.tracking || is_dynamic_element(node)) {
-				const shared = b.call(
-					'_$_.composite',
-					b.thunk(/** @type {AST.Expression} */ (visit(element_id, state))),
-					id,
-					b.thunk(object_props),
-				);
-				state.init?.push(
-					is_with_ns
-						? b.stmt(b.call('_$_.with_ns', b.literal(state.namespace), b.thunk(shared)))
-						: b.stmt(shared),
-				);
+				// A sole spread is passed as it is: the runtime diffs the object
+				// against the one it applied last, and skips an identical one.
+				const sole_spread =
+					props.length === 1 && props[0].type === 'SpreadElement' ? props[0].argument : null;
+				const namespace_args = is_with_ns ? [b.literal(state.namespace)] : [];
+
+				// Without children, and anchored inside a template (not a root
+				// the block would have to own), the element is driven by the
+				// enclosing render function: no block, no closures, and a run
+				// whose tag is unchanged only diffs the attributes.
+				if (
+					children_filtered.length === 0 &&
+					children_prop === null &&
+					!root_controlled &&
+					!append_into &&
+					state.update !== null &&
+					!state.inside_head
+				) {
+					/** @type {UpdateEntry} */
+					const dynamic_update = {
+						operation: (next, prev) =>
+							b.stmt(
+								b.assignment(
+									'=',
+									/** @type {AST.MemberExpression} */ (prev),
+									b.call(
+										'_$_.dynamic',
+										/** @type {AST.Expression} */ (prev),
+										id,
+										/** @type {AST.Expression} */ (visit(element_id, state)),
+										/** @type {AST.Expression} */ (next),
+										...namespace_args,
+									),
+								),
+							),
+						expression: sole_spread ?? object_props,
+						identity: node,
+						// The slot starts with the tag and props thunks a component
+						// target is handed over with; a build that can hydrate lets a
+						// composite block claim the server element while hydrating (see
+						// `dynamic_init`).
+						initial: b.call(
+							'_$_.dynamic_init',
+							id,
+							b.thunk(/** @type {AST.Expression} */ (visit(element_id, state))),
+							b.thunk(sole_spread ?? object_props),
+							...namespace_args,
+						),
+						unguarded: true,
+					};
+					state.update.push(dynamic_update);
+				} else {
+					state.init?.push(
+						b.stmt(
+							b.call(
+								'_$_.composite',
+								b.thunk(/** @type {AST.Expression} */ (visit(element_id, state))),
+								id,
+								b.thunk(sole_spread ?? object_props),
+								...namespace_args,
+							),
+						),
+					);
+				}
 			} else {
-				const shared = b.call(
-					'_$_.render_component',
-					/** @type {AST.Expression} */ (visit(element_id, state)),
-					id,
-					object_props,
-				);
 				state.init?.push(
-					is_with_ns
-						? b.stmt(b.call('_$_.with_ns', b.literal(state.namespace), b.thunk(shared)))
-						: b.stmt(shared),
+					b.stmt(
+						is_with_ns
+							? b.call(
+									'_$_.render_component_ns',
+									b.literal(state.namespace),
+									/** @type {AST.Expression} */ (visit(element_id, state)),
+									id,
+									object_props,
+								)
+							: b.call(
+									'_$_.render_component',
+									/** @type {AST.Expression} */ (visit(element_id, state)),
+									id,
+									object_props,
+								),
+					),
 				);
 			}
 		}

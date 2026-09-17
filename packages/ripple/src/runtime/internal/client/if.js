@@ -3,6 +3,7 @@
 import {
 	block,
 	branch,
+	create_block,
 	destroy_block,
 	get_first_node,
 	get_last_node,
@@ -10,9 +11,10 @@ import {
 	remove_block_dom,
 } from './blocks.js';
 import { DETACHED_BLOCK, IF_BLOCK, RENDER_BLOCK, UNINITIALIZED } from './constants.js';
+import { IF_ROOT_CONTROLLED, IF_TRACKED } from '../../../constants.js';
 import { hydrate_next, hydrate_node, hydrating } from './hydration.js';
 import { create_text, resolve_anchor } from './operations.js';
-import { active_block, probe_if, run_untracked } from './runtime.js';
+import { active_block, probe_if, run_in_block, run_untracked } from './runtime.js';
 import { append } from './template.js';
 import { HYDRATION } from 'ripple/internal/client/hydration-enabled';
 
@@ -260,5 +262,58 @@ export function if_block(node, fn, root_controlled, x) {
 		// The original `node`: for a sentinel, `hydrate_append` performs the
 		// cursor advance that stands in for the eliminated sibling navigation.
 		append(/** @type {ChildNode} */ (node), /** @type {Node} */ (boundary));
+	}
+}
+
+/**
+ * An if whose condition the enclosing render function evaluates (see the
+ * compiler's if lowering): the block only owns the branch, its DOM range and
+ * its blocks, and never runs itself. The render function calls `if_update`
+ * with the branch the condition selected whenever that changes. As
+ * `if_block` does, a condition that read no tracked state has its branch
+ * rendered by the probe, with no block at all: null is returned and the
+ * updates are no-ops. While hydrating, the if keeps a block of its own that
+ * runs the condition, exactly as `if_block` creates: the branch claims its
+ * server nodes in document order, and that block owns the condition's
+ * subscription and a pending read it throws; null is returned then too.
+ * @param {Node | AppendIntoAnchor} node
+ * @param {IfState['fn']} fn
+ * @param {number} [flags] `IF_ROOT_CONTROLLED` (see `if_block`) and
+ *   `IF_TRACKED`, set when the compiler proved the condition reads tracked
+ *   state, so the probe is skipped
+ * @param {any} [x] see `if_block`
+ * @returns {Block | null}
+ */
+export function if_static(node, fn, flags = 0, x) {
+	var root_controlled = (flags & IF_ROOT_CONTROLLED) !== 0;
+
+	if (HYDRATION && hydrating) {
+		if_block(node, fn, root_controlled, x);
+		return null;
+	}
+	if ((flags & IF_TRACKED) === 0) {
+		var rendered;
+		try {
+			rendered = probe_if(fn, x, node);
+		} catch {
+			rendered = false;
+		}
+		if (rendered) {
+			return null;
+		}
+	}
+
+	return create_block(IF_BLOCK, noop, if_block_state(node, fn, x));
+}
+
+/**
+ * Renders `fn` as the branch of an if created by `if_static`, when it is not
+ * the current one. The branch's blocks belong to the if block.
+ * @param {Block | null} block
+ * @param {Branch | undefined} fn
+ */
+export function if_update(block, fn) {
+	if (block !== null) {
+		run_in_block(block, update_branch, fn);
 	}
 }
