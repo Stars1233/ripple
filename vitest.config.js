@@ -47,6 +47,14 @@ export default defineConfig({
 			},
 			{
 				test: {
+					name: 'rollup-plugin',
+					include: ['packages/rollup-plugin/tests/**/*.test.js'],
+					environment: 'node',
+				},
+				plugins: [],
+			},
+			{
+				test: {
 					name: 'vite-plugin',
 					include: ['packages/vite-plugin/tests/**/*.test.js'],
 					environment: 'node',

@@ -8,6 +8,19 @@ export default {
 };
 ```
 
+## Plugin and compiler options
+
+The options passed to `ripple()` configure the Vite integration. `rootBoundary`
+controls runtime code in the bundle, `excludeRippleExternalModules` skips the
+initial package scan, and `textTypes` manages a TypeScript project whose per-file
+`textTypeFacts` are passed to the compiler. They belong at the top level of the
+plugin options, not in `CompileOptions`.
+
+Vite derives the compiler's `mode`, `dev`, `hmr`, and `hydration` options from the
+build environment and the plugin's `ssr` option. When using
+[`compile()` directly](../tsrx-ripple/README.md), pass compiler options as its
+third argument; the Rollup plugin accepts them under `compilerOptions`.
+
 ## Static generation
 
 Mark a render route with `prerender: true` to render it at build time:

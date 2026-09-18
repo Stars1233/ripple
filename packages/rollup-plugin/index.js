@@ -53,7 +53,7 @@ export default function (options = {}) {
 
 			const filename = path.relative(process.cwd(), id);
 
-			const result = await compile(code, filename, id);
+			const result = await compile(code, filename, compilerOptions);
 
 			if (emitCss && result.css) {
 				const fname = id.replace(new RegExp(`\\${extension}$`), '.css');
