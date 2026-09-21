@@ -582,32 +582,96 @@ export function Panel() @{
 ## Context
 
 Use `new Context(defaultValue?)`, `set(value)`, and `get()` to share state through
-the component tree. Set a tracked object so consumers see updates; set a derived
-(`track(() => theme.value)`) when consumers should only read it.
+the component tree. Store tracked values directly or as properties of an object
+so consumers see updates. Use derived values (`track(() => store.theme.value)`)
+when consumers should only read them.
+
+Export one context instance from a shared module and import it in providers and
+consumers. Each `new Context()` creates a separate context, even if the type or
+default value matches. A shared module avoids circular imports between components.
+
+```ts
+// theme-context.ts
+import { Context, type Tracked } from 'ripple';
+
+export type ThemeStore = {
+	theme: Tracked<string>;
+};
+
+export const ThemeContext = new Context<ThemeStore>();
+```
 
 ```tsrx
-import { Context, track, type Tracked } from 'ripple';
-
-const ThemeContext = new Context<Tracked<string>>();
+// App.tsrx
+import { track } from 'ripple';
+import { ThemeContext } from './theme-context';
+import { Button } from './Button.tsrx';
 
 export function App() @{
-	const theme = track('light');
-	ThemeContext.set(theme);
+	const store = { theme: track('light') };
+	ThemeContext.set(store);
 
 	<>
-		<ThemeLabel />
-		<button onClick={() => (theme.value = theme.value === 'light' ? 'dark' : 'light')}>
-			Toggle theme
-		</button>
+		<p>Theme in App: {store.theme.value}</p>
+		<Button />
 	</>
 }
+```
 
-function ThemeLabel() @{
-	const theme = ThemeContext.get();
+```tsrx
+// Button.tsrx
+import { ThemeContext } from './theme-context';
 
-	<p>Theme: {theme.value}</p>
+export function Button() @{
+	const store = ThemeContext.get();
+
+	<button onClick={() => {
+		store.theme.value = store.theme.value === 'light' ? 'dark' : 'light';
+	}}>
+		Toggle theme: {store.theme.value}
+	</button>
 }
 ```
+
+Both components share the store object: the button updates `store.theme.value`,
+and both displays update. The store itself is a plain object; its `theme`
+property holds the tracked value. Call `.set()` and `.get()` during component
+initialization, not at module scope or inside event handlers.
+
+A child's `.set(newValue)` overrides the context's provided value for itself and
+its descendants; ancestors and sibling branches retain their existing value.
+This restriction applies to replacing the provided value with `.set()`, not to
+updating reactive properties of a shared object. For shared updates, call
+`.set(store)` once in a common ancestor and have consumers mutate its reactive
+properties, such as `store.theme.value = 'dark'`, instead of calling `.set()`
+again. All reactive consumers of that property, including ancestors, see the
+update. Use a child's `.set()` for an intentional subtree override.
+
+Reactive reads of `.value` subscribe to updates; importing or passing the context
+alone does not subscribe a component. Assigning to an ordinary property of a
+plain object does not trigger an update; use tracked properties or a reactive
+object for values the UI should follow.
+
+Alternatively, keep the provider setup in `App` and pass the same instance with
+`<Button context={ThemeContext} />`. The component in `Button.tsrx` can then use:
+
+```tsrx
+import type { Context } from 'ripple';
+import type { ThemeStore } from './theme-context';
+
+export function Button({ context }: { context: Context<ThemeStore> }) @{
+	const store = context.get();
+
+	<button onClick={() => {
+		store.theme.value = store.theme.value === 'light' ? 'dark' : 'light';
+	}}>
+		Toggle theme: {store.theme.value}
+	</button>
+}
+```
+
+Context lookup follows component ancestry, including when the instance is passed
+as a prop. File boundaries do not change which provider a component reads.
 
 ## Portals
 

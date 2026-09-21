@@ -17,9 +17,20 @@ the context of a component. A good strategy is to assign the contents of a conte
 to a variable via the `.get()` method during the component initialization and use
 this variable for reading and writing.
 
-When Child components overwrite a context's value via `.set()`, this new value
-will only be seen by its descendants. Components higher up in the tree will
-continue to see the original value.
+When a child calls `.set(newValue)`, it overrides the context's provided value
+for itself and its descendants. Ancestors and sibling branches continue to use
+their existing value. This applies to replacing the provided value with `.set()`,
+not to updating reactive state within a shared object.
+
+To share updates across the component tree, call `.set(store)` once in a common
+ancestor with an object containing reactive properties. Descendants can retrieve
+the same object with `.get()` and update those properties, such as
+`store.theme.value = 'dark'`, instead of calling `.set()` again. Every reactive
+consumer of that property, including ancestors, sees the update. Use `.set()` in
+a child when you intentionally want a separate value for its subtree.
+
+Use tracked properties or a reactive object for values the UI should follow;
+assigning to an ordinary property of a plain object does not trigger an update.
 
 Example with tracked / reactive contents:
 
@@ -94,3 +105,90 @@ export function Parent() {
 ```
 
 </Code>
+
+### Sharing context across files
+
+Create and export a context instance from a shared module, then import that same
+instance in the components that provide or consume it. Each `new Context()`
+creates a separate context, even if its type or default value is the same.
+Keeping the instance in a shared module also avoids circular imports between
+components.
+
+```ts
+// theme-context.ts
+import { Context, type Tracked } from 'ripple';
+
+export type ThemeStore = {
+  theme: Tracked<string>;
+};
+
+export const ThemeContext = new Context<ThemeStore>();
+```
+
+```tsrx
+// App.tsrx
+import { track } from 'ripple';
+import { ThemeContext } from './theme-context';
+import { Button } from './Button.tsrx';
+
+export function App() @{
+  const store = { theme: track('light') };
+  ThemeContext.set(store);
+
+  <>
+    <p>Theme in App: {store.theme.value}</p>
+    <Button />
+  </>
+}
+```
+
+```tsrx
+// Button.tsrx
+import { ThemeContext } from './theme-context';
+
+export function Button() @{
+  const store = ThemeContext.get();
+
+  <button onClick={() => {
+    store.theme.value = store.theme.value === 'light' ? 'dark' : 'light';
+  }}>
+    Toggle theme: {store.theme.value}
+  </button>
+}
+```
+
+`App` provides a store object whose `theme` property is a tracked value before
+rendering `Button`. Both components read the same `store.theme.value`, so
+clicking the button updates the theme displayed in both. The button changes
+`store.theme.value`; it does not replace the store with `.set()`.
+Context lookup follows the component tree regardless of which files define the
+components, so descendants can import and read `ThemeContext` without intermediate
+components passing it along.
+
+### Passing a context as a prop
+
+You can also pass the same context instance to a component in another file. In
+the example above, keep `ThemeContext.set(store)` in `App` and change the button
+usage to `<Button context={ThemeContext} />`. Then `Button.tsrx` can receive the
+context as a prop instead of importing the instance:
+
+```tsrx
+// Button.tsrx
+import type { Context } from 'ripple';
+import type { ThemeStore } from './theme-context';
+
+export function Button({ context }: { context: Context<ThemeStore> }) @{
+  const store = context.get();
+
+  <button onClick={() => {
+    store.theme.value = store.theme.value === 'light' ? 'dark' : 'light';
+  }}>
+    Toggle theme: {store.theme.value}
+  </button>
+}
+```
+
+Passing the instance does not change context lookup: the component still reads
+the nearest value provided for that instance in its component ancestry. Call
+`.get()` during component initialization, then update the returned store's
+tracked properties in event handlers.
